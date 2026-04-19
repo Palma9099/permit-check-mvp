@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body { background: #f7f6f2; color: #1a1a1a; }
+body { font-family: 'Inter', system-ui, sans-serif; }
+
+.badge { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; }
+.badge-strong { background:#fee2e2; color:#991b1b; }
+.badge-medium { background:#fef3c7; color:#92400e; }
+.badge-weak { background:#e5e7eb; color:#374151; }
+.badge-ok { background:#d1fae5; color:#065f46; }
+.badge-info { background:#dbeafe; color:#1e40af; }
+
+.prose-section h2 { font-family:'Source Serif 4', Georgia, serif; font-size: 22px; margin-top: 28px; margin-bottom: 10px; }
+.prose-section h3 { font-weight: 600; margin-top: 18px; margin-bottom: 6px; font-size: 15px; color: #3a3a3a; }
+.prose-section p  { font-size: 15px; line-height: 1.65; color: #3a3a3a; margin-bottom: 10px; }
+.prose-section ul { margin-left: 1.1rem; list-style-type: disc; font-size: 15px; line-height: 1.65; color: #3a3a3a; }
+.prose-section li { margin-bottom: 6px; }
+.prose-section table { width:100%; border-collapse: collapse; font-size: 14px; }
+.prose-section th { text-align: left; padding: 8px 10px; background:#1f3864; color:#fff; }
+.prose-section td { padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+.prose-section tr:nth-child(even) td { background: #fafaf7; }
