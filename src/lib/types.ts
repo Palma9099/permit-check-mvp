@@ -48,6 +48,27 @@ export interface ConfidenceRow {
   note: string;
 }
 
+export interface ChecklistItem {
+  // What to look at when flipping to Street View / satellite / historical aerials
+  item: string;
+  whatPermitRecordSays: string;
+  whatToLookFor: string;
+  ifMismatchMeans: string;
+}
+
+export interface ThenVsNow {
+  coordinates: { lat: number; lng: number } | null;
+  // Current satellite image fetched from Esri World Imagery (no API key required)
+  satelliteImageUrl: string | null;
+  // Deep-link URLs for the realtor to click through and eyeball
+  streetViewUrl: string | null;          // Current Google Street View pano
+  streetViewTimelineUrl: string | null;  // Google Maps with Street View + clock icon for historical panos
+  historicalAerialUrl: string | null;    // Miami-Dade public historical aerial viewer
+  satelliteUrl: string | null;           // Google Maps satellite at high zoom
+  // Computed checklist — what the realtor should look for on each click-through
+  visualChecklist: ChecklistItem[];
+}
+
 export interface DiagnosticReport {
   generatedAt: string;
   query: {
@@ -113,6 +134,9 @@ export interface DiagnosticReport {
     name: string;
     note: string;
   };
+
+  // "Then vs Now" visual-review block — imagery + realtor checklist
+  thenVsNow: ThenVsNow;
 
   // Hint used by the cover callout
   bottomLine: string[];

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { buildDocx } from '@/lib/docx-report';
+import { buildPdf } from '@/lib/pdf-report';
 import { runDiagnostic } from '@/lib/miami-dade';
 import type { DiagnosticReport } from '@/lib/types';
 
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     return new Response('Invalid JSON body', { status: 400 });
   }
 
-  // Accept either a full report (from the UI re-submitting what it already fetched)
+  // Accept either a full report (UI resubmitting what it already fetched)
   // or a short { address } / { folio } request, in which case we regenerate.
   let report: DiagnosticReport;
   if (body && (body as DiagnosticReport).flags && (body as DiagnosticReport).property) {
@@ -34,12 +34,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const buf = await buildDocx(report);
-    // Wrap in a Blob — always an acceptable BodyInit across Node / Edge / Browser
-    // fetch, and avoids the Uint8Array<ArrayBufferLike> typing gotcha.
-    const blob = new Blob([new Uint8Array(buf)], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    });
+    const buf = await buildPdf(report);
+    const blob = new Blob([new Uint8Array(buf)], { type: 'application/pdf' });
     const safe =
       (report.property.siteAddress ?? report.query.address ?? 'report')
         .replace(/[^A-Za-z0-9]+/g, '_')
@@ -47,14 +43,13 @@ export async function POST(req: NextRequest) {
     return new Response(blob, {
       status: 200,
       headers: {
-        'content-type':
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'content-disposition': `attachment; filename="Permit_History_${safe}.docx"`,
+        'content-type': 'application/pdf',
+        'content-disposition': `attachment; filename="Permit_History_${safe}.pdf"`,
         'cache-control': 'no-store',
       },
     });
   } catch (err: any) {
-    return new Response(`DOCX build failed: ${err?.message ?? 'unknown'}`, {
+    return new Response(`PDF build failed: ${err?.message ?? 'unknown'}`, {
       status: 500,
     });
   }

@@ -2,8 +2,8 @@
 
 A standalone web app that runs a records-level permit history diagnostic
 against Florida municipal/AHJ data. Enter an address, get a plain-English
-realtor-grade report with confidence grades, top flags, and recommended
-next steps. Optional Word-document download.
+realtor-grade report with confidence grades, top flags, a Then-vs-Now
+imagery block, and recommended next steps. One-click PDF download.
 
 **v1 coverage:** unincorporated Miami-Dade County and cities within it.
 Uses Miami-Dade Property Appraiser public JSON and the RER Open Data
@@ -48,12 +48,12 @@ src/
 │   └── api/
 │       └── check/
 │           ├── route.ts    POST → runDiagnostic → JSON
-│           └── docx/
-│               └── route.ts  POST → runDiagnostic → buildDocx → .docx
+│           └── pdf/
+│               └── route.ts  POST → runDiagnostic → buildPdf → .pdf
 ├── lib/
 │   ├── types.ts            DiagnosticReport + domain types
-│   ├── miami-dade.ts       Pipeline: PA + ArcGIS → DiagnosticReport
-│   └── docx-report.ts      DiagnosticReport → Word .docx via docx@8
+│   ├── miami-dade.ts       Pipeline: PA + ArcGIS + geocoder → DiagnosticReport
+│   └── pdf-report.ts       DiagnosticReport → PDF via pdfkit (standard AFM fonts)
 ```
 
 ## API
@@ -61,8 +61,8 @@ src/
 **POST `/api/check`** — body `{ address?: string; folio?: string }` →
 returns `DiagnosticReport` JSON.
 
-**POST `/api/check/docx`** — body `{ address?: string; folio?: string }`
-OR a full `DiagnosticReport` object → returns a Word document.
+**POST `/api/check/pdf`** — body `{ address?: string; folio?: string }`
+OR a full `DiagnosticReport` object → returns a PDF.
 
 **GET `/api/check`** — health check.
 

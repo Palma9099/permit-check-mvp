@@ -98,6 +98,134 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </section>
         )}
 
+        {/* Then vs Now — visual review */}
+        {r.thenVsNow && r.thenVsNow.coordinates && (
+          <section>
+            <h2>Then vs Now — visual review</h2>
+            <p>
+              Records tell half the story. Flip through the imagery below to see
+              what the county has photographed, and run the checklist against
+              what the permit record does or doesn't confirm.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              {/* Current satellite from Esri — embedded as <img>, no key needed */}
+              {r.thenVsNow.satelliteImageUrl && (
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                    Current satellite (Esri World Imagery)
+                  </div>
+                  <img
+                    src={r.thenVsNow.satelliteImageUrl}
+                    alt="Current satellite view of subject property"
+                    className="w-full rounded-md border border-black/10"
+                    loading="lazy"
+                  />
+                </div>
+              )}
+              {/* Google Maps iframe — no key, works because we're using the
+                  public maps.google.com embed URL. Street View may or may not
+                  render directly but the click-through to Street View works. */}
+              {r.thenVsNow.coordinates && (
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                    Google Maps (click to open Street View + timeline)
+                  </div>
+                  <iframe
+                    src={`https://maps.google.com/maps?q=${r.thenVsNow.coordinates.lat},${r.thenVsNow.coordinates.lng}&t=k&z=19&output=embed`}
+                    className="w-full rounded-md border border-black/10"
+                    style={{ height: '320px' }}
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Click-through links */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-5">
+              {r.thenVsNow.streetViewTimelineUrl && (
+                <a
+                  href={r.thenVsNow.streetViewTimelineUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
+                >
+                  Open Google Street View (with timeline scrub) →
+                </a>
+              )}
+              {r.thenVsNow.satelliteUrl && (
+                <a
+                  href={r.thenVsNow.satelliteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
+                >
+                  Open Google Maps satellite (zoom + history) →
+                </a>
+              )}
+              {r.thenVsNow.historicalAerialUrl && (
+                <a
+                  href={r.thenVsNow.historicalAerialUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
+                >
+                  Open Miami-Dade Property Search (historical aerials) →
+                </a>
+              )}
+              {r.thenVsNow.streetViewUrl && (
+                <a
+                  href={r.thenVsNow.streetViewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
+                >
+                  Open current Street View pano →
+                </a>
+              )}
+            </div>
+
+            {/* Visual checklist */}
+            {r.thenVsNow.visualChecklist.length > 0 && (
+              <div className="mt-6">
+                <h3>Visual-review checklist</h3>
+                <p>
+                  For each item below, click through to Street View / satellite /
+                  historical aerials and check whether the visible reality
+                  matches the permit record.
+                </p>
+                <div className="space-y-3 mt-3">
+                  {r.thenVsNow.visualChecklist.map((c, i) => (
+                    <div
+                      key={i}
+                      className="border border-black/10 rounded-md p-4 bg-white"
+                    >
+                      <div className="text-sm font-semibold text-ink mb-2">
+                        {c.item}
+                      </div>
+                      <div className="text-sm text-ink-soft leading-relaxed space-y-1.5">
+                        <div>
+                          <span className="font-semibold text-ink">What the permit record says:</span>{' '}
+                          {c.whatPermitRecordSays}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-ink">What to look for:</span>{' '}
+                          {c.whatToLookFor}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-ink">If there's a mismatch:</span>{' '}
+                          {c.ifMismatchMeans}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         {/* Property */}
         <section>
           <h2>Property</h2>

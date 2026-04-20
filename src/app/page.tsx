@@ -43,30 +43,38 @@ export default function HomePage() {
     }
   }
 
-  async function downloadDocx() {
+  const [downloading, setDownloading] = useState(false);
+
+  async function downloadPdf() {
     if (!report) return;
-    const res = await fetch('/api/check/docx', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(report),
-    });
-    if (!res.ok) {
-      setError('DOCX generation failed.');
-      return;
+    setDownloading(true);
+    try {
+      const res = await fetch('/api/check/pdf', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(report),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        setError(`PDF generation failed${txt ? `: ${txt}` : ''}.`);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safe =
+        (report.property.siteAddress ?? report.query.address ?? 'report')
+          .replace(/[^A-Za-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+      a.href = url;
+      a.download = `Permit_History_${safe}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
     }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const safe =
-      (report.property.siteAddress ?? report.query.address ?? 'report')
-        .replace(/[^A-Za-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '');
-    a.href = url;
-    a.download = `Permit_History_${safe}.docx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
   }
 
   return (
@@ -144,10 +152,11 @@ export default function HomePage() {
         <div className="mt-10">
           <div className="flex justify-end mb-3">
             <button
-              onClick={downloadDocx}
-              className="px-4 py-2 rounded-md border border-black/10 bg-white text-sm font-semibold hover:bg-black/5 transition"
+              onClick={downloadPdf}
+              disabled={downloading}
+              className="px-4 py-2 rounded-md border border-black/10 bg-white text-sm font-semibold hover:bg-black/5 transition disabled:opacity-50"
             >
-              Download Word report (.docx)
+              {downloading ? 'Building PDF…' : 'Download PDF report'}
             </button>
           </div>
           <Report report={report} />

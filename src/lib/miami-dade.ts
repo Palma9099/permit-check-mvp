@@ -5,7 +5,16 @@
 // code-enforcement datasets that mirror what the gated portals hide
 // behind reCAPTCHA + OAuth. We use those directly — no API keys.
 
-import type { DiagnosticReport, Flag, Sale, ExtraFeature, Permit, CodeCase } from './types';
+import type {
+  DiagnosticReport,
+  Flag,
+  Sale,
+  ExtraFeature,
+  Permit,
+  CodeCase,
+  ThenVsNow,
+  ChecklistItem,
+} from './types';
 
 const PA_PROXY =
   'https://apps.miamidadepa.gov/PAPublicServiceProxy/PaServicesProxy.ashx';
@@ -41,6 +50,20 @@ function cleanString(s: unknown): string {
 
 function compactFolio(folio: string): string {
   return folio.replace(/\D+/g, '').padStart(13, '0').slice(-13);
+}
+
+function toNum(v: unknown): number | null {
+  // Property Appraiser sometimes returns numeric fields as strings ("1960",
+  // "1,426"). Coerce defensively so downstream formatters and comparisons
+  // don't silently fall back to the null branch.
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string') {
+    const cleaned = v.replace(/[, ]+/g, '').trim();
+    if (!cleaned) return null;
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 function prettyFolio(folio: string): string {
@@ -470,6 +493,223 @@ function formatSales(pa: any): Sale[] {
   }));
 }
 
+// ----------------------------------------------------------------------------
+// Then vs Now — geocoding + visual-review checklist
+// ----------------------------------------------------------------------------
+
+/**
+ * Free, no-key US address geocoder via the Census Bureau Geocoding Services.
+ * Returns null on any failure — we never want geocoding to block the main report.
+ */
+async function geocodeUS(address: string): Promise<{ lat: number; lng: number } | null> {
+  if (!address) return null;
+  const url =
+    'https://geocoding.geo.census.gov/geocoder/locations/onelineaddress' +
+    `?address=${encodeURIComponent(address)}` +
+    '&benchmark=Public_AR_Current&format=json';
+  try {
+    const data = await fetchJson(url);
+    const match = data?.result?.addressMatches?.[0];
+    const coords = match?.coordinates;
+    if (!coords) return null;
+    const lat = Number(coords.y);
+    const lng = Number(coords.x);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build an Esri World Imagery "export" URL. Renders a PNG tile of the subject
+ * parcel centered on (lat,lng). No API key required — Esri's public service.
+ */
+function esriSatelliteUrl(lat: number, lng: number, pixels = 720, spanDegrees = 0.0016): string {
+  const half = spanDegrees / 2;
+  const bbox = `${lng - half},${lat - half},${lng + half},${lat + half}`;
+  return (
+    'https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export' +
+    `?bbox=${encodeURIComponent(bbox)}` +
+    '&bboxSR=4326&imageSR=4326' +
+    `&size=${pixels},${pixels}` +
+    '&format=png32&transparent=false&f=image'
+  );
+}
+
+/**
+ * Build a list of checklist items for the realtor to cross-check against
+ * Street View + satellite. The whole point is to catch the "new roof with no
+ * reroof permit" situation — so we always emit a roof-age line when there's
+ * no re-roof permit on file, regardless of year built.
+ */
+function buildVisualChecklist(
+  yearBuilt: number | null,
+  permits: Permit[],
+  features: ExtraFeature[],
+): ChecklistItem[] {
+  const list: ChecklistItem[] = [];
+  const currentYear = new Date().getFullYear();
+
+  const scopeText = (p: Permit) =>
+    [p.appType ?? '', p.scope ?? ''].join(' ').toUpperCase();
+  const anyPermitMatches = (re: RegExp) =>
+    permits.some((p) => re.test(scopeText(p)));
+
+  const hasReroof = anyPermitMatches(/\bREROOF|ROOF\b/);
+  const hasFence = anyPermitMatches(/FENCE/);
+  const hasPatio = anyPermitMatches(/PATIO|SLAB/);
+  const hasShed = anyPermitMatches(/SHED|DETACH|ACCESSOR/);
+  const hasWindows = anyPermitMatches(/WINDOW|DOOR|IMPACT/);
+  const hasAC = anyPermitMatches(/MECHANICAL|A\/?C|HVAC|CONDENS/);
+  const hasWaterHeater = anyPermitMatches(/WATER HEATER|HOT WATER/);
+  const hasPool = anyPermitMatches(/POOL/);
+  const hasElectric = anyPermitMatches(/ELECTRIC/);
+  const hasAddition = anyPermitMatches(/ADDITION|ENCLOSE|ENCLOSURE|CONVERSION/);
+
+  const roofAge = yearBuilt ? currentYear - yearBuilt : null;
+  list.push({
+    item: 'Roof',
+    whatPermitRecordSays: hasReroof
+      ? 'A re-roof permit is on file. Note the issue year and compare.'
+      : yearBuilt
+        ? `No re-roof permit on file. House is ${roofAge} years old, so if the roof dates to ${yearBuilt} it is well past the 15–25 year shingle / 25–40 year tile / 50+ year concrete tile service life typical in South Florida.`
+        : 'No re-roof permit on file and year-built is unknown.',
+    whatToLookFor:
+      'On the satellite image, compare the roof tone and pattern to the neighbors. Bright, uniform, clean lines = newer; streaky, algae-stained, patched = original. On Street View, scrub the timeline — a sudden roof-color change between two years is a dated reroof.',
+    ifMismatchMeans:
+      'A visibly newer roof with no re-roof permit on file is a likely unpermitted re-roof. Miami-Dade requires a permit for anything beyond spot repair; no permit means no wind-mitigation certificate and potential insurance issues for the buyer.',
+  });
+
+  // Fence check — triggered if PA lists a fence extra feature with no fence permit
+  const fenceFeature = features.find((f) => /FENCE/i.test(f.description));
+  if (fenceFeature && !hasFence) {
+    list.push({
+      item: 'Fence',
+      whatPermitRecordSays: `Property Appraiser records a ${fenceFeature.description}${fenceFeature.actualYearBuilt ? ` dated to ${fenceFeature.actualYearBuilt}` : ''}. No fence permit on file.`,
+      whatToLookFor:
+        'On Street View and in the satellite view, confirm the fence exists along the property line. Note height and material (wood, chain-link, PVC, CBS wall).',
+      ifMismatchMeans:
+        'A 6ft+ fence in Miami-Dade unincorporated requires a permit. If visible, this is a likely unpermitted fence — typically minor to resolve after-the-fact.',
+    });
+  }
+
+  // Patio check
+  const patioFeature = features.find((f) => /PATIO|SLAB|PORCH/i.test(f.description));
+  if (patioFeature && !hasPatio) {
+    list.push({
+      item: 'Patio / concrete slab',
+      whatPermitRecordSays: `Property Appraiser records a ${patioFeature.description} (${patioFeature.units ?? '?'} sq ft)${patioFeature.actualYearBuilt ? ` dated to ${patioFeature.actualYearBuilt}` : ''}. No patio / slab permit on file.`,
+      whatToLookFor:
+        'On the satellite image, look at the rear yard — concrete slabs show as bright rectangles against grass. Note size and whether a roof cover sits on top (screen enclosure, tile cover, flat roof).',
+      ifMismatchMeans:
+        'An unpermitted slab is usually fine structurally; an unpermitted COVERED patio (roof over slab) is a real flag because it needs wind-load engineering in HVHZ.',
+    });
+  }
+
+  // Shed / detached structure check
+  const shedFeature = features.find((f) => /SHED|UTILITY BLDG|DETACH|GAZEBO|CABANA/i.test(f.description));
+  if (shedFeature && !hasShed) {
+    list.push({
+      item: 'Shed / detached structure',
+      whatPermitRecordSays: `Property Appraiser records a ${shedFeature.description}${shedFeature.actualYearBuilt ? ` dated to ${shedFeature.actualYearBuilt}` : ''}. No shed / detached-structure permit on file.`,
+      whatToLookFor:
+        'On the satellite view, look for freestanding structures in the side or rear yard. Anything over ~100 sq ft in Miami-Dade unincorporated needs a permit.',
+      ifMismatchMeans:
+        'Unpermitted sheds over 100 sq ft are a common permit-rescue item; straightforward but costs money.',
+    });
+  }
+
+  // Pool check
+  const poolFeature = features.find((f) => /POOL|SPA/i.test(f.description));
+  if (poolFeature && !hasPool) {
+    list.push({
+      item: 'Pool / spa',
+      whatPermitRecordSays: `Property Appraiser records a ${poolFeature.description}${poolFeature.actualYearBuilt ? ` dated to ${poolFeature.actualYearBuilt}` : ''}. No pool permit on file.`,
+      whatToLookFor:
+        'On the satellite image the pool should be visible as a bright blue rectangle / kidney shape. Note whether it has a screen enclosure (visible as a gray mesh overlay).',
+      ifMismatchMeans:
+        'An unpermitted pool is a serious flag — pools require structural, electrical, and barrier permits. Legalizing after-the-fact is expensive.',
+    });
+  }
+
+  // Windows / doors check — always check on houses 20+ years old
+  if (roofAge && roofAge >= 20 && !hasWindows) {
+    list.push({
+      item: 'Windows / doors',
+      whatPermitRecordSays:
+        'No window or door replacement permit on file. Impact windows and hurricane-rated doors have been the Miami-Dade standard since 2002; absence of any permit on a 20+ year old house suggests either originals or unpermitted replacement.',
+      whatToLookFor:
+        'On Street View, compare window frames across adjacent panos — new impact windows have thicker aluminum or vinyl frames and often a visible "NOA" sticker in the glass. Compare door hardware and door color across timeline.',
+      ifMismatchMeans:
+        'Unpermitted window replacement is extremely common in Miami-Dade and a real flag for buyer insurance. No NOA approval paperwork means no wind-mitigation credit.',
+    });
+  }
+
+  // A/C check — always on older houses
+  if (roofAge && roofAge >= 15 && !hasAC) {
+    list.push({
+      item: 'HVAC (A/C condenser + air handler)',
+      whatPermitRecordSays:
+        'No mechanical / A/C permit on file. Average condenser lifespan in South Florida is 10–15 years.',
+      whatToLookFor:
+        'On Street View, look at the side of the house for the outdoor condenser unit. Shiny coil fins and visible model-year sticker = newer; rusted, weathered = original.',
+      ifMismatchMeans:
+        'A/C swaps without permits are widespread in Miami-Dade. Minor to fix after-the-fact but must be disclosed to the buyer and insurer.',
+    });
+  }
+
+  // Addition / enclosure — if heated area seems large vs lot / original baseline
+  if (!hasAddition) {
+    list.push({
+      item: 'Additions / enclosures',
+      whatPermitRecordSays:
+        'No addition, enclosure, or conversion permit on file.',
+      whatToLookFor:
+        'On the satellite image, trace the house footprint and compare to neighbors. Look for: a visible joint where old roof meets new roof; a rectangular extension off the original footprint; a garage door that has been infilled with drywall / windows. Compare to historical aerials to see when the addition appeared.',
+      ifMismatchMeans:
+        'A visible addition / enclosed garage / rear extension with no permit is the most expensive unpermitted work to resolve — often requires full engineering and 3x original cost to legalize.',
+    });
+  }
+
+  return list;
+}
+
+function buildThenVsNow(
+  lat: number | null,
+  lng: number | null,
+  yearBuilt: number | null,
+  permits: Permit[],
+  features: ExtraFeature[],
+): ThenVsNow {
+  const coords = lat != null && lng != null ? { lat, lng } : null;
+  const satellite = coords ? esriSatelliteUrl(coords.lat, coords.lng) : null;
+
+  const streetView = coords
+    ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${coords.lat},${coords.lng}`
+    : null;
+  // Street View + clock icon for timeline scrub — opening regular maps at this
+  // zoom with layer=c drops the user in Street View with the timeline available.
+  const timeline = coords
+    ? `https://www.google.com/maps?q=&layer=c&cbll=${coords.lat},${coords.lng}&cbp=11,0,0,0,0`
+    : null;
+  const satelliteMap = coords
+    ? `https://www.google.com/maps/@${coords.lat},${coords.lng},20z/data=!3m1!1e3`
+    : null;
+  const historicalAerial =
+    'https://gisweb.miamidade.gov/PropertySearch/'; // Miami-Dade has historical aerials in this viewer
+
+  return {
+    coordinates: coords,
+    satelliteImageUrl: satellite,
+    streetViewUrl: streetView,
+    streetViewTimelineUrl: timeline,
+    historicalAerialUrl: historicalAerial,
+    satelliteUrl: satelliteMap,
+    visualChecklist: buildVisualChecklist(yearBuilt, permits, features),
+  };
+}
+
 function mailingMatchesSite(pa: any): { matches: boolean | null; mail: string | null; site: string | null } {
   const site = pa?.SiteAddress?.[0]?.Address as string | undefined;
   const mail = pa?.MailingAddress?.Address1 as string | undefined;
@@ -516,6 +756,13 @@ export async function runDiagnostic(input: {
     inspectionsByAddress(resolvedAddress),
   ]);
 
+  // 2b. Geocode for Then-vs-Now imagery. Non-blocking — failure is OK.
+  const geocodeAddress =
+    resolvedAddress && resolvedAddress.trim()
+      ? resolvedAddress + ', FL'
+      : input.address ?? '';
+  const coords = await geocodeUS(geocodeAddress);
+
   if (!pa) throw new Error(`PA lookup failed for folio ${folio}.`);
 
   const pi = pa.PropertyInfo ?? {};
@@ -528,6 +775,8 @@ export async function runDiagnostic(input: {
   const features = dedupeExtraFeatures(pa.ExtraFeature?.ExtraFeatureInfos ?? []);
   const buckets = yearBuckets(features);
 
+  const yearBuiltNum = toNum(pi.YearBuilt);
+
   const flags = buildFlags(
     pa,
     permits,
@@ -535,7 +784,7 @@ export async function runDiagnostic(input: {
     buckets,
     codeEnf,
     homestead.statusText,
-    pi.YearBuilt ?? null,
+    yearBuiltNum,
   );
 
   const confidence = buildConfidence(
@@ -547,11 +796,13 @@ export async function runDiagnostic(input: {
 
   const nextSteps = buildNextSteps(permits, flags);
 
-  const postBuildSummary = summarizeBuckets(buckets, pi.YearBuilt ?? null);
+  const postBuildSummary = summarizeBuckets(buckets, yearBuiltNum);
+  const heatedNum = toNum(pi.BuildingHeatedArea);
+  const lotNum = toNum(pi.LotSize);
   const bottomLine: string[] = [];
   bottomLine.push(
-    `${pi.YearBuilt ?? '?'}-built ${pi.DORDescription ?? 'property'}, ` +
-      `${pi.BuildingHeatedArea ?? '?'} heated sq ft on a ${pi.LotSize ?? '?'} sq ft lot.`,
+    `${yearBuiltNum ?? '?'}-built ${pi.DORDescription ?? 'property'}, ` +
+      `${heatedNum ?? '?'} heated sq ft on a ${lotNum ?? '?'} sq ft lot.`,
   );
   bottomLine.push(
     permits.length === 0
@@ -591,12 +842,12 @@ export async function runDiagnostic(input: {
       mailingMatchesSite: mailMatch.matches,
       owner: owner || null,
       subdivision: cleanString(pa.LegalDescription?.[0]?.Description ?? '') || null,
-      yearBuilt: pi.YearBuilt ?? null,
-      heatedArea: pi.BuildingHeatedArea ?? null,
-      totalArea: pi.BuildingActualArea ?? null,
-      lotSize: pi.LotSize ?? null,
-      bedrooms: pi.BedroomCount ?? null,
-      bathrooms: pi.BathroomCount ?? null,
+      yearBuilt: toNum(pi.YearBuilt),
+      heatedArea: toNum(pi.BuildingHeatedArea),
+      totalArea: toNum(pi.BuildingActualArea),
+      lotSize: toNum(pi.LotSize),
+      bedrooms: toNum(pi.BedroomCount),
+      bathrooms: toNum(pi.BathroomCount),
       dorDescription: cleanString(pi.DORDescription ?? '') || null,
       zoning: cleanString(pi.PrimaryZone ?? '') || null,
       homesteadBaseYear: homestead.baseYear,
@@ -624,6 +875,10 @@ export async function runDiagnostic(input: {
     dataSources: [
       'Miami-Dade Property Appraiser public JSON (PaServicesProxy): owner, building, extra features, sales, benefit/taxable',
       'Miami-Dade Open Data (ArcGIS FeatureServer): BuildingPermit_gdb, Open_Building_Violations, BuildingViolation_gdb, CodeComplianceViolation (Open/Closed past 5y), EnergovCodeCasePublicView, inspectionsData',
+      'US Census Bureau Geocoder (no key) for address → lat/lng',
+      'Esri World Imagery (no key) for the current satellite frame',
+      'Google Street View (deep-link, no key) for the Then-vs-Now timeline scrub',
+      'Miami-Dade Property Search (historical aerials) for the visible-history overlay',
     ],
     dataLimitations: [
       'Records reflect the digital portal only. Paper/microfilm permit archives predating the Miami-Dade digital migration may not appear.',
@@ -636,6 +891,13 @@ export async function runDiagnostic(input: {
       name: 'Miami-Dade County Building Department',
       note: 'Unincorporated Miami-Dade + RER Open Data. City-level AHJs coming in v2.',
     },
+    thenVsNow: buildThenVsNow(
+      coords?.lat ?? null,
+      coords?.lng ?? null,
+      yearBuiltNum,
+      permits,
+      features,
+    ),
     bottomLine,
   };
 }
