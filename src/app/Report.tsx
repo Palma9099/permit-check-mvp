@@ -1,19 +1,6 @@
 'use client';
 
-import type { DiagnosticReport, Flag, ConfidenceRow } from '@/lib/types';
-
-function badgeClass(g: ConfidenceRow['grade']): string {
-  switch (g) {
-    case 'high':
-      return 'badge badge-ok';
-    case 'medium':
-      return 'badge badge-medium';
-    case 'low':
-      return 'badge badge-strong';
-    case 'not_observed':
-      return 'badge badge-weak';
-  }
-}
+import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 
 function fmtMoney(n: number | null): string {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
@@ -23,6 +10,11 @@ function fmtMoney(n: number | null): string {
 function fmtNum(n: number | null): string {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
   return n.toLocaleString('en-US');
+}
+
+function fmtYear(n: number | null): string {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
+  return String(Math.trunc(n));
 }
 
 function FlagCard({ flag }: { flag: Flag }) {
@@ -49,8 +41,50 @@ function FlagCard({ flag }: { flag: Flag }) {
   );
 }
 
+function ObservationCard({ obs }: { obs: VisionObservation }) {
+  const colorClass =
+    obs.severity === 'flag'
+      ? 'border-red-300 bg-red-50'
+      : obs.severity === 'note'
+        ? 'border-amber-300 bg-amber-50'
+        : obs.severity === 'match'
+          ? 'border-green-300 bg-green-50'
+          : 'border-gray-300 bg-gray-50';
+  const badgeClass =
+    obs.severity === 'flag'
+      ? 'badge badge-strong'
+      : obs.severity === 'note'
+        ? 'badge badge-medium'
+        : obs.severity === 'match'
+          ? 'badge badge-ok'
+          : 'badge badge-weak';
+  const label =
+    obs.severity === 'flag'
+      ? 'FLAG'
+      : obs.severity === 'note'
+        ? 'NOTE'
+        : obs.severity === 'match'
+          ? 'MATCH'
+          : 'UNCERTAIN';
+  return (
+    <div className={`border rounded-md p-4 ${colorClass}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <h3 className="font-semibold text-ink text-sm">{obs.area}</h3>
+        <span className={badgeClass}>{label}</span>
+      </div>
+      <p className="text-sm text-ink-soft leading-relaxed">
+        <span className="font-semibold text-ink">What we see:</span> {obs.whatWeSaw}
+      </p>
+      <p className="text-sm text-ink-soft leading-relaxed mt-1">
+        <span className="font-semibold text-ink">Vs. permit record:</span> {obs.vsPermitRecord}
+      </p>
+    </div>
+  );
+}
+
 export default function Report({ report }: { report: DiagnosticReport }) {
   const r = report;
+  const vc = r.thenVsNow?.visualComparison;
   return (
     <article className="bg-card shadow-card rounded-lg border border-black/5 overflow-hidden">
       {/* Cover */}
@@ -98,38 +132,39 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </section>
         )}
 
-        {/* Then vs Now — visual review */}
+        {/* Visual review */}
         {r.thenVsNow && r.thenVsNow.coordinates && (
           <section>
-            <h2>Then vs Now — visual review</h2>
-            <p>
-              Records tell half the story. Flip through the imagery below to see
-              what the county has photographed, and run the checklist against
-              what the permit record does or doesn't confirm.
-            </p>
+            <h2>Visual review</h2>
+
+            {vc?.performed ? (
+              <p className="italic text-ink-soft">{vc.summary}</p>
+            ) : (
+              <p>
+                Records tell half the story. Use the imagery below to compare the
+                subject to its neighbors and spot anything the permit record doesn't
+                explain.
+              </p>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              {/* Current satellite from Esri — embedded as <img>, no key needed */}
               {r.thenVsNow.satelliteImageUrl && (
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                    Current satellite (Esri World Imagery)
+                    Subject — Esri satellite
                   </div>
                   <img
                     src={r.thenVsNow.satelliteImageUrl}
-                    alt="Current satellite view of subject property"
+                    alt="Subject satellite view"
                     className="w-full rounded-md border border-black/10"
                     loading="lazy"
                   />
                 </div>
               )}
-              {/* Google Maps iframe — no key, works because we're using the
-                  public maps.google.com embed URL. Street View may or may not
-                  render directly but the click-through to Street View works. */}
               {r.thenVsNow.coordinates && (
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                    Google Maps (click to open Street View + timeline)
+                    Google Maps (click for Street View + timeline)
                   </div>
                   <iframe
                     src={`https://maps.google.com/maps?q=${r.thenVsNow.coordinates.lat},${r.thenVsNow.coordinates.lng}&t=k&z=19&output=embed`}
@@ -142,8 +177,8 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               )}
             </div>
 
-            {/* Click-through links */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-5">
+            {/* Click-throughs (compact) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
               {r.thenVsNow.streetViewTimelineUrl && (
                 <a
                   href={r.thenVsNow.streetViewTimelineUrl}
@@ -151,17 +186,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                   rel="noreferrer"
                   className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
                 >
-                  Open Google Street View (with timeline scrub) →
-                </a>
-              )}
-              {r.thenVsNow.satelliteUrl && (
-                <a
-                  href={r.thenVsNow.satelliteUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
-                >
-                  Open Google Maps satellite (zoom + history) →
+                  Open Street View (timeline) →
                 </a>
               )}
               {r.thenVsNow.historicalAerialUrl && (
@@ -171,53 +196,38 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                   rel="noreferrer"
                   className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
                 >
-                  Open Miami-Dade Property Search (historical aerials) →
-                </a>
-              )}
-              {r.thenVsNow.streetViewUrl && (
-                <a
-                  href={r.thenVsNow.streetViewUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
-                >
-                  Open current Street View pano →
+                  Miami-Dade historical aerials →
                 </a>
               )}
             </div>
 
-            {/* Visual checklist */}
-            {r.thenVsNow.visualChecklist.length > 0 && (
+            {/* AI observations — the actual comparison */}
+            {vc?.performed && vc.observations.length > 0 && (
+              <div className="mt-6 space-y-3">
+                {vc.observations.map((o, i) => (
+                  <ObservationCard key={i} obs={o} />
+                ))}
+              </div>
+            )}
+
+            {/* Fallback checklist if the model didn't run */}
+            {!vc?.performed && r.thenVsNow.visualChecklist.length > 0 && (
               <div className="mt-6">
-                <h3>Visual-review checklist</h3>
-                <p>
-                  For each item below, click through to Street View / satellite /
-                  historical aerials and check whether the visible reality
-                  matches the permit record.
+                <p className="text-sm text-ink-muted italic mb-3">
+                  Automated comparison didn't run. Eyeball these yourself:
                 </p>
-                <div className="space-y-3 mt-3">
-                  {r.thenVsNow.visualChecklist.map((c, i) => (
+                <div className="space-y-3">
+                  {r.thenVsNow.visualChecklist.slice(0, 5).map((c, i) => (
                     <div
                       key={i}
                       className="border border-black/10 rounded-md p-4 bg-white"
                     >
-                      <div className="text-sm font-semibold text-ink mb-2">
+                      <div className="text-sm font-semibold text-ink mb-1">
                         {c.item}
                       </div>
-                      <div className="text-sm text-ink-soft leading-relaxed space-y-1.5">
-                        <div>
-                          <span className="font-semibold text-ink">What the permit record says:</span>{' '}
-                          {c.whatPermitRecordSays}
-                        </div>
-                        <div>
-                          <span className="font-semibold text-ink">What to look for:</span>{' '}
-                          {c.whatToLookFor}
-                        </div>
-                        <div>
-                          <span className="font-semibold text-ink">If there's a mismatch:</span>{' '}
-                          {c.ifMismatchMeans}
-                        </div>
-                      </div>
+                      <p className="text-sm text-ink-soft leading-relaxed">
+                        {c.whatToLookFor}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -237,7 +247,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </tr>
               <tr>
                 <th>Year built</th>
-                <td>{fmtNum(r.property.yearBuilt)}</td>
+                <td>{fmtYear(r.property.yearBuilt)}</td>
               </tr>
               <tr>
                 <th>Heated / total area</th>
@@ -256,24 +266,6 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                 </td>
               </tr>
               <tr>
-                <th>DOR description</th>
-                <td>{r.property.dorDescription ?? '—'}</td>
-              </tr>
-              <tr>
-                <th>Zoning</th>
-                <td>{r.property.zoning ?? '—'}</td>
-              </tr>
-              <tr>
-                <th>Mailing matches site</th>
-                <td>
-                  {r.property.mailingMatchesSite === null
-                    ? '—'
-                    : r.property.mailingMatchesSite
-                      ? 'Yes'
-                      : `No — mailing: ${r.property.mailingAddress ?? '?'}`}
-                </td>
-              </tr>
-              <tr>
                 <th>Homestead</th>
                 <td>{r.property.homesteadStatusText}</td>
               </tr>
@@ -287,8 +279,6 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           <p>
             <strong>{r.permitHistory.totalSubjectPermits}</strong> permit(s) on file
             for this folio.{' '}
-            <strong>{r.permitHistory.totalInspections}</strong> inspection record(s)
-            matched this address.{' '}
             <strong>{r.permitHistory.neighborPermitCount}</strong> permit(s) on
             neighboring parcels in the same block.
           </p>
@@ -320,37 +310,12 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               <em>No permits returned by the Miami-Dade BuildingPermit_gdb endpoint.</em>
             </p>
           )}
-          {r.permitHistory.neighborByAddress.length > 0 && (
-            <>
-              <h3>Neighbor permit counts (same block)</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Address</th>
-                    <th>Permits</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.permitHistory.neighborByAddress.map((n, i) => (
-                    <tr key={i}>
-                      <td>{n.address}</td>
-                      <td>{n.count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
         </section>
 
         {/* Extra features */}
         {r.extraFeatures.length > 0 && (
           <section>
             <h2>Property Appraiser extra features</h2>
-            <p>
-              These are improvements the county itself dates and values. Compare
-              the dates against the permit table above.
-            </p>
             <table>
               <thead>
                 <tr>
@@ -364,7 +329,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                   <tr key={i}>
                     <td>{f.description}</td>
                     <td>{fmtNum(f.units)}</td>
-                    <td>{fmtNum(f.actualYearBuilt)}</td>
+                    <td>{fmtYear(f.actualYearBuilt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -372,67 +337,65 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </section>
         )}
 
-        {/* Code enforcement */}
-        <section>
-          <h2>Code enforcement</h2>
-          <p>
-            <strong>{r.codeEnforcement.openCount}</strong> open case(s),{' '}
-            <strong>{r.codeEnforcement.closedPast5yCount}</strong> closed case(s)
-            in the past 5 years.
-          </p>
-          {r.codeEnforcement.openCases.length > 0 && (
-            <>
-              <h3>Open cases</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Case #</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th>Problem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.codeEnforcement.openCases.map((c, i) => (
-                    <tr key={i}>
-                      <td>{c.caseNumber}</td>
-                      <td>{c.caseDate ?? '—'}</td>
-                      <td>{c.status}</td>
-                      <td>{c.problemDescription}</td>
+        {/* Code enforcement — only shown when there's something to show */}
+        {(r.codeEnforcement.openCases.length > 0 ||
+          r.codeEnforcement.closedCases.length > 0) && (
+          <section>
+            <h2>Code enforcement</h2>
+            <p>
+              <strong>{r.codeEnforcement.openCount}</strong> open,{' '}
+              <strong>{r.codeEnforcement.closedPast5yCount}</strong> closed (past 5y).
+            </p>
+            {r.codeEnforcement.openCases.length > 0 && (
+              <>
+                <h3>Open cases</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Case #</th>
+                      <th>Date</th>
+                      <th>Problem</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-          {r.codeEnforcement.closedCases.length > 0 && (
-            <>
-              <h3>Closed cases (past 5y)</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Case #</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th>Problem</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.codeEnforcement.closedCases.map((c, i) => (
-                    <tr key={i}>
-                      <td>{c.caseNumber}</td>
-                      <td>{c.caseDate ?? '—'}</td>
-                      <td>{c.status}</td>
-                      <td>{c.problemDescription}</td>
+                  </thead>
+                  <tbody>
+                    {r.codeEnforcement.openCases.map((c, i) => (
+                      <tr key={i}>
+                        <td>{c.caseNumber}</td>
+                        <td>{c.caseDate ?? '—'}</td>
+                        <td>{c.problemDescription}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+            {r.codeEnforcement.closedCases.length > 0 && (
+              <>
+                <h3>Closed cases (past 5y)</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Case #</th>
+                      <th>Date</th>
+                      <th>Problem</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </section>
+                  </thead>
+                  <tbody>
+                    {r.codeEnforcement.closedCases.map((c, i) => (
+                      <tr key={i}>
+                        <td>{c.caseNumber}</td>
+                        <td>{c.caseDate ?? '—'}</td>
+                        <td>{c.problemDescription}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+          </section>
+        )}
 
-        {/* Sales */}
+        {/* Sales — only if we have any */}
         {r.sales.length > 0 && (
           <section>
             <h2>Sales history</h2>
@@ -457,34 +420,9 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </section>
         )}
 
-        {/* Confidence */}
+        {/* Next steps — short list */}
         <section>
-          <h2>Confidence</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Topic</th>
-                <th>Grade</th>
-                <th>Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {r.confidenceAssessment.map((c, i) => (
-                <tr key={i}>
-                  <td>{c.topic}</td>
-                  <td>
-                    <span className={badgeClass(c.grade)}>{c.grade.toUpperCase()}</span>
-                  </td>
-                  <td>{c.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-
-        {/* Next steps */}
-        <section>
-          <h2>Recommended next steps</h2>
+          <h2>Next steps</h2>
           <ul>
             {r.nextSteps.map((n, i) => (
               <li key={i}>{n}</li>
@@ -492,24 +430,11 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </ul>
         </section>
 
-        {/* Limitations */}
         <section>
-          <h2>Data limitations</h2>
-          <ul>
-            {r.dataLimitations.map((d, i) => (
-              <li key={i}>{d}</li>
-            ))}
-          </ul>
-        </section>
-
-        {/* Sources */}
-        <section>
-          <h2>Sources</h2>
-          <ul>
-            {r.dataSources.map((d, i) => (
-              <li key={i}>{d}</li>
-            ))}
-          </ul>
+          <p className="text-xs text-ink-muted italic">
+            Records-level triage only — not legal advice, not a final compliance
+            determination. Always verify with the AHJ before acting.
+          </p>
         </section>
       </div>
     </article>

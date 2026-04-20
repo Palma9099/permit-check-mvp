@@ -1,7 +1,12 @@
 # Deploy to a live URL on palma.llc
 
-This app has no databases, no environment variables, and no API keys. It
-deploys to Vercel in three steps. Pick ONE of the two flows below.
+This app has no databases. It deploys to Vercel in three steps. Pick ONE
+of the two flows below.
+
+**Optional** — set `ANTHROPIC_API_KEY` in Vercel project settings to enable
+the AI-powered visual review (Claude vision actually compares the satellite
+imagery against the permit record). Without the key, the app falls back to
+a static visual checklist.
 
 ---
 
@@ -37,7 +42,11 @@ Flow B below instead.
 2. Sign in with your GitHub account (first time only).
 3. **"Import Git Repository"** → select `palma9099/permit-check-mvp`.
 4. Vercel auto-detects Next.js. **Do not change any settings.**
-5. Click **Deploy**.
+5. Optional — under "Environment Variables", add:
+   - **Name:** `ANTHROPIC_API_KEY`
+   - **Value:** your key from <https://console.anthropic.com/>
+   This turns on the AI visual comparison. Skip for now if you don't have a key.
+6. Click **Deploy**.
 
 Wait ~60 seconds. You'll get a working URL like
 `permit-check-mvp-<randomsuffix>.vercel.app` and a green checkmark.

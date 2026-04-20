@@ -1,4 +1,4 @@
-// Build a Word-equivalent PDF from a DiagnosticReport using pdfkit.
+// Build a clean, realtor-grade PDF from a DiagnosticReport using pdfkit.
 //
 // Uses only the built-in AFM fonts (Helvetica + Times-Roman) so we don't
 // need any font files on disk in the Vercel serverless environment. The
@@ -6,7 +6,7 @@
 // PDF is self-contained — no missing-image icons when viewed offline.
 
 import PDFDocument from 'pdfkit';
-import type { DiagnosticReport, Flag } from './types';
+import type { DiagnosticReport, Flag, VisionObservation } from './types';
 
 // Palette — mirrors the HTML Report.tsx gradient + badge colors.
 const COLORS = {
@@ -33,7 +33,6 @@ function fmtNum(n: number | null | undefined): string {
   return n.toLocaleString('en-US');
 }
 function fmtYear(n: number | null | undefined): string {
-  // Years should not have a thousands separator.
   if (typeof n !== 'number' || !Number.isFinite(n)) return '-';
   return String(Math.trunc(n));
 }
@@ -52,11 +51,18 @@ function severityLabel(severity: Flag['severity']): { label: string; color: stri
   if (severity === 'medium') return { label: 'MEDIUM', color: COLORS.medium };
   return { label: 'WEAK', color: COLORS.weak };
 }
-function gradeLabel(grade: string): { label: string; color: string } {
-  if (grade === 'high') return { label: 'HIGH', color: COLORS.ok };
-  if (grade === 'medium') return { label: 'MEDIUM', color: COLORS.medium };
-  if (grade === 'low') return { label: 'LOW', color: COLORS.strong };
-  return { label: 'NOT OBSERVED', color: COLORS.weak };
+
+function obsBg(severity: VisionObservation['severity']): string {
+  if (severity === 'flag') return COLORS.strongBg;
+  if (severity === 'note') return COLORS.mediumBg;
+  if (severity === 'match') return COLORS.okBg;
+  return COLORS.weakBg;
+}
+function obsLabel(severity: VisionObservation['severity']): { label: string; color: string } {
+  if (severity === 'flag') return { label: 'FLAG', color: COLORS.strong };
+  if (severity === 'note') return { label: 'NOTE', color: COLORS.medium };
+  if (severity === 'match') return { label: 'MATCH', color: COLORS.ok };
+  return { label: 'UNCERTAIN', color: COLORS.weak };
 }
 
 async function fetchImageBuffer(url: string, timeoutMs = 8000): Promise<Buffer | null> {
@@ -75,10 +81,12 @@ async function fetchImageBuffer(url: string, timeoutMs = 8000): Promise<Buffer |
 }
 
 export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
-  // Pre-fetch the Esri satellite image in parallel with PDF build-up so we're
-  // not bottlenecked serially. If the fetch fails we quietly drop the image.
-  const satelliteBufferPromise = report.thenVsNow?.satelliteImageUrl
+  // Pre-fetch satellite imagery in parallel with PDF setup
+  const closeBufPromise = report.thenVsNow?.satelliteImageUrl
     ? fetchImageBuffer(report.thenVsNow.satelliteImageUrl)
+    : Promise.resolve(null);
+  const contextBufPromise = report.thenVsNow?.contextSatelliteImageUrl
+    ? fetchImageBuffer(report.thenVsNow.contextSatelliteImageUrl)
     : Promise.resolve(null);
 
   const doc = new PDFDocument({
@@ -86,7 +94,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     margins: { top: 56, bottom: 64, left: 56, right: 56 },
     bufferPages: true,
     info: {
-      Title: `Permit History & Unpermitted Improvement Check — ${report.property.siteAddress ?? report.query.address}`,
+      Title: `Permit History — ${report.property.siteAddress ?? report.query.address}`,
       Author: 'Palma Property Intelligence',
       Subject: 'Permit History & Unpermitted Improvement Check',
       Producer: 'Permit Check MVP',
@@ -104,21 +112,21 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   // Cover band
   // ==========================================================================
   const pageWidth = doc.page.width;
-  const contentWidth = pageWidth - 112; // 56 margin each side
-  const coverHeight = 170;
+  const contentWidth = pageWidth - 112;
+  const coverHeight = 160;
   doc.rect(0, 0, pageWidth, coverHeight).fill(COLORS.cover);
   doc
     .fillColor('#ffffff')
     .font('Helvetica-Bold')
     .fontSize(9)
-    .text('PALMA PROPERTY INTELLIGENCE · DIAGNOSTIC REPORT', 56, 28, {
+    .text('PALMA PROPERTY INTELLIGENCE  ·  PERMIT HISTORY CHECK', 56, 28, {
       characterSpacing: 2,
     });
   doc
     .font('Times-Bold')
-    .fontSize(22)
+    .fontSize(20)
     .fillColor('#ffffff')
-    .text(report.property.siteAddress ?? report.query.address, 56, 52, {
+    .text(report.property.siteAddress ?? report.query.address, 56, 50, {
       width: contentWidth,
     });
   doc
@@ -132,17 +140,15 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       { width: contentWidth },
     );
 
-  // Jump below the cover for body content.
-  doc.y = coverHeight + 24;
+  doc.y = coverHeight + 22;
   doc.x = 56;
   doc.fillColor(COLORS.ink);
 
   // ==========================================================================
   // Bottom line callout
   // ==========================================================================
-  const calloutTop = doc.y;
   doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
-    .text('BOTTOM LINE', 56, calloutTop, { characterSpacing: 1 });
+    .text('BOTTOM LINE', 56, doc.y, { characterSpacing: 1 });
   doc.moveDown(0.3);
   doc.font('Helvetica').fontSize(10).fillColor(COLORS.ink);
   for (const line of report.bottomLine) {
@@ -150,14 +156,13 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     doc.text('·  ', 56, y, { continued: true }).text(line, { width: contentWidth - 8 });
     doc.moveDown(0.15);
   }
-  // Rule under the callout
   doc.moveDown(0.5);
   const ruleY = doc.y;
   doc.strokeColor(COLORS.line).lineWidth(0.5).moveTo(56, ruleY).lineTo(pageWidth - 56, ruleY).stroke();
-  doc.moveDown(0.8);
+  doc.moveDown(0.6);
 
   // ==========================================================================
-  // Top flags
+  // Top flags (strong + medium only)
   // ==========================================================================
   const allFlags = [...report.flags.strong, ...report.flags.medium];
   if (allFlags.length > 0) {
@@ -168,63 +173,99 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   }
 
   // ==========================================================================
-  // Then vs Now — visual review
+  // Visual review
   // ==========================================================================
   if (report.thenVsNow && report.thenVsNow.coordinates) {
-    sectionHeading(doc, 'Then vs Now — visual review');
-    paragraph(
-      doc,
-      "Records tell half the story. The current satellite frame below is the county's own imagery. Flip to Street View and the historical-aerials viewer using the links, then run the checklist against what the permit record does or doesn't confirm.",
-      contentWidth,
-    );
-    doc.moveDown(0.4);
+    sectionHeading(doc, 'Visual review');
+    const vc = report.thenVsNow.visualComparison;
 
-    const satBuf = await satelliteBufferPromise;
-    if (satBuf) {
-      try {
-        const imgWidth = Math.min(contentWidth, 380);
-        // Keep the image left-aligned; pdfkit advances doc.y after image draw.
-        doc.image(satBuf, 56, doc.y, { width: imgWidth });
-        doc.moveDown(0.4);
+    if (vc?.performed) {
+      doc
+        .font('Helvetica-Oblique')
+        .fontSize(10)
+        .fillColor(COLORS.inkSoft)
+        .text(vc.summary, 56, doc.y, { width: contentWidth });
+      doc.moveDown(0.4);
+    } else {
+      paragraph(
+        doc,
+        "Records tell half the story. Compare the satellite views below — subject vs. neighbors — and look for anything the permit record doesn't explain.",
+        contentWidth,
+      );
+    }
+
+    // Side-by-side images: subject (tight) and block context
+    const closeBuf = await closeBufPromise;
+    const contextBuf = await contextBufPromise;
+    const imgGap = 12;
+    const imgWidth = Math.floor((contentWidth - imgGap) / 2);
+    const startY = doc.y;
+
+    if (closeBuf || contextBuf) {
+      let nextY = startY;
+      if (closeBuf) {
+        try {
+          doc.image(closeBuf, 56, startY, { width: imgWidth });
+          nextY = Math.max(nextY, doc.y);
+        } catch { /* ignore */ }
+      }
+      if (contextBuf) {
+        try {
+          doc.image(contextBuf, 56 + imgWidth + imgGap, startY, { width: imgWidth });
+          nextY = Math.max(nextY, doc.y);
+        } catch { /* ignore */ }
+      } else if (closeBuf) {
+        // No context image — already drew close; doc.y is current
+      }
+      doc.y = nextY;
+      doc.moveDown(0.3);
+      doc
+        .font('Helvetica-Oblique')
+        .fontSize(8.5)
+        .fillColor(COLORS.inkMuted)
+        .text(
+          contextBuf
+            ? 'Left: subject parcel.  Right: block context (compare to neighbors).  Imagery: Esri World Imagery.'
+            : 'Subject parcel — Esri World Imagery.',
+          56,
+          doc.y,
+          { width: contentWidth },
+        );
+      doc.moveDown(0.5);
+    }
+
+    // Vision observations — the actual analysis
+    if (vc?.performed && vc.observations.length > 0) {
+      for (const o of vc.observations) {
+        renderObservationCard(doc, o, contentWidth);
+      }
+    } else {
+      // Fallback — only the top 3 checklist items, condensed
+      if (report.thenVsNow.visualChecklist.length > 0) {
         doc
           .font('Helvetica-Oblique')
-          .fontSize(8.5)
+          .fontSize(9)
           .fillColor(COLORS.inkMuted)
           .text(
-            'Current satellite — Esri World Imagery (centered on geocoded address)',
+            vc?.failureReason
+              ? `Automated comparison did not run (${vc.failureReason}). Eyeball these manually:`
+              : 'Eyeball these areas manually:',
             56,
             doc.y,
             { width: contentWidth },
           );
-        doc.moveDown(0.4);
-      } catch {
-        /* image decode failed — skip silently */
+        doc.moveDown(0.3);
+        for (const c of report.thenVsNow.visualChecklist.slice(0, 4)) {
+          renderCompactChecklist(doc, c.item, c.whatToLookFor, contentWidth);
+        }
       }
     }
 
-    // Link block
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.ink)
-      .text('Open live imagery', 56, doc.y, { width: contentWidth });
-    doc.moveDown(0.2);
-    doc.font('Helvetica').fontSize(10).fillColor(COLORS.ink);
-    linkLine(doc, 'Google Street View (with timeline scrub)', report.thenVsNow.streetViewTimelineUrl, contentWidth);
-    linkLine(doc, 'Google Maps satellite at this address', report.thenVsNow.satelliteUrl, contentWidth);
-    linkLine(doc, 'Miami-Dade Property Search (historical aerials)', report.thenVsNow.historicalAerialUrl, contentWidth);
-    linkLine(doc, 'Current Street View pano', report.thenVsNow.streetViewUrl, contentWidth);
-    doc.moveDown(0.6);
-
-    if (report.thenVsNow.visualChecklist.length > 0) {
-      subHeading(doc, 'Visual-review checklist');
-      paragraph(
-        doc,
-        'For each item below, click through to Street View / satellite / historical aerials and compare the visible reality to the permit record.',
-        contentWidth,
-      );
-      doc.moveDown(0.3);
-      for (const c of report.thenVsNow.visualChecklist) {
-        renderChecklistCard(doc, c, contentWidth);
-      }
-    }
+    // Compact link line
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.ink);
+    linkLine(doc, 'Open Street View (with timeline)', report.thenVsNow.streetViewTimelineUrl, contentWidth);
+    linkLine(doc, 'Miami-Dade historical aerials', report.thenVsNow.historicalAerialUrl, contentWidth);
   }
 
   // ==========================================================================
@@ -245,16 +286,6 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
         'Bedrooms / bathrooms',
         `${fmtNum(report.property.bedrooms)} / ${fmtNum(report.property.bathrooms)}`,
       ],
-      ['DOR description', report.property.dorDescription ?? '—'],
-      ['Zoning', report.property.zoning ?? '—'],
-      [
-        'Mailing matches site',
-        report.property.mailingMatchesSite === null
-          ? '—'
-          : report.property.mailingMatchesSite
-            ? 'Yes'
-            : `No — mailing: ${report.property.mailingAddress ?? '?'}`,
-      ],
       ['Homestead', report.property.homesteadStatusText],
     ],
     contentWidth,
@@ -266,7 +297,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   sectionHeading(doc, 'Permit history');
   paragraph(
     doc,
-    `${report.permitHistory.totalSubjectPermits} permit(s) on file for this folio. ${report.permitHistory.totalInspections} inspection record(s) matched this address. ${report.permitHistory.neighborPermitCount} permit(s) on neighboring parcels in the same block.`,
+    `${report.permitHistory.totalSubjectPermits} permit(s) on file for this folio. ${report.permitHistory.neighborPermitCount} permit(s) on neighboring parcels in the same block.`,
     contentWidth,
   );
   if (report.permitHistory.subjectPermits.length > 0) {
@@ -274,11 +305,11 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       doc,
       ['Process #', 'Type', 'Issued', 'Status', 'Scope'],
       report.permitHistory.subjectPermits.map((p) => [
-        p.processNumber ?? '—',
-        p.appType ?? '—',
-        p.issueDate ?? '—',
-        p.status ?? '—',
-        p.scope ?? '—',
+        p.processNumber ?? '-',
+        p.appType ?? '-',
+        p.issueDate ?? '-',
+        p.status ?? '-',
+        p.scope ?? '-',
       ]),
       contentWidth,
       [0.16, 0.14, 0.13, 0.15, 0.42],
@@ -286,20 +317,10 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   } else {
     doc.moveDown(0.2);
     doc.font('Helvetica-Oblique').fontSize(10).fillColor(COLORS.inkMuted)
-      .text('No permits returned by the Miami-Dade BuildingPermit_gdb endpoint.', 56, doc.y, {
+      .text('No permits returned by the Miami-Dade permit endpoint.', 56, doc.y, {
         width: contentWidth,
       });
     doc.moveDown(0.4);
-  }
-  if (report.permitHistory.neighborByAddress.length > 0) {
-    subHeading(doc, 'Neighbor permit counts (same block)');
-    renderTable(
-      doc,
-      ['Address', 'Permits'],
-      report.permitHistory.neighborByAddress.map((n) => [n.address, String(n.count)]),
-      contentWidth,
-      [0.75, 0.25],
-    );
   }
 
   // ==========================================================================
@@ -307,18 +328,13 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   // ==========================================================================
   if (report.extraFeatures.length > 0) {
     sectionHeading(doc, 'Property Appraiser extra features');
-    paragraph(
-      doc,
-      'These are improvements the county itself dates and values. Compare the dates against the permit table above.',
-      contentWidth,
-    );
     renderTable(
       doc,
       ['Description', 'Units', 'Year built'],
       report.extraFeatures.map((f) => [
         f.description,
         fmtNum(f.units),
-        fmtNum(f.actualYearBuilt),
+        fmtYear(f.actualYearBuilt),
       ]),
       contentWidth,
       [0.6, 0.18, 0.22],
@@ -326,47 +342,47 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   }
 
   // ==========================================================================
-  // Code enforcement
+  // Code enforcement (only if there's something)
   // ==========================================================================
-  sectionHeading(doc, 'Code enforcement');
-  paragraph(
-    doc,
-    `${report.codeEnforcement.openCount} open case(s), ${report.codeEnforcement.closedPast5yCount} closed case(s) in the past 5 years.`,
-    contentWidth,
-  );
-  if (report.codeEnforcement.openCases.length > 0) {
-    subHeading(doc, 'Open cases');
-    renderTable(
+  if (report.codeEnforcement.openCases.length > 0 || report.codeEnforcement.closedCases.length > 0) {
+    sectionHeading(doc, 'Code enforcement');
+    paragraph(
       doc,
-      ['Case #', 'Date', 'Status', 'Problem'],
-      report.codeEnforcement.openCases.map((c) => [
-        c.caseNumber,
-        c.caseDate ?? '—',
-        c.status,
-        c.problemDescription,
-      ]),
+      `${report.codeEnforcement.openCount} open, ${report.codeEnforcement.closedPast5yCount} closed (past 5y).`,
       contentWidth,
-      [0.16, 0.14, 0.22, 0.48],
     );
-  }
-  if (report.codeEnforcement.closedCases.length > 0) {
-    subHeading(doc, 'Closed cases (past 5y)');
-    renderTable(
-      doc,
-      ['Case #', 'Date', 'Status', 'Problem'],
-      report.codeEnforcement.closedCases.map((c) => [
-        c.caseNumber,
-        c.caseDate ?? '—',
-        c.status,
-        c.problemDescription,
-      ]),
-      contentWidth,
-      [0.16, 0.14, 0.22, 0.48],
-    );
+    if (report.codeEnforcement.openCases.length > 0) {
+      subHeading(doc, 'Open cases');
+      renderTable(
+        doc,
+        ['Case #', 'Date', 'Problem'],
+        report.codeEnforcement.openCases.map((c) => [
+          c.caseNumber,
+          c.caseDate ?? '-',
+          c.problemDescription,
+        ]),
+        contentWidth,
+        [0.18, 0.18, 0.64],
+      );
+    }
+    if (report.codeEnforcement.closedCases.length > 0) {
+      subHeading(doc, 'Closed cases (past 5y)');
+      renderTable(
+        doc,
+        ['Case #', 'Date', 'Problem'],
+        report.codeEnforcement.closedCases.map((c) => [
+          c.caseNumber,
+          c.caseDate ?? '-',
+          c.problemDescription,
+        ]),
+        contentWidth,
+        [0.18, 0.18, 0.64],
+      );
+    }
   }
 
   // ==========================================================================
-  // Sales history
+  // Sales (only if any)
   // ==========================================================================
   if (report.sales.length > 0) {
     sectionHeading(doc, 'Sales history');
@@ -374,9 +390,9 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       doc,
       ['Date', 'Price', 'Qualification'],
       report.sales.map((s) => [
-        s.date ?? '—',
+        s.date ?? '-',
         fmtMoney(s.price),
-        s.qualificationDescription ?? '—',
+        s.qualificationDescription ?? '-',
       ]),
       contentWidth,
       [0.22, 0.22, 0.56],
@@ -384,36 +400,23 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   }
 
   // ==========================================================================
-  // Confidence
-  // ==========================================================================
-  sectionHeading(doc, 'Confidence');
-  renderConfidenceTable(
-    doc,
-    report.confidenceAssessment.map((c) => ({
-      topic: c.topic,
-      grade: c.grade,
-      note: c.note,
-    })),
-    contentWidth,
-  );
-
-  // ==========================================================================
   // Next steps
   // ==========================================================================
-  sectionHeading(doc, 'Recommended next steps');
+  sectionHeading(doc, 'Next steps');
   renderBulletList(doc, report.nextSteps, contentWidth);
 
-  // ==========================================================================
-  // Limitations
-  // ==========================================================================
-  sectionHeading(doc, 'Data limitations');
-  renderBulletList(doc, report.dataLimitations, contentWidth);
-
-  // ==========================================================================
-  // Sources
-  // ==========================================================================
-  sectionHeading(doc, 'Sources');
-  renderBulletList(doc, report.dataSources, contentWidth);
+  // Disclaimer
+  doc.moveDown(0.2);
+  doc
+    .font('Helvetica-Oblique')
+    .fontSize(8.5)
+    .fillColor(COLORS.inkMuted)
+    .text(
+      'Records-level triage only — not legal advice, not a final compliance determination. Always verify with the AHJ before acting.',
+      56,
+      doc.y,
+      { width: contentWidth },
+    );
 
   // ==========================================================================
   // Footer + page numbers
@@ -426,18 +429,14 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       .font('Helvetica')
       .fontSize(8)
       .fillColor(COLORS.inkMuted)
-      .text(
-        'Palma Property Intelligence · Permit History & Unpermitted Improvement Check',
-        56,
-        fy,
-        { width: contentWidth, align: 'left' },
-      );
-    doc.text(
-      `Page ${i - range.start + 1} of ${range.count}`,
-      56,
-      fy,
-      { width: contentWidth, align: 'right' },
-    );
+      .text('Palma Property Intelligence  ·  Permit History Check', 56, fy, {
+        width: contentWidth,
+        align: 'left',
+      });
+    doc.text(`Page ${i - range.start + 1} of ${range.count}`, 56, fy, {
+      width: contentWidth,
+      align: 'right',
+    });
   }
 
   doc.end();
@@ -449,25 +448,25 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
 // ============================================================================
 
 function sectionHeading(doc: PDFKit.PDFDocument, text: string) {
-  ensureSpace(doc, 60);
+  ensureSpace(doc, 50);
   doc.moveDown(0.4);
   doc
     .font('Times-Bold')
-    .fontSize(16)
+    .fontSize(15)
     .fillColor(COLORS.inkDark)
     .text(text, 56, doc.y, { width: doc.page.width - 112 });
-  doc.moveDown(0.3);
+  doc.moveDown(0.25);
 }
 
 function subHeading(doc: PDFKit.PDFDocument, text: string) {
-  ensureSpace(doc, 40);
-  doc.moveDown(0.2);
+  ensureSpace(doc, 30);
+  doc.moveDown(0.15);
   doc
     .font('Helvetica-Bold')
-    .fontSize(11)
+    .fontSize(10.5)
     .fillColor(COLORS.inkDark)
     .text(text, 56, doc.y, { width: doc.page.width - 112 });
-  doc.moveDown(0.2);
+  doc.moveDown(0.15);
 }
 
 function paragraph(doc: PDFKit.PDFDocument, text: string, width: number) {
@@ -482,30 +481,25 @@ function paragraph(doc: PDFKit.PDFDocument, text: string, width: number) {
 
 function linkLine(doc: PDFKit.PDFDocument, label: string, url: string | null, width: number) {
   if (!url) return;
-  ensureSpace(doc, 16);
+  ensureSpace(doc, 14);
   const y = doc.y;
-  doc.font('Helvetica').fontSize(10).fillColor(COLORS.ink);
-  // Use ASCII "* " as the bullet — the standard AFM Helvetica font doesn't
-  // include the U+2192 arrow, which renders as garbled bytes.
+  doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.ink);
   doc.text('* ', 56, y, { continued: true });
   doc.fillColor('#1d4ed8')
     .text(label, { link: url, underline: true, continued: false, width: width - 20 });
   doc.fillColor(COLORS.ink);
-  doc.moveDown(0.15);
+  doc.moveDown(0.1);
 }
 
 function renderFlagCard(doc: PDFKit.PDFDocument, flag: Flag, width: number) {
-  ensureSpace(doc, 90);
-  const startY = doc.y;
   const padding = 10;
   const { label, color } = severityLabel(flag.severity);
-  // Measure height by laying out text into a scratch area first.
   const title = flag.title;
   const detail = flag.detail;
 
-  doc.font('Helvetica-Bold').fontSize(11);
+  doc.font('Helvetica-Bold').fontSize(10.5);
   const titleHeight = doc.heightOfString(title, { width: width - padding * 2 - 60 });
-  doc.font('Helvetica').fontSize(10);
+  doc.font('Helvetica').fontSize(9.5);
   const detailHeight = doc.heightOfString(detail, { width: width - padding * 2 });
   const boxHeight = titleHeight + detailHeight + padding * 2 + 6;
 
@@ -514,10 +508,9 @@ function renderFlagCard(doc: PDFKit.PDFDocument, flag: Flag, width: number) {
   doc.rect(56, y, width, boxHeight).fillOpacity(1).fill(severityBg(flag.severity));
   doc.strokeColor(color).lineWidth(0.5).rect(56, y, width, boxHeight).stroke();
 
-  // Title + severity badge
   doc
     .font('Helvetica-Bold')
-    .fontSize(11)
+    .fontSize(10.5)
     .fillColor(COLORS.inkDark)
     .text(title, 56 + padding, y + padding, { width: width - padding * 2 - 60 });
   doc
@@ -530,10 +523,9 @@ function renderFlagCard(doc: PDFKit.PDFDocument, flag: Flag, width: number) {
       characterSpacing: 1,
     });
 
-  // Detail
   doc
     .font('Helvetica')
-    .fontSize(10)
+    .fontSize(9.5)
     .fillColor(COLORS.ink)
     .text(detail, 56 + padding, y + padding + titleHeight + 4, {
       width: width - padding * 2,
@@ -543,60 +535,77 @@ function renderFlagCard(doc: PDFKit.PDFDocument, flag: Flag, width: number) {
   doc.x = 56;
 }
 
-function renderChecklistCard(
-  doc: PDFKit.PDFDocument,
-  c: { item: string; whatPermitRecordSays: string; whatToLookFor: string; ifMismatchMeans: string },
-  width: number,
-) {
+function renderObservationCard(doc: PDFKit.PDFDocument, o: VisionObservation, width: number) {
   const padding = 10;
-  doc.font('Helvetica-Bold').fontSize(11);
-  const titleH = doc.heightOfString(c.item, { width: width - padding * 2 });
+  const { label, color } = obsLabel(o.severity);
+  const bodyW = width - padding * 2;
+
+  doc.font('Helvetica-Bold').fontSize(10.5);
+  const titleH = doc.heightOfString(o.area, { width: bodyW - 60 });
   doc.font('Helvetica').fontSize(9.5);
-  const lineWidth = width - padding * 2 - 12;
-  const h1 = doc.heightOfString(c.whatPermitRecordSays, { width: lineWidth });
-  const h2 = doc.heightOfString(c.whatToLookFor, { width: lineWidth });
-  const h3 = doc.heightOfString(c.ifMismatchMeans, { width: lineWidth });
-  doc.font('Helvetica-Bold').fontSize(9.5);
-  const labelWidth = 12 + Math.max(
-    doc.widthOfString('What the permit record says: '),
-    doc.widthOfString('What to look for: '),
-    doc.widthOfString("If there's a mismatch: "),
-  );
-  const boxHeight = padding * 2 + titleH + 6 + h1 + 4 + h2 + 4 + h3;
+  const sawH = doc.heightOfString('What we see: ' + o.whatWeSaw, { width: bodyW });
+  const vsH = doc.heightOfString('Vs. permit record: ' + o.vsPermitRecord, { width: bodyW });
+  const boxHeight = titleH + sawH + vsH + padding * 2 + 6;
 
   ensureSpace(doc, boxHeight + 6);
   const y = doc.y;
-  doc.rect(56, y, width, boxHeight).fillOpacity(1).fill(COLORS.card);
-  doc.strokeColor(COLORS.line).lineWidth(0.5).rect(56, y, width, boxHeight).stroke();
+  doc.rect(56, y, width, boxHeight).fillOpacity(1).fill(obsBg(o.severity));
+  doc.strokeColor(color).lineWidth(0.5).rect(56, y, width, boxHeight).stroke();
 
   doc
     .font('Helvetica-Bold')
-    .fontSize(11)
+    .fontSize(10.5)
     .fillColor(COLORS.inkDark)
-    .text(c.item, 56 + padding, y + padding, { width: width - padding * 2 });
+    .text(o.area, 56 + padding, y + padding, { width: bodyW - 60 });
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(8)
+    .fillColor(color)
+    .text(label, 56 + width - padding - 55, y + padding + 2, {
+      width: 55,
+      align: 'right',
+      characterSpacing: 1,
+    });
 
-  let cy = y + padding + titleH + 6;
-  const bodyX = 56 + padding;
+  let cy = y + padding + titleH + 4;
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(COLORS.inkDark)
+    .text('What we see:', 56 + padding, cy, { continued: true });
+  doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.ink)
+    .text(' ' + o.whatWeSaw, { width: bodyW });
+  cy = doc.y;
 
-  const writeRow = (label: string, body: string, baseY: number): number => {
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(9.5)
-      .fillColor(COLORS.inkDark)
-      .text(label, bodyX, baseY, { continued: true });
-    doc
-      .font('Helvetica')
-      .fontSize(9.5)
-      .fillColor(COLORS.inkSoft)
-      .text(' ' + body, { width: width - padding * 2 });
-    return doc.y + 2;
-  };
-
-  cy = writeRow('What the permit record says:', c.whatPermitRecordSays, cy);
-  cy = writeRow('What to look for:', c.whatToLookFor, cy);
-  cy = writeRow("If there's a mismatch:", c.ifMismatchMeans, cy);
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(COLORS.inkDark)
+    .text('Vs. permit record:', 56 + padding, cy, { continued: true });
+  doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.ink)
+    .text(' ' + o.vsPermitRecord, { width: bodyW });
 
   doc.y = y + boxHeight + 6;
+  doc.x = 56;
+}
+
+function renderCompactChecklist(doc: PDFKit.PDFDocument, item: string, body: string, width: number) {
+  const padding = 8;
+  const bodyW = width - padding * 2;
+  doc.font('Helvetica-Bold').fontSize(10);
+  const titleH = doc.heightOfString(item, { width: bodyW });
+  doc.font('Helvetica').fontSize(9.5);
+  const bodyH = doc.heightOfString(body, { width: bodyW });
+  const boxHeight = titleH + bodyH + padding * 2 + 4;
+
+  ensureSpace(doc, boxHeight + 4);
+  const y = doc.y;
+  doc.rect(56, y, width, boxHeight).strokeColor(COLORS.line).lineWidth(0.5).stroke();
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(10)
+    .fillColor(COLORS.inkDark)
+    .text(item, 56 + padding, y + padding, { width: bodyW });
+  doc
+    .font('Helvetica')
+    .fontSize(9.5)
+    .fillColor(COLORS.inkSoft)
+    .text(body, 56 + padding, y + padding + titleH + 2, { width: bodyW });
+  doc.y = y + boxHeight + 4;
   doc.x = 56;
 }
 
@@ -614,7 +623,6 @@ function renderKeyValueTable(doc: PDFKit.PDFDocument, rows: Array<[string, strin
 
     ensureSpace(doc, rowH + 4);
     const y = doc.y;
-    // Row divider
     doc.strokeColor(COLORS.line).lineWidth(0.3).moveTo(56, y).lineTo(56 + width, y).stroke();
     doc
       .font('Helvetica-Bold')
@@ -629,9 +637,8 @@ function renderKeyValueTable(doc: PDFKit.PDFDocument, rows: Array<[string, strin
     doc.y = y + rowH;
     doc.x = 56;
   }
-  // Bottom border on last row
   doc.strokeColor(COLORS.line).lineWidth(0.3).moveTo(56, doc.y).lineTo(56 + width, doc.y).stroke();
-  doc.moveDown(0.5);
+  doc.moveDown(0.4);
 }
 
 function renderTable(
@@ -649,14 +656,13 @@ function renderTable(
   const rowPad = 5;
 
   const drawRow = (cells: string[], bold: boolean) => {
-    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(bold ? 9 : 9).fillColor(bold ? COLORS.inkMuted : COLORS.ink);
+    doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9).fillColor(bold ? COLORS.inkMuted : COLORS.ink);
     const heights = cells.map((c, i) =>
-      doc.heightOfString(c ?? '—', { width: colWidths[i] - rowPad }),
+      doc.heightOfString(c ?? '-', { width: colWidths[i] - rowPad }),
     );
     const rowH = Math.max(...heights) + rowPad * 1.4;
     ensureSpace(doc, rowH + 4);
     const y = doc.y;
-    // top divider
     doc.strokeColor(COLORS.line).lineWidth(0.3).moveTo(56, y).lineTo(56 + width, y).stroke();
     let x = 56;
     for (let i = 0; i < cells.length; i++) {
@@ -664,7 +670,7 @@ function renderTable(
         .font(bold ? 'Helvetica-Bold' : 'Helvetica')
         .fontSize(9)
         .fillColor(bold ? COLORS.inkMuted : COLORS.ink)
-        .text(cells[i] ?? '—', x + 2, y + rowPad * 0.7, {
+        .text(cells[i] ?? '-', x + 2, y + rowPad * 0.7, {
           width: colWidths[i] - rowPad,
         });
       x += colWidths[i];
@@ -676,79 +682,18 @@ function renderTable(
   drawRow(headers, true);
   for (const row of rows) drawRow(row, false);
   doc.strokeColor(COLORS.line).lineWidth(0.3).moveTo(56, doc.y).lineTo(56 + width, doc.y).stroke();
-  doc.moveDown(0.5);
-}
-
-function renderConfidenceTable(
-  doc: PDFKit.PDFDocument,
-  rows: Array<{ topic: string; grade: string; note: string }>,
-  width: number,
-) {
-  const colWidths = [Math.round(width * 0.32), Math.round(width * 0.14), 0];
-  colWidths[2] = width - colWidths[0] - colWidths[1];
-  const rowPad = 6;
-
-  // header
-  ensureSpace(doc, 30);
-  let y = doc.y;
-  doc.strokeColor(COLORS.line).lineWidth(0.3).moveTo(56, y).lineTo(56 + width, y).stroke();
-  doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted);
-  doc.text('Topic', 56 + 2, y + rowPad * 0.7, { width: colWidths[0] - rowPad });
-  doc.text('Grade', 56 + colWidths[0] + 2, y + rowPad * 0.7, { width: colWidths[1] - rowPad });
-  doc.text('Note', 56 + colWidths[0] + colWidths[1] + 2, y + rowPad * 0.7, {
-    width: colWidths[2] - rowPad,
-  });
-  doc.y = y + 20;
-  doc.x = 56;
-
-  for (const r of rows) {
-    const topicH = doc.font('Helvetica').fontSize(9).heightOfString(r.topic, {
-      width: colWidths[0] - rowPad,
-    });
-    const noteH = doc.heightOfString(r.note, { width: colWidths[2] - rowPad });
-    const rowH = Math.max(topicH, noteH, 14) + rowPad * 1.4;
-
-    ensureSpace(doc, rowH + 4);
-    y = doc.y;
-    doc.strokeColor(COLORS.line).lineWidth(0.3).moveTo(56, y).lineTo(56 + width, y).stroke();
-
-    doc.font('Helvetica').fontSize(9).fillColor(COLORS.ink)
-      .text(r.topic, 56 + 2, y + rowPad * 0.7, { width: colWidths[0] - rowPad });
-
-    const { label, color } = gradeLabel(r.grade);
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(8.5)
-      .fillColor(color)
-      .text(label, 56 + colWidths[0] + 2, y + rowPad * 0.7, {
-        width: colWidths[1] - rowPad,
-        characterSpacing: 1,
-      });
-
-    doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor(COLORS.ink)
-      .text(r.note, 56 + colWidths[0] + colWidths[1] + 2, y + rowPad * 0.7, {
-        width: colWidths[2] - rowPad,
-      });
-
-    doc.y = y + rowH;
-    doc.x = 56;
-  }
-  doc.strokeColor(COLORS.line).lineWidth(0.3).moveTo(56, doc.y).lineTo(56 + width, doc.y).stroke();
-  doc.moveDown(0.5);
+  doc.moveDown(0.4);
 }
 
 function renderBulletList(doc: PDFKit.PDFDocument, items: string[], width: number) {
   doc.font('Helvetica').fontSize(10).fillColor(COLORS.ink);
   for (const it of items) {
-    ensureSpace(doc, 30);
+    ensureSpace(doc, 24);
     const y = doc.y;
     doc.text('·  ', 56, y, { continued: true }).text(it, { width: width - 14 });
     doc.moveDown(0.2);
   }
-  doc.moveDown(0.4);
+  doc.moveDown(0.3);
 }
 
 function ensureSpace(doc: PDFKit.PDFDocument, needed: number) {

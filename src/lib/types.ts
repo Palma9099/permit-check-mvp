@@ -56,17 +56,38 @@ export interface ChecklistItem {
   ifMismatchMeans: string;
 }
 
+export type VisionSeverity = 'flag' | 'note' | 'match' | 'uncertain';
+
+export interface VisionObservation {
+  area: string;              // e.g. "Roof", "Rear footprint", "Fence", "Shed"
+  whatWeSaw: string;         // plain-English description of what the imagery shows
+  vsPermitRecord: string;    // how that lines up with permits on file
+  severity: VisionSeverity;
+}
+
+export interface VisualComparison {
+  performed: boolean;             // did the vision model actually run?
+  modelUsed: string | null;
+  summary: string;                // one-line takeaway
+  observations: VisionObservation[];
+  failureReason: string | null;   // e.g. "ANTHROPIC_API_KEY not set" — UI can show a graceful fallback
+}
+
 export interface ThenVsNow {
   coordinates: { lat: number; lng: number } | null;
-  // Current satellite image fetched from Esri World Imagery (no API key required)
+  // Current satellite image (property-tight) fetched from Esri World Imagery (no API key required)
   satelliteImageUrl: string | null;
+  // Wider block context so the model can compare subject to neighbors
+  contextSatelliteImageUrl: string | null;
   // Deep-link URLs for the realtor to click through and eyeball
   streetViewUrl: string | null;          // Current Google Street View pano
   streetViewTimelineUrl: string | null;  // Google Maps with Street View + clock icon for historical panos
   historicalAerialUrl: string | null;    // Miami-Dade public historical aerial viewer
   satelliteUrl: string | null;           // Google Maps satellite at high zoom
-  // Computed checklist — what the realtor should look for on each click-through
+  // Computed checklist — shown only as a fallback when vision comparison didn't run
   visualChecklist: ChecklistItem[];
+  // Actual AI-powered visual comparison against permit record
+  visualComparison: VisualComparison;
 }
 
 export interface DiagnosticReport {

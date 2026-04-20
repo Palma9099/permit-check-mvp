@@ -14,7 +14,9 @@ import type {
   CodeCase,
   ThenVsNow,
   ChecklistItem,
+  VisualComparison,
 } from './types';
+import { compareImagery } from './vision-compare';
 
 const PA_PROXY =
   'https://apps.miamidadepa.gov/PAPublicServiceProxy/PaServicesProxy.ashx';
@@ -438,29 +440,26 @@ function buildNextSteps(
   const s: string[] = [];
   if (permits.length === 0) {
     s.push(
-      'Pull a certified records package from the Miami-Dade Building Department — by ADDRESS, not just folio. Request everything from five years before the original year built through today. This is the single most important step. If the original build plus any additions come back permitted but misfiled, the whole report changes.',
+      'Pull a certified records package from the Miami-Dade Building Department by ADDRESS (not just folio). This is the single most important step — paper archives sometimes hide permits the online portal missed.',
+    );
+  } else if (flags.strong.length > 0) {
+    s.push(
+      'Ask the listing agent for permit paperwork (original construction permit, invoices, inspection approvals). A single document can close the biggest flag fast.',
     );
   }
   if (flags.strong.length > 0) {
     s.push(
-      'Ask the seller / listing agent for any permit paperwork — original construction permit, any invoices, any inspection approvals. A single document can close the biggest strong flag fast.',
+      'If work is confirmed unpermitted, have the seller run after-the-fact permits (permit rescue) before closing. Budget roughly 3x the original scope cost to legalize.',
     );
-  }
-  s.push(
-    'Walk the property with eyes on the specific features the Property Appraiser dates as post-build additions. Look for cold joints at the concrete-to-original boundary; look for a permit sticker or engineer stamp on any rear wall; look for permit-card residue on fence posts.',
-  );
-  s.push(
-    'Open the Google Maps Street View timeline manually (10 minutes): pegman on address → clock icon → scrub oldest-available pano to most recent. If the additions appear between two specific years, that photographically confirms (or refutes) the Property Appraiser extra-features dates.',
-  );
-  if (flags.strong.length > 0) {
+  } else {
     s.push(
-      'If work is confirmed unpermitted, ask the seller to run after-the-fact permits (permit rescue) before closing. In Miami-Dade this usually means an engineer letter, as-builts, and double fees. Budget 3x the original scope cost as a rule of thumb.',
+      'Walk the property — look at the roof, the rear yard, the windows, and any fence. Anything visibly newer than the house is worth a question.',
     );
   }
   s.push(
-    'If the owner refuses or cannot legalize the work, price the unpermitted work into your offer and get a written disclosure naming each specific item.',
+    'Price anything you can\'t close into your offer, and get a written disclosure naming each specific item.',
   );
-  return s;
+  return s.slice(0, 3);
 }
 
 function sentenceize(parts: string[]): string {
@@ -681,9 +680,15 @@ function buildThenVsNow(
   yearBuilt: number | null,
   permits: Permit[],
   features: ExtraFeature[],
+  visualComparison: VisualComparison,
 ): ThenVsNow {
   const coords = lat != null && lng != null ? { lat, lng } : null;
+  // Property-tight frame for the realtor / model
   const satellite = coords ? esriSatelliteUrl(coords.lat, coords.lng) : null;
+  // Wider block-context frame so the model can compare subject to neighbors
+  const contextSatellite = coords
+    ? esriSatelliteUrl(coords.lat, coords.lng, 720, 0.0048)
+    : null;
 
   const streetView = coords
     ? `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${coords.lat},${coords.lng}`
@@ -702,11 +707,13 @@ function buildThenVsNow(
   return {
     coordinates: coords,
     satelliteImageUrl: satellite,
+    contextSatelliteImageUrl: contextSatellite,
     streetViewUrl: streetView,
     streetViewTimelineUrl: timeline,
     historicalAerialUrl: historicalAerial,
     satelliteUrl: satelliteMap,
     visualChecklist: buildVisualChecklist(yearBuilt, permits, features),
+    visualComparison,
   };
 }
 
@@ -762,6 +769,8 @@ export async function runDiagnostic(input: {
       ? resolvedAddress + ', FL'
       : input.address ?? '';
   const coords = await geocodeUS(geocodeAddress);
+  const closeUrl = coords ? esriSatelliteUrl(coords.lat, coords.lng) : null;
+  const contextUrl = coords ? esriSatelliteUrl(coords.lat, coords.lng, 720, 0.0048) : null;
 
   if (!pa) throw new Error(`PA lookup failed for folio ${folio}.`);
 
@@ -776,6 +785,17 @@ export async function runDiagnostic(input: {
   const buckets = yearBuckets(features);
 
   const yearBuiltNum = toNum(pi.YearBuilt);
+
+  // 2c. AI-powered visual comparison — only runs if ANTHROPIC_API_KEY is set.
+  // This is the "actually compare the imagery" step. Failure is non-fatal —
+  // we still produce a report, the UI just falls back to the static checklist.
+  const visualComparison = await compareImagery({
+    closeSatelliteUrl: closeUrl,
+    contextSatelliteUrl: contextUrl,
+    permits,
+    features: dedupeExtraFeatures(pa.ExtraFeature?.ExtraFeatureInfos ?? []),
+    yearBuilt: yearBuiltNum,
+  });
 
   const flags = buildFlags(
     pa,
@@ -897,6 +917,7 @@ export async function runDiagnostic(input: {
       yearBuiltNum,
       permits,
       features,
+      visualComparison,
     ),
     bottomLine,
   };

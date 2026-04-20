@@ -7,7 +7,14 @@ imagery block, and recommended next steps. One-click PDF download.
 
 **v1 coverage:** unincorporated Miami-Dade County and cities within it.
 Uses Miami-Dade Property Appraiser public JSON and the RER Open Data
-ArcGIS FeatureServer. **No API keys or logins required.**
+ArcGIS FeatureServer. **No API keys or logins required** for the core
+records pipeline.
+
+**Optional AI visual review:** set `ANTHROPIC_API_KEY` and the app will
+use Claude vision to compare the subject's satellite image against a
+block-context view, looking for roof / addition / fence discrepancies
+against the permit record. Without the key, the report falls back to a
+static visual checklist.
 
 **v2 plans:** individual city portals (Miami Beach, Coral Gables, Hialeah,
 Doral, etc.), Broward County, Palm Beach County.
