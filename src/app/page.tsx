@@ -87,9 +87,10 @@ export default function HomePage() {
           Permit History & Unpermitted Improvement Check
         </h1>
         <p className="mt-3 text-ink-soft text-base sm:text-lg max-w-2xl">
-          Plain-English records review for Florida property. Enter an address, get a
-          realtor-grade diagnostic pulled live from the county portal. No login, no
-          API keys.
+          Plain-English records review for any Florida property. Enter an address,
+          we route to the right county portal, pull what's publicly available, and
+          compare it to current satellite + Street View imagery — parcel-bounded
+          so the findings stay on the subject property, not the neighbors.
         </p>
       </header>
 
@@ -103,25 +104,27 @@ export default function HomePage() {
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="4202 SW 84 CT, Miami, FL 33155"
+              placeholder="Street, City, FL ZIP (e.g. 4202 SW 84 CT, Miami, FL 33155)"
               className="w-full px-3 py-2 border border-black/10 rounded-md bg-white text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
           </div>
           <div className="sm:col-span-2">
             <label className="block text-xs font-semibold uppercase tracking-wider text-ink-muted mb-1">
-              Or Folio
+              Or Folio / Parcel ID
             </label>
             <input
               type="text"
               value={folio}
               onChange={(e) => setFolio(e.target.value)}
-              placeholder="30-4022-006-0051"
+              placeholder="e.g. 30-4022-006-0051 (Miami-Dade)"
               className="w-full px-3 py-2 border border-black/10 rounded-md bg-white text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
           </div>
           <div className="sm:col-span-5 flex items-center justify-between gap-3 pt-2">
             <p className="text-xs text-ink-muted">
-              v1 supports Miami-Dade County. City portals coming in v2.
+              Works for all 67 Florida counties. Live permit scraping active for
+              Miami-Dade; every other county ships portal links + imagery analysis
+              while we wire each scraper up.
             </p>
             <button
               type="submit"
@@ -143,8 +146,9 @@ export default function HomePage() {
 
       {loading && (
         <div className="mt-8 text-ink-muted text-sm">
-          Pulling from Miami-Dade Property Appraiser + ArcGIS Open Data… this
-          typically takes 3–8 seconds.
+          Geocoding the address, resolving the county, pulling whatever permit
+          data the portal exposes, and comparing satellite + Street View against
+          the parcel boundary. Typically 5–15 seconds.
         </div>
       )}
 

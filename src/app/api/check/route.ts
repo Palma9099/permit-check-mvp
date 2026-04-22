@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runDiagnostic } from '@/lib/miami-dade';
+import { runDiagnostic } from '@/lib/orchestrator';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

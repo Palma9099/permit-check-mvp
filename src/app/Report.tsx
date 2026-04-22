@@ -96,7 +96,9 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           {r.property.siteAddress ?? r.query.address}
         </h2>
         <div className="mt-2 text-white/80 text-sm">
-          Folio {r.property.folio ?? '—'} · {r.ahj.name} ·{' '}
+          {r.property.folio ? `Folio ${r.property.folio} · ` : ''}
+          {r.county?.name ?? r.ahj?.name ?? 'Florida'}
+          {r.county?.tier ? ` (Tier ${r.county.tier})` : ''} ·{' '}
           {new Date(r.generatedAt).toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'long',
@@ -151,31 +153,65 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               {r.thenVsNow.satelliteImageUrl && (
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                    Subject — Esri satellite
+                    Subject — satellite (parcel outlined in red)
                   </div>
                   <img
                     src={r.thenVsNow.satelliteImageUrl}
-                    alt="Subject satellite view"
+                    alt="Subject satellite view with parcel polygon overlay"
                     className="w-full rounded-md border border-black/10"
                     loading="lazy"
                   />
                 </div>
               )}
-              {r.thenVsNow.coordinates && (
+              {r.thenVsNow.contextSatelliteImageUrl && (
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                    Google Maps (click for Street View + timeline)
+                    Block context — subject vs. neighbors
                   </div>
-                  <iframe
-                    src={`https://maps.google.com/maps?q=${r.thenVsNow.coordinates.lat},${r.thenVsNow.coordinates.lng}&t=k&z=19&output=embed`}
+                  <img
+                    src={r.thenVsNow.contextSatelliteImageUrl}
+                    alt="Wider block context with parcel polygon overlay"
                     className="w-full rounded-md border border-black/10"
-                    style={{ height: '320px' }}
                     loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
                   />
                 </div>
               )}
             </div>
+
+            {/* Street View thumbnails */}
+            {r.thenVsNow.streetViewImages && r.thenVsNow.streetViewImages.length > 0 && (
+              <div className="mt-5">
+                <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                  Street View — four headings
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {r.thenVsNow.streetViewImages.map((sv, i) =>
+                    sv.imageUrl ? (
+                      <div key={i} className="space-y-1">
+                        <img
+                          src={sv.imageUrl}
+                          alt={sv.label}
+                          className="w-full rounded-md border border-black/10"
+                          loading="lazy"
+                        />
+                        <div className="text-[11px] text-ink-muted text-center">
+                          {sv.label}
+                        </div>
+                      </div>
+                    ) : null,
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Parcel source line */}
+            {r.thenVsNow.parcelPolygonSource && (
+              <p className="text-xs text-ink-muted italic mt-3">
+                Parcel boundary: {r.thenVsNow.parcelPolygonSource}. The red outline
+                marks the subject property — anything outside it is a neighbor and is
+                never used as a finding.
+              </p>
+            )}
 
             {/* Click-throughs (compact) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
@@ -196,7 +232,29 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                   rel="noreferrer"
                   className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
                 >
-                  Miami-Dade historical aerials →
+                  {r.county?.name
+                    ? `${r.county.name} historical aerials →`
+                    : 'County historical aerials →'}
+                </a>
+              )}
+              {r.county?.portals?.propertyAppraiser && (
+                <a
+                  href={r.county.portals.propertyAppraiser}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
+                >
+                  {r.county.name} Property Appraiser →
+                </a>
+              )}
+              {r.county?.portals?.buildingDept && (
+                <a
+                  href={r.county.portals.buildingDept}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-2 rounded-md border border-black/10 bg-white text-sm hover:bg-black/5"
+                >
+                  {r.county.name} Building Dept →
                 </a>
               )}
             </div>
@@ -307,7 +365,12 @@ export default function Report({ report }: { report: DiagnosticReport }) {
             </table>
           ) : (
             <p>
-              <em>No permits returned by the Miami-Dade BuildingPermit_gdb endpoint.</em>
+              <em>
+                {r.county?.tier === 'A'
+                  ? `No permits returned by the ${r.county.name} public permit endpoint.`
+                  : r.county?.scraperNote ??
+                    'No permit data was pulled automatically for this county. Use the portal links above for manual records review.'}
+              </em>
             </p>
           )}
         </section>

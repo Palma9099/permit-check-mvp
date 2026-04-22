@@ -81,13 +81,16 @@ async function fetchImageBuffer(url: string, timeoutMs = 8000): Promise<Buffer |
 }
 
 export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
-  // Pre-fetch satellite imagery in parallel with PDF setup
+  // Pre-fetch satellite + Street View imagery in parallel with PDF setup
   const closeBufPromise = report.thenVsNow?.satelliteImageUrl
     ? fetchImageBuffer(report.thenVsNow.satelliteImageUrl)
     : Promise.resolve(null);
   const contextBufPromise = report.thenVsNow?.contextSatelliteImageUrl
     ? fetchImageBuffer(report.thenVsNow.contextSatelliteImageUrl)
     : Promise.resolve(null);
+  const svBufPromises = (report.thenVsNow?.streetViewImages ?? []).map((sv) =>
+    sv.imageUrl ? fetchImageBuffer(sv.imageUrl) : Promise.resolve(null),
+  );
 
   const doc = new PDFDocument({
     size: 'LETTER',
@@ -129,12 +132,15 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     .text(report.property.siteAddress ?? report.query.address, 56, 50, {
       width: contentWidth,
     });
+  const countyName = report.county?.name ?? report.ahj?.name ?? 'Florida';
+  const tierSuffix = report.county?.tier ? ` (Tier ${report.county.tier})` : '';
+  const folioPrefix = report.property.folio ? `Folio ${report.property.folio}  ·  ` : '';
   doc
     .font('Helvetica')
     .fontSize(10)
     .fillColor('#c7d2fe')
     .text(
-      `Folio ${report.property.folio ?? '—'}  ·  ${report.ahj.name}  ·  ${new Date(report.generatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+      `${folioPrefix}${countyName}${tierSuffix}  ·  ${new Date(report.generatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
       56,
       doc.y + 6,
       { width: contentWidth },
@@ -219,14 +225,56 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       }
       doc.y = nextY;
       doc.moveDown(0.3);
+      const parcelSrc = report.thenVsNow?.parcelPolygonSource
+        ? `  Parcel boundary: ${report.thenVsNow.parcelPolygonSource}.`
+        : '';
       doc
         .font('Helvetica-Oblique')
         .fontSize(8.5)
         .fillColor(COLORS.inkMuted)
         .text(
-          contextBuf
-            ? 'Left: subject parcel.  Right: block context (compare to neighbors).  Imagery: Esri World Imagery.'
-            : 'Subject parcel — Esri World Imagery.',
+          (contextBuf
+            ? 'Left: subject parcel (red outline).  Right: block context.  Imagery: Google satellite.'
+            : 'Subject parcel (red outline) — Google satellite.') + parcelSrc,
+          56,
+          doc.y,
+          { width: contentWidth },
+        );
+      doc.moveDown(0.5);
+    }
+
+    // Street View strip — up to 4 thumbnails across the page
+    const svBufs = await Promise.all(svBufPromises);
+    const svImages = (report.thenVsNow?.streetViewImages ?? []).map((sv, i) => ({
+      label: sv.label,
+      buf: svBufs[i],
+    })).filter((x) => x.buf);
+    if (svImages.length > 0) {
+      ensureSpace(doc, 180);
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
+        .text('STREET VIEW — FOUR HEADINGS', 56, doc.y, { characterSpacing: 1 });
+      doc.moveDown(0.3);
+      const perRow = Math.min(4, svImages.length);
+      const svGap = 8;
+      const svWidth = Math.floor((contentWidth - svGap * (perRow - 1)) / perRow);
+      const svY = doc.y;
+      let maxH = svY;
+      for (let i = 0; i < svImages.length; i++) {
+        const col = i % perRow;
+        const x = 56 + col * (svWidth + svGap);
+        try {
+          doc.image(svImages[i].buf as Buffer, x, svY, { width: svWidth });
+          maxH = Math.max(maxH, doc.y);
+        } catch { /* ignore */ }
+      }
+      doc.y = maxH;
+      doc.moveDown(0.2);
+      doc
+        .font('Helvetica-Oblique')
+        .fontSize(8)
+        .fillColor(COLORS.inkMuted)
+        .text(
+          svImages.map((x) => x.label).join('  ·  ') + '  ·  Imagery: Google Street View.',
           56,
           doc.y,
           { width: contentWidth },
@@ -265,7 +313,30 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     doc.moveDown(0.3);
     doc.font('Helvetica').fontSize(9.5).fillColor(COLORS.ink);
     linkLine(doc, 'Open Street View (with timeline)', report.thenVsNow.streetViewTimelineUrl, contentWidth);
-    linkLine(doc, 'Miami-Dade historical aerials', report.thenVsNow.historicalAerialUrl, contentWidth);
+    if (report.thenVsNow.historicalAerialUrl) {
+      linkLine(
+        doc,
+        `${report.county?.name ?? 'County'} historical aerials`,
+        report.thenVsNow.historicalAerialUrl,
+        contentWidth,
+      );
+    }
+    if (report.county?.portals?.propertyAppraiser) {
+      linkLine(
+        doc,
+        `${report.county.name} Property Appraiser`,
+        report.county.portals.propertyAppraiser,
+        contentWidth,
+      );
+    }
+    if (report.county?.portals?.buildingDept) {
+      linkLine(
+        doc,
+        `${report.county.name} Building Department`,
+        report.county.portals.buildingDept,
+        contentWidth,
+      );
+    }
   }
 
   // ==========================================================================
@@ -316,10 +387,13 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     );
   } else {
     doc.moveDown(0.2);
+    const noPermitLine =
+      report.county?.tier === 'A'
+        ? `No permits returned by the ${report.county.name} public permit endpoint.`
+        : report.county?.scraperNote ??
+          'No permit data was pulled automatically for this county. Use the portal links above for manual records review.';
     doc.font('Helvetica-Oblique').fontSize(10).fillColor(COLORS.inkMuted)
-      .text('No permits returned by the Miami-Dade permit endpoint.', 56, doc.y, {
-        width: contentWidth,
-      });
+      .text(noPermitLine, 56, doc.y, { width: contentWidth });
     doc.moveDown(0.4);
   }
 

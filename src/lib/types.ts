@@ -73,21 +73,53 @@ export interface VisualComparison {
   failureReason: string | null;   // e.g. "ANTHROPIC_API_KEY not set" — UI can show a graceful fallback
 }
 
+export interface StreetViewImage {
+  heading: number;                // 0 = north, 90 = east, 180 = south, 270 = west
+  label: string;                  // human-readable, e.g. "Front (facing N)"
+  imageUrl: string | null;        // signed Google Street View Static URL (null if no pano)
+}
+
+// A parcel polygon, as an ordered ring of [lat, lng] pairs. First and last point
+// may be equal (GeoJSON style) or not — renderers should not assume.
+export type ParcelRing = Array<[number, number]>;
+
 export interface ThenVsNow {
   coordinates: { lat: number; lng: number } | null;
-  // Current satellite image (property-tight) fetched from Esri World Imagery (no API key required)
+  // Current satellite image (property-tight) with parcel polygon drawn in red
   satelliteImageUrl: string | null;
-  // Wider block context so the model can compare subject to neighbors
+  // Wider block context with parcel polygon drawn in red; neighbors visible as control
   contextSatelliteImageUrl: string | null;
+  // Google Street View static images at multiple headings, already signed
+  streetViewImages: StreetViewImage[];
   // Deep-link URLs for the realtor to click through and eyeball
   streetViewUrl: string | null;          // Current Google Street View pano
   streetViewTimelineUrl: string | null;  // Google Maps with Street View + clock icon for historical panos
-  historicalAerialUrl: string | null;    // Miami-Dade public historical aerial viewer
+  historicalAerialUrl: string | null;    // county-specific historical aerial viewer when available
   satelliteUrl: string | null;           // Google Maps satellite at high zoom
+  // Parcel polygon in lat/lng — used to bound the vision model's analysis
+  parcelPolygon: ParcelRing | null;
+  parcelPolygonSource: string | null;    // e.g. "FL DOR Statewide Parcels" or "Miami-Dade PA"
   // Computed checklist — shown only as a fallback when vision comparison didn't run
   visualChecklist: ChecklistItem[];
   // Actual AI-powered visual comparison against permit record
   visualComparison: VisualComparison;
+}
+
+export type CountyTier = 'A' | 'B';
+
+export interface CountyPortalLinks {
+  propertyAppraiser: string | null;     // e.g. https://www.bcpa.net
+  buildingDept: string | null;          // e.g. city or county building dept portal
+  codeEnforcement: string | null;       // e.g. https://... or null
+  historicalAerial: string | null;      // county-specific aerial viewer when known
+}
+
+export interface CountyInfo {
+  slug: string;                          // e.g. "fl-miami-dade", "fl-broward"
+  name: string;                          // "Miami-Dade County", "Broward County"
+  tier: CountyTier;                      // A = scraped; B = links only
+  portals: CountyPortalLinks;
+  scraperNote: string;                   // what we actually pulled live vs what needs manual follow-up
 }
 
 export interface DiagnosticReport {
@@ -155,6 +187,9 @@ export interface DiagnosticReport {
     name: string;
     note: string;
   };
+
+  // Statewide-aware county block. AHJ is retained for back-compat.
+  county: CountyInfo;
 
   // "Then vs Now" visual-review block — imagery + realtor checklist
   thenVsNow: ThenVsNow;

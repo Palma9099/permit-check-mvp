@@ -1,21 +1,22 @@
 // AI-powered visual comparison.
 //
-// Fetches two Esri World Imagery tiles — a property-tight view and a wider
-// block-context view — then asks Claude (via the Anthropic Messages API with
-// vision) to compare the subject to its neighbors and cross-check what it
-// sees against the permit record.
+// Inputs: satellite imagery with the subject parcel outlined in red, Street
+// View imagery facing the property, and the permit / extra-features digest
+// for the parcel. Output: a structured list of observations with severity
+// flags — "flag" is only emitted when the model sees clear post-construction
+// work inside the red polygon that isn't matched by a permit on file.
 //
-// If ANTHROPIC_API_KEY is not set, we return a VisualComparison with
-// performed=false and a failureReason so the UI falls back to the static
-// checklist gracefully.
+// The red polygon is the critical primitive. Before this change the model
+// would flag neighbor features (e.g. a neighbor's pool) as the subject's
+// unpermitted work. The polygon tells it exactly where to look.
 //
-// This module is deliberately self-contained — no Anthropic SDK dependency —
-// so the serverless bundle stays small and deployments don't break on a
-// missing peer dep.
+// If ANTHROPIC_API_KEY is not set, returns performed=false so the UI falls
+// back to the static checklist gracefully.
 
 import type {
   ExtraFeature,
   Permit,
+  StreetViewImage,
   VisualComparison,
   VisionObservation,
   VisionSeverity,
@@ -63,74 +64,88 @@ function buildPermitDigest(permits: Permit[], features: ExtraFeature[], yearBuil
 
 const SYSTEM_PROMPT = `You are a Florida-licensed-realtor-grade visual property analyst.
 
-You will be given two aerial images of the same property:
-  1. A tight satellite frame centered on the subject parcel.
-  2. A wider block-context frame showing neighboring parcels.
+You will be given multiple images of the same property:
+  1. A tight satellite frame centered on the subject parcel, with the parcel
+     boundary DRAWN AS A BRIGHT RED POLYGON OUTLINE.
+  2. A wider block-context satellite frame showing neighboring parcels, with
+     the subject parcel again drawn as a bright red polygon outline.
+  3. One or more Street View images looking at the property from the street.
 
 You will also be given the permit history and Property Appraiser extra-features
 record for the subject parcel.
 
-Your job is to look at the imagery and report what you actually see, then
-cross-check it against the permit record. You are looking for signs of work
-that was done AFTER the home was originally built but was never permitted:
+CRITICAL — PARCEL BOUNDARY RULE:
+  The BRIGHT RED POLYGON on the satellite images marks the subject property
+  boundary. EVERYTHING YOU FLAG MUST BE INSIDE THAT POLYGON. If a feature
+  (pool, shed, patio, addition, driveway, fence segment) falls OUTSIDE the
+  red outline, it belongs to a neighbor and is NOT a finding for this
+  property — do not mention it as if it were the subject's. You may still
+  use the neighbors as a control group for roof tone, vintage, and
+  footprint — but never cite a neighbor's feature as the subject's.
+
+  If the red polygon is obviously synthetic (a perfect rectangle smaller
+  than the visible house footprint), treat it as a "subject area hint" and
+  still avoid flagging anything that is clearly on an adjacent parcel.
+
+Your job: look at the imagery and report what you actually see INSIDE the
+red polygon, then cross-check it against the permit record. You are looking
+for signs of work done AFTER the home was originally built but never
+permitted:
   - a newer roof than the house's age or the neighbors (color uniformity,
     lack of algae streaks, sharp edges) with no re-roof permit
-  - visible additions or enclosures tacked onto the original footprint:
-    rear bump-outs, enclosed garages, enclosed carports, bonus rooms
+  - visible additions or enclosures tacked onto the original footprint
   - rear yard patios / covered patios / screen enclosures added later
     with no permit
   - fences that exceed 6ft with no fence permit
   - solar, antennas, AC condensers that suggest work not on file
+  - Street-View-visible window/door changes vs the original vintage
+    (new impact-window frames on an old house is a common unpermitted item)
 
 CRITICAL — original-construction rule (HIGHLY-VISIBLE MAJOR STRUCTURES ONLY):
   If a major structure (pool, spa, cabana, detached garage, tiki, integral
-  patio cover, original perimeter fence) is visible in the subject parcel
-  and appears to be of the SAME vintage as the house — i.e. consistent
+  patio cover, original perimeter fence) is visible INSIDE THE RED POLYGON
+  and appears to be of the SAME vintage as the house — consistent
   weathering, aligned with the original footprint, and would have been
   visible from the first day the house existed — then it was almost
-  certainly bundled into the master construction permit for the house.
-  DO NOT flag it as unpermitted. A pool in particular is a major structure
-  that requires electrical, structural, and barrier inspections — if it had
-  been unpermitted, the AHJ would have written up a code violation within
-  1–2 years of construction. Its presence for the life of the home without
-  a violation is strong evidence it WAS permitted, even if a standalone
-  "POOL" permit doesn't appear in the digital archive. Miami-Dade's digital
-  permit archive has poor coverage for master construction permits issued
-  before roughly 2010; absence of a standalone permit does not equal
-  absence of authorization.
+  certainly bundled into the master construction permit. DO NOT flag it.
+  A pool in particular requires electrical, structural, and barrier
+  inspections; if it were unpermitted the AHJ would have written a
+  violation within 1–2 years of construction. Its presence for the life
+  of the home without a violation is strong evidence it WAS permitted,
+  even if a standalone "POOL" permit doesn't appear in the digital archive.
+  Florida county permit archives have poor digital coverage for master
+  construction permits issued before roughly 2010; absence of a standalone
+  permit does not equal absence of authorization.
 
   Flag a pool / major structure ONLY if it visibly appears to have been
-  added AFTER original construction — e.g. deck concrete that is obviously
-  newer than the house slab, a pool in a yard where the original landscape
-  clearly wrapped around it, etc. When uncertain, classify as "match" or
-  "uncertain", not "flag".
+  added AFTER original construction. When uncertain, classify as "match"
+  or "uncertain", not "flag".
 
-SCOPE LIMIT — the "AHJ would have caught it" reasoning is visibility-bound:
-  The "it's been there forever so it must be permitted" inference applies
-  ONLY to highly-visible major structures: pools, cabanas, detached
-  garages, rear additions visible from overhead, tall perimeter walls.
-  Code enforcement in Miami-Dade is largely complaint-driven; the
-  categories below routinely sit unpermitted for decades, and
-  absence-of-permit IS a legitimate flag for them even on old homes:
+SCOPE LIMIT — "AHJ would have caught it" reasoning is visibility-bound:
+  That inference applies ONLY to highly-visible major structures: pools,
+  cabanas, detached garages, rear additions visible from overhead, tall
+  perimeter walls. Code enforcement in Florida counties is largely
+  complaint-driven; the categories below routinely sit unpermitted for
+  decades, and absence-of-permit IS a legitimate flag for them even on
+  old homes:
     - Interior remodels (kitchens, baths)
     - Mechanical / electrical / plumbing swaps (A/C condensers, water
       heaters, panel upgrades)
-    - Window and door replacements (note frame-style changes vs vintage)
+    - Window and door replacements — check Street View for frame-style
+      changes that don't match the vintage
     - Re-roofs (a re-roof done 15 years ago that matches neighbor color
       can look like the original roof — if the permit log shows no
       re-roof and the tile/shingle style doesn't match the era, flag it)
     - Hidden rear additions (behind privacy fences or behind the
       original footprint, not visible from street)
-    - Enclosed garages / carports (exterior still reads as a garage
-      but the interior has been finished — look for infill where an
-      overhead door used to be, mismatched wall plane, added window
-      in what was the garage opening)
+    - Enclosed garages / carports — look in Street View for infill where
+      an overhead door used to be, mismatched wall plane, added window
+      in what was the garage opening
     - Interior conversions (bedroom → rental unit, garage → mother-in-law
       suite without exterior change)
   For these categories, do NOT rely on "it's been like that since the
-  house was built" to conclude it was permitted. If the permit record
-  is silent on work that is visibly present, flag it or classify as
-  "uncertain" depending on image clarity.
+  house was built" to conclude it was permitted. If the permit record is
+  silent on work visibly present, flag it or classify as "uncertain".
 
 Rules:
   - Only describe what is genuinely visible. If the image quality doesn't
@@ -138,20 +153,21 @@ Rules:
   - Never invent a finding.
   - Compare the subject roof tone, age, and footprint specifically to the
     visible neighbor roofs in the wider frame. Neighbors are your control
-    group.
+    group, never a finding.
   - Keep each observation's text to 1-2 short sentences. Plain English.
     No jargon.
   - If everything looks consistent with the permit record, say so clearly
     with severity "match".
-  - Severity "flag" is reserved for clear post-construction work with no
-    matching permit. "no standalone permit on file" alone is never enough.
+  - Severity "flag" is reserved for clear post-construction work INSIDE
+    the red polygon with no matching permit. "No standalone permit on
+    file" alone is never enough.
 
 Return ONLY valid JSON matching this schema — no preamble, no code fences:
 {
   "summary": "one-sentence plain-English takeaway (max 25 words)",
   "observations": [
     {
-      "area": "Roof" | "Rear footprint" | "Fence" | "Pool" | "Shed / detached" | "Patio / cover" | "Driveway" | "Other",
+      "area": "Roof" | "Rear footprint" | "Fence" | "Pool" | "Shed / detached" | "Patio / cover" | "Driveway" | "Windows / doors" | "Other",
       "whatWeSaw": "short plain-English description of what you see in the image",
       "vsPermitRecord": "how that aligns or conflicts with the permits on file",
       "severity": "flag" | "note" | "match" | "uncertain"
@@ -163,10 +179,9 @@ Keep the observation count between 3 and 6. Skip areas where there is nothing
 notable to say.`;
 
 function parseResult(text: string): { summary: string; observations: VisionObservation[] } | null {
-  // Strip common fencing patterns in case the model wraps output anyway.
   const cleaned = text
-    .replace(/^[^{]*/s, '')       // anything before the first {
-    .replace(/[^}]*$/s, '');      // anything after the last }
+    .replace(/^[^{]*/s, '')
+    .replace(/[^}]*$/s, '');
   try {
     const parsed = JSON.parse(cleaned);
     if (typeof parsed !== 'object' || parsed === null) return null;
@@ -191,9 +206,11 @@ function parseResult(text: string): { summary: string; observations: VisionObser
 export async function compareImagery(opts: {
   closeSatelliteUrl: string | null;
   contextSatelliteUrl: string | null;
+  streetViewImages?: StreetViewImage[];
   permits: Permit[];
   features: ExtraFeature[];
   yearBuilt: number | null;
+  polygonIsFallback?: boolean;       // tell the model when the polygon is a synthesized box
 }): Promise<VisualComparison> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -217,18 +234,21 @@ export async function compareImagery(opts: {
     };
   }
 
-  const [closeB64, contextB64] = await Promise.all([
+  // Fetch all images in parallel.
+  const streetViewList = (opts.streetViewImages ?? []).filter((s) => s.imageUrl);
+  const [closeB64, contextB64, ...streetViewB64] = await Promise.all([
     fetchImageBase64(opts.closeSatelliteUrl),
     opts.contextSatelliteUrl ? fetchImageBase64(opts.contextSatelliteUrl) : Promise.resolve(null),
+    ...streetViewList.map((s) => fetchImageBase64(s.imageUrl as string)),
   ]);
 
   if (!closeB64) {
     return {
       performed: false,
       modelUsed: null,
-      summary: 'Esri satellite fetch failed — skipped visual comparison.',
+      summary: 'Satellite image fetch failed — skipped visual comparison.',
       observations: [],
-      failureReason: 'Esri fetch failed',
+      failureReason: 'satellite fetch failed',
     };
   }
 
@@ -238,7 +258,9 @@ export async function compareImagery(opts: {
     {
       type: 'text',
       text:
-        'IMAGE 1 of 2 — TIGHT satellite frame centered on the subject parcel:',
+        (opts.polygonIsFallback
+          ? 'IMAGE 1 — TIGHT satellite frame. NOTE: the parcel layer was unavailable, so the red outline is a ~120ft synthetic box centered on the geocoded address. Treat it as a "subject area hint" and avoid flagging things clearly on neighboring parcels.\n'
+          : 'IMAGE 1 — TIGHT satellite frame centered on the subject parcel. The BRIGHT RED polygon outlines the subject property boundary. Everything INSIDE the red polygon is the subject; everything OUTSIDE belongs to neighbors and is never a finding for this property.\n'),
     },
     {
       type: 'image',
@@ -248,16 +270,33 @@ export async function compareImagery(opts: {
   if (contextB64) {
     userContent.push({
       type: 'text',
-      text: 'IMAGE 2 of 2 — WIDER block context (subject is near the center; use neighbors as your control):',
+      text: 'IMAGE 2 — WIDER block-context satellite frame. Same red polygon marks the subject parcel. Use neighbors as a visual control group for roof vintage, footprint scale, and lot size — but never cite a neighbor feature as the subject\'s.',
     });
     userContent.push({
       type: 'image',
       source: { type: 'base64', media_type: 'image/png', data: contextB64 },
     });
   }
+
+  // Street View images — ground-level. No polygon overlay possible, but the
+  // model can still compare window frames, garage doors, roof edges, paint,
+  // door color, fence material etc. against the permit log.
+  streetViewB64.forEach((b64, i) => {
+    if (!b64) return;
+    const sv = streetViewList[i];
+    userContent.push({
+      type: 'text',
+      text: `IMAGE ${3 + i} — Street View, ${sv.label} (heading ${sv.heading}°). Ground-level look at the property. Compare windows, doors, roof edge, fence, and any visible condenser/water-heater/electrical against the permit log.`,
+    });
+    userContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
+    });
+  });
+
   userContent.push({
     type: 'text',
-    text: `Permit record for the subject parcel:\n${digest}\n\nAnalyze the imagery and return the JSON object per the schema in the system prompt.`,
+    text: `Permit record for the subject parcel:\n${digest}\n\nAnalyze the imagery and return the JSON object per the schema in the system prompt. Remember: red polygon = subject; outside red polygon = neighbors = never a finding.`,
   });
 
   try {
@@ -270,7 +309,7 @@ export async function compareImagery(opts: {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1024,
+        max_tokens: 1500,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],
       }),

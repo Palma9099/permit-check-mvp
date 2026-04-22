@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { buildPdf } from '@/lib/pdf-report';
-import { runDiagnostic } from '@/lib/miami-dade';
+import { runDiagnostic } from '@/lib/orchestrator';
 import type { DiagnosticReport } from '@/lib/types';
 
 export const runtime = 'nodejs';
