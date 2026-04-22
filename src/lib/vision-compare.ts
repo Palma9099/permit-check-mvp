@@ -71,16 +71,66 @@ You will also be given the permit history and Property Appraiser extra-features
 record for the subject parcel.
 
 Your job is to look at the imagery and report what you actually see, then
-cross-check it against the permit record. You are looking for signs of:
+cross-check it against the permit record. You are looking for signs of work
+that was done AFTER the home was originally built but was never permitted:
   - a newer roof than the house's age or the neighbors (color uniformity,
     lack of algae streaks, sharp edges) with no re-roof permit
-  - visible additions or enclosures: rear bump-outs, enclosed garages,
-    enclosed carports, bonus rooms tacked onto the footprint
-  - pool or spa not matching a pool permit
-  - detached structures (sheds, cabanas, gazebos) with no matching permit
-  - rear yard patios / covered patios / screen enclosures with no permit
+  - visible additions or enclosures tacked onto the original footprint:
+    rear bump-outs, enclosed garages, enclosed carports, bonus rooms
+  - rear yard patios / covered patios / screen enclosures added later
+    with no permit
   - fences that exceed 6ft with no fence permit
   - solar, antennas, AC condensers that suggest work not on file
+
+CRITICAL — original-construction rule (HIGHLY-VISIBLE MAJOR STRUCTURES ONLY):
+  If a major structure (pool, spa, cabana, detached garage, tiki, integral
+  patio cover, original perimeter fence) is visible in the subject parcel
+  and appears to be of the SAME vintage as the house — i.e. consistent
+  weathering, aligned with the original footprint, and would have been
+  visible from the first day the house existed — then it was almost
+  certainly bundled into the master construction permit for the house.
+  DO NOT flag it as unpermitted. A pool in particular is a major structure
+  that requires electrical, structural, and barrier inspections — if it had
+  been unpermitted, the AHJ would have written up a code violation within
+  1–2 years of construction. Its presence for the life of the home without
+  a violation is strong evidence it WAS permitted, even if a standalone
+  "POOL" permit doesn't appear in the digital archive. Miami-Dade's digital
+  permit archive has poor coverage for master construction permits issued
+  before roughly 2010; absence of a standalone permit does not equal
+  absence of authorization.
+
+  Flag a pool / major structure ONLY if it visibly appears to have been
+  added AFTER original construction — e.g. deck concrete that is obviously
+  newer than the house slab, a pool in a yard where the original landscape
+  clearly wrapped around it, etc. When uncertain, classify as "match" or
+  "uncertain", not "flag".
+
+SCOPE LIMIT — the "AHJ would have caught it" reasoning is visibility-bound:
+  The "it's been there forever so it must be permitted" inference applies
+  ONLY to highly-visible major structures: pools, cabanas, detached
+  garages, rear additions visible from overhead, tall perimeter walls.
+  Code enforcement in Miami-Dade is largely complaint-driven; the
+  categories below routinely sit unpermitted for decades, and
+  absence-of-permit IS a legitimate flag for them even on old homes:
+    - Interior remodels (kitchens, baths)
+    - Mechanical / electrical / plumbing swaps (A/C condensers, water
+      heaters, panel upgrades)
+    - Window and door replacements (note frame-style changes vs vintage)
+    - Re-roofs (a re-roof done 15 years ago that matches neighbor color
+      can look like the original roof — if the permit log shows no
+      re-roof and the tile/shingle style doesn't match the era, flag it)
+    - Hidden rear additions (behind privacy fences or behind the
+      original footprint, not visible from street)
+    - Enclosed garages / carports (exterior still reads as a garage
+      but the interior has been finished — look for infill where an
+      overhead door used to be, mismatched wall plane, added window
+      in what was the garage opening)
+    - Interior conversions (bedroom → rental unit, garage → mother-in-law
+      suite without exterior change)
+  For these categories, do NOT rely on "it's been like that since the
+  house was built" to conclude it was permitted. If the permit record
+  is silent on work that is visibly present, flag it or classify as
+  "uncertain" depending on image clarity.
 
 Rules:
   - Only describe what is genuinely visible. If the image quality doesn't
@@ -93,6 +143,8 @@ Rules:
     No jargon.
   - If everything looks consistent with the permit record, say so clearly
     with severity "match".
+  - Severity "flag" is reserved for clear post-construction work with no
+    matching permit. "no standalone permit on file" alone is never enough.
 
 Return ONLY valid JSON matching this schema — no preamble, no code fences:
 {
