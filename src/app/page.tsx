@@ -104,7 +104,7 @@ export default function HomePage() {
               type="text"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              placeholder="Street, City, FL ZIP (e.g. 4202 SW 84 CT, Miami, FL 33155)"
+              placeholder="Enter full property address, including city, state, and ZIP"
               className="w-full px-3 py-2 border border-black/10 rounded-md bg-white text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
           </div>
@@ -116,7 +116,7 @@ export default function HomePage() {
               type="text"
               value={folio}
               onChange={(e) => setFolio(e.target.value)}
-              placeholder="e.g. 30-4022-006-0051 (Miami-Dade)"
+              placeholder="Enter county folio or parcel identification number"
               className="w-full px-3 py-2 border border-black/10 rounded-md bg-white text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
           </div>
