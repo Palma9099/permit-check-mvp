@@ -149,6 +149,53 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </p>
             )}
 
+            {/* Then vs Now — historical NAIP aerial comparison */}
+            {r.thenVsNow.historicalAerials?.then && r.thenVsNow.historicalAerials?.now && (
+              <div className="mt-5">
+                <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                  Then vs Now — historical aerial (USDA NAIP 1m)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+                      Then · {r.thenVsNow.historicalAerials.then.captureDate.slice(0, 10)}
+                    </div>
+                    <img
+                      src={r.thenVsNow.historicalAerials.then.imageUrl}
+                      alt={`Historical NAIP aerial, ${r.thenVsNow.historicalAerials.then.captureYear}`}
+                      className="w-full rounded-md border border-black/10"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+                      Now · {r.thenVsNow.historicalAerials.now.captureDate.slice(0, 10)}
+                    </div>
+                    <img
+                      src={r.thenVsNow.historicalAerials.now.imageUrl}
+                      alt={`Latest NAIP aerial, ${r.thenVsNow.historicalAerials.now.captureYear}`}
+                      className="w-full rounded-md border border-black/10"
+                      loading="lazy"
+                    />
+                  </div>
+                </div>
+                {r.thenVsNow.historicalAerials.allFrames.length > 2 && (
+                  <p className="text-[11px] text-ink-muted mt-2">
+                    {r.thenVsNow.historicalAerials.allFrames.length} total NAIP captures
+                    available for this parcel ({r.thenVsNow.historicalAerials.allFrames[0].captureYear}
+                    {' '}through{' '}
+                    {r.thenVsNow.historicalAerials.allFrames[r.thenVsNow.historicalAerials.allFrames.length - 1].captureYear}
+                    ). The AI compared the earliest against the latest.
+                  </p>
+                )}
+              </div>
+            )}
+            {r.thenVsNow.historicalAerials && !r.thenVsNow.historicalAerials.then && r.thenVsNow.historicalAerials.failureReason && (
+              <p className="text-xs text-ink-muted italic mt-3">
+                Historical aerial unavailable: {r.thenVsNow.historicalAerials.failureReason}
+              </p>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               {r.thenVsNow.satelliteImageUrl && (
                 <div>

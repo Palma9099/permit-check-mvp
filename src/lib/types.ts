@@ -71,6 +71,27 @@ export interface VisualComparison {
   summary: string;                // one-line takeaway
   observations: VisionObservation[];
   failureReason: string | null;   // e.g. "ANTHROPIC_API_KEY not set" — UI can show a graceful fallback
+  // When Then-vs-Now ran, these capture the actual dates the model compared.
+  // Both null means the comparison was current-only (no historical NAIP).
+  thenCaptureDate: string | null;
+  nowCaptureDate: string | null;
+}
+
+// Historical aerial imagery pair from Planetary Computer NAIP. Null when
+// NAIP coverage for the point is too sparse to give us a Then-vs-Now pair.
+export interface HistoricalAerialFrame {
+  captureDate: string;    // ISO 8601
+  captureYear: number;
+  itemId: string;
+  imageUrl: string;       // PNG URL clipped to parcel bbox
+}
+
+export interface HistoricalAerialPair {
+  then: HistoricalAerialFrame | null;
+  now: HistoricalAerialFrame | null;
+  allFrames: HistoricalAerialFrame[];   // every NAIP capture we found, earliest → latest
+  source: string;                        // e.g. "Microsoft Planetary Computer / NAIP"
+  failureReason: string | null;
 }
 
 export interface StreetViewImage {
@@ -103,6 +124,9 @@ export interface ThenVsNow {
   visualChecklist: ChecklistItem[];
   // Actual AI-powered visual comparison against permit record
   visualComparison: VisualComparison;
+  // Historical aerial pair (Planetary Computer NAIP). Used by the AI call
+  // for Then-vs-Now and rendered in the report as a side-by-side comparison.
+  historicalAerials: HistoricalAerialPair;
 }
 
 export type CountyTier = 'A' | 'B';

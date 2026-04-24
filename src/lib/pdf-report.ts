@@ -81,7 +81,7 @@ async function fetchImageBuffer(url: string, timeoutMs = 8000): Promise<Buffer |
 }
 
 export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
-  // Pre-fetch satellite + Street View imagery in parallel with PDF setup
+  // Pre-fetch satellite + Street View + historical aerial imagery in parallel
   const closeBufPromise = report.thenVsNow?.satelliteImageUrl
     ? fetchImageBuffer(report.thenVsNow.satelliteImageUrl)
     : Promise.resolve(null);
@@ -91,6 +91,12 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   const svBufPromises = (report.thenVsNow?.streetViewImages ?? []).map((sv) =>
     sv.imageUrl ? fetchImageBuffer(sv.imageUrl) : Promise.resolve(null),
   );
+  const thenAerialBufPromise = report.thenVsNow?.historicalAerials?.then?.imageUrl
+    ? fetchImageBuffer(report.thenVsNow.historicalAerials.then.imageUrl)
+    : Promise.resolve(null);
+  const nowAerialBufPromise = report.thenVsNow?.historicalAerials?.now?.imageUrl
+    ? fetchImageBuffer(report.thenVsNow.historicalAerials.now.imageUrl)
+    : Promise.resolve(null);
 
   const doc = new PDFDocument({
     size: 'LETTER',
@@ -198,6 +204,56 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
         "Records tell half the story. Compare the satellite views below — subject vs. neighbors — and look for anything the permit record doesn't explain.",
         contentWidth,
       );
+    }
+
+    // Then-vs-Now historical aerial pair (NAIP) — rendered first so it reads
+    // as the hero of the visual review.
+    const thenAerialBuf = await thenAerialBufPromise;
+    const nowAerialBuf = await nowAerialBufPromise;
+    const thenFrame = report.thenVsNow.historicalAerials?.then ?? null;
+    const nowFrame = report.thenVsNow.historicalAerials?.now ?? null;
+    if (thenAerialBuf && nowAerialBuf && thenFrame && nowFrame) {
+      ensureSpace(doc, 260);
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
+        .text('THEN vs NOW — HISTORICAL AERIAL (USDA NAIP, 1M)', 56, doc.y, { characterSpacing: 1 });
+      doc.moveDown(0.3);
+      const pairGap = 12;
+      const pairW = Math.floor((contentWidth - pairGap) / 2);
+      const pairY = doc.y;
+      let pairMaxH = pairY;
+      try {
+        doc.image(thenAerialBuf, 56, pairY, { width: pairW });
+        pairMaxH = Math.max(pairMaxH, doc.y);
+      } catch { /* ignore */ }
+      try {
+        doc.image(nowAerialBuf, 56 + pairW + pairGap, pairY, { width: pairW });
+        pairMaxH = Math.max(pairMaxH, doc.y);
+      } catch { /* ignore */ }
+      doc.y = pairMaxH;
+      doc.moveDown(0.2);
+      doc
+        .font('Helvetica-Oblique')
+        .fontSize(8.5)
+        .fillColor(COLORS.inkMuted)
+        .text(
+          `Left: ${thenFrame.captureDate.slice(0, 10)} (${thenFrame.captureYear}).  Right: ${nowFrame.captureDate.slice(0, 10)} (${nowFrame.captureYear}).  Imagery: Microsoft Planetary Computer / USDA NAIP.`,
+          56,
+          doc.y,
+          { width: contentWidth },
+        );
+      doc.moveDown(0.5);
+    } else if (report.thenVsNow.historicalAerials?.failureReason) {
+      doc
+        .font('Helvetica-Oblique')
+        .fontSize(8.5)
+        .fillColor(COLORS.inkMuted)
+        .text(
+          `Historical aerial unavailable: ${report.thenVsNow.historicalAerials.failureReason}`,
+          56,
+          doc.y,
+          { width: contentWidth },
+        );
+      doc.moveDown(0.4);
     }
 
     // Side-by-side images: subject (tight) and block context

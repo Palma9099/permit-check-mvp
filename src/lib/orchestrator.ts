@@ -27,6 +27,7 @@ import {
   buildContextSatelliteUrl,
 } from './images/google-satellite';
 import { buildStreetViewUrls, hasStreetView } from './images/streetview';
+import { fetchHistoricalAerials } from './images/historical-aerial';
 import { compareImagery } from './vision-compare';
 
 // ---------------------------------------------------------------------------
@@ -416,14 +417,19 @@ export async function runDiagnostic(input: {
   const closeSatUrl = buildSubjectSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
   const contextSatUrl = buildContextSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
 
-  // 5. Street View. Only build URLs if a pano exists near the point; metadata
-  //    call is free and prevents showing a "no imagery" placeholder.
-  const sv = await hasStreetView(geo.lat, geo.lng);
-  const streetViewImages = sv
+  // 5. Street View + historical NAIP (in parallel). Street View is metadata-
+  //    checked first to avoid showing a placeholder. Historical NAIP comes
+  //    from Planetary Computer; it's fine if it returns nothing outside the
+  //    continental US or where NAIP coverage is sparse.
+  const [svOk, historicalAerials] = await Promise.all([
+    hasStreetView(geo.lat, geo.lng),
+    fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
+  ]);
+  const streetViewImages = svOk
     ? buildStreetViewUrls({ lat: geo.lat, lng: geo.lng, headings: [0, 90, 180, 270], fov: 90 })
     : [];
 
-  // 6. Vision comparison.
+  // 6. Vision comparison — now with THEN (historical NAIP) vs NOW frames.
   const features = adapterResult.extraFeatures;
   const permits = adapterResult.permits;
   const yearBuilt = adapterResult.propertyBasics.yearBuilt;
@@ -432,6 +438,8 @@ export async function runDiagnostic(input: {
     closeSatelliteUrl: closeSatUrl,
     contextSatelliteUrl: contextSatUrl,
     streetViewImages,
+    thenAerial: historicalAerials.then,
+    nowAerial: historicalAerials.now,
     permits,
     features,
     yearBuilt,
@@ -520,6 +528,7 @@ export async function runDiagnostic(input: {
     parcelPolygonSource: polygon.source,
     visualChecklist: buildVisualChecklist(yearBuilt, permits, features),
     visualComparison,
+    historicalAerials,
   };
 
   const dataSources: string[] = [
@@ -531,6 +540,11 @@ export async function runDiagnostic(input: {
   ];
   if (visualComparison.performed) {
     dataSources.push(`Anthropic Claude (${visualComparison.modelUsed}) for AI visual comparison`);
+  }
+  if (historicalAerials.then && historicalAerials.now) {
+    dataSources.push(
+      `Microsoft Planetary Computer (USDA NAIP) for historical aerial imagery — compared ${historicalAerials.then.captureYear} vs ${historicalAerials.now.captureYear}`,
+    );
   }
 
   const dataLimitations: string[] = [

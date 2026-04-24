@@ -1,20 +1,29 @@
-// AI-powered visual comparison.
+// AI-powered visual comparison — Then vs Now edition.
 //
-// Inputs: satellite imagery with the subject parcel outlined in red, Street
-// View imagery facing the property, and the permit / extra-features digest
-// for the parcel. Output: a structured list of observations with severity
-// flags — "flag" is only emitted when the model sees clear post-construction
-// work inside the red polygon that isn't matched by a permit on file.
+// Inputs: a historical NAIP aerial ("THEN") + current satellite/NAIP/Street
+// View imagery ("NOW") + the permit / extra-features digest for the parcel.
+// Output: a structured list of observations calling out what changed between
+// the two dates, cross-referenced against permits issued in that window.
 //
-// The red polygon is the critical primitive. Before this change the model
-// would flag neighbor features (e.g. a neighbor's pool) as the subject's
-// unpermitted work. The polygon tells it exactly where to look.
+// The model's job is specifically before/after: did a pool appear that wasn't
+// there in 2010? Did the roof pattern change? Did a rear addition appear?
+// Then: does the permit log between the two dates explain what changed?
 //
-// If ANTHROPIC_API_KEY is not set, returns performed=false so the UI falls
-// back to the static checklist gracefully.
+// Spatial anchoring:
+//   - The Google Static Maps "NOW" frame has the parcel drawn as a bright
+//     red polygon. That image is the authoritative "this is the subject"
+//     cue for the model.
+//   - The NAIP THEN / NOW frames are unannotated PNGs clipped tight to the
+//     parcel bbox (~40ft buffer). The model cross-references building
+//     footprints against the polygon frame to identify the subject.
+//
+// Fails closed (performed: false) if ANTHROPIC_API_KEY is missing or the
+// primary current satellite URL is missing. Historical aerial is optional —
+// if absent, we still run a current-only analysis and say so in the output.
 
 import type {
   ExtraFeature,
+  HistoricalAerialFrame,
   Permit,
   StreetViewImage,
   VisualComparison,
@@ -25,7 +34,7 @@ import type {
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-5-20250929';
 
-async function fetchImageBase64(url: string, timeoutMs = 8000): Promise<string | null> {
+async function fetchImageBase64(url: string, timeoutMs = 10000): Promise<string | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -40,16 +49,48 @@ async function fetchImageBase64(url: string, timeoutMs = 8000): Promise<string |
   }
 }
 
-function buildPermitDigest(permits: Permit[], features: ExtraFeature[], yearBuilt: number | null): string {
+function buildPermitDigest(
+  permits: Permit[],
+  features: ExtraFeature[],
+  yearBuilt: number | null,
+  thenYear: number | null,
+  nowYear: number | null,
+): string {
   const lines: string[] = [];
   lines.push(`Year built: ${yearBuilt ?? 'unknown'}`);
+  if (thenYear && nowYear) {
+    lines.push(`Comparison window: ${thenYear} → ${nowYear}`);
+  }
   lines.push(`Total permits on file: ${permits.length}`);
   if (permits.length > 0) {
-    const permitLines = permits
-      .slice(0, 25)
-      .map((p) => `  - ${p.issueDate ?? '?'} | ${p.appType ?? '?'} | ${p.scope ?? ''}`.trim());
-    lines.push('Permit list:');
-    lines.push(...permitLines);
+    // Sort permits by date; prioritize those in the Then→Now window for the
+    // model's attention, but include all so the model can see the full
+    // history context.
+    const dated = permits
+      .slice()
+      .sort((a, b) => (a.issueDate ?? '').localeCompare(b.issueDate ?? ''));
+    const inWindow = thenYear && nowYear
+      ? dated.filter((p) => {
+          if (!p.issueDate) return false;
+          const y = Number(p.issueDate.slice(0, 4));
+          return y >= thenYear && y <= nowYear;
+        })
+      : [];
+    if (inWindow.length > 0) {
+      lines.push(`Permits issued IN the ${thenYear}→${nowYear} window (${inWindow.length}):`);
+      inWindow.slice(0, 20).forEach((p) => {
+        lines.push(`  - ${p.issueDate ?? '?'} | ${p.appType ?? '?'} | ${p.scope ?? ''}`.trim());
+      });
+    }
+    const outOfWindow = thenYear && nowYear
+      ? dated.filter((p) => !inWindow.includes(p)).slice(0, 15)
+      : dated.slice(0, 25);
+    if (outOfWindow.length > 0) {
+      lines.push(`Other permits on file${thenYear ? ' (outside window)' : ''}:`);
+      outOfWindow.forEach((p) => {
+        lines.push(`  - ${p.issueDate ?? '?'} | ${p.appType ?? '?'} | ${p.scope ?? ''}`.trim());
+      });
+    }
   } else {
     lines.push('Permit list: (none)');
   }
@@ -62,121 +103,118 @@ function buildPermitDigest(permits: Permit[], features: ExtraFeature[], yearBuil
   return lines.join('\n');
 }
 
-const SYSTEM_PROMPT = `You are a Florida-licensed-realtor-grade visual property analyst.
+const SYSTEM_PROMPT = `You are a Florida-realtor-grade visual property analyst doing a Then-vs-Now diff.
 
-You will be given multiple images of the same property:
-  1. A tight satellite frame centered on the subject parcel, with the parcel
-     boundary DRAWN AS A BRIGHT RED POLYGON OUTLINE.
-  2. A wider block-context satellite frame showing neighboring parcels, with
-     the subject parcel again drawn as a bright red polygon outline.
-  3. One or more Street View images looking at the property from the street.
+You will be given multiple images of the same property. Some are labeled THEN
+(historical aerial, with a capture date) and some are labeled NOW (current
+aerial + Street View):
 
-You will also be given the permit history and Property Appraiser extra-features
-record for the subject parcel.
+  THEN — one or more historical NAIP aerials (USDA National Agriculture
+         Imagery Program, 1m resolution), captured in a specific year.
+         These frames are clipped tight to the subject parcel bbox. No
+         polygon is drawn on them.
+
+  NOW  — a tight Google Static Maps satellite frame with the parcel
+         boundary drawn as a BRIGHT RED POLYGON. Use this frame as your
+         spatial anchor: it tells you exactly which building, pool, and
+         yard belong to the subject vs the neighbors. The NAIP NOW frame
+         (if present) gives you a same-provider comparison to the THEN
+         frame, at 1m native resolution. Street View (if present) is
+         ground-level.
+
+Your job: compare THEN to NOW and describe what changed on the subject
+property, then cross-check those changes against the permit log.
 
 CRITICAL — PARCEL BOUNDARY RULE:
-  The BRIGHT RED POLYGON on the satellite images marks the subject property
-  boundary. EVERYTHING YOU FLAG MUST BE INSIDE THAT POLYGON. If a feature
-  (pool, shed, patio, addition, driveway, fence segment) falls OUTSIDE the
-  red outline, it belongs to a neighbor and is NOT a finding for this
-  property — do not mention it as if it were the subject's. You may still
-  use the neighbors as a control group for roof tone, vintage, and
-  footprint — but never cite a neighbor's feature as the subject's.
+  The BRIGHT RED POLYGON on the NOW Google satellite frame marks the subject
+  property boundary. EVERYTHING YOU FLAG MUST BE INSIDE THAT POLYGON. If a
+  feature sits outside the outline it belongs to a neighbor and is never a
+  finding for the subject. Neighbors are a visual control group only.
 
   If the red polygon is obviously synthetic (a perfect rectangle smaller
   than the visible house footprint), treat it as a "subject area hint" and
-  still avoid flagging anything that is clearly on an adjacent parcel.
+  still avoid flagging things clearly on adjacent parcels.
 
-Your job: look at the imagery and report what you actually see INSIDE the
-red polygon, then cross-check it against the permit record. You are looking
-for signs of work done AFTER the home was originally built but never
-permitted:
-  - a newer roof than the house's age or the neighbors (color uniformity,
-    lack of algae streaks, sharp edges) with no re-roof permit
-  - visible additions or enclosures tacked onto the original footprint
-  - rear yard patios / covered patios / screen enclosures added later
-    with no permit
-  - fences that exceed 6ft with no fence permit
-  - solar, antennas, AC condensers that suggest work not on file
-  - Street-View-visible window/door changes vs the original vintage
-    (new impact-window frames on an old house is a common unpermitted item)
+CRITICAL — THEN vs NOW REASONING:
+  The goal is to identify features that appeared, disappeared, or changed
+  between the THEN date and the NOW date, INSIDE the red polygon, and then
+  check whether the permit log shows a matching permit in that window.
 
-CRITICAL — original-construction rule (HIGHLY-VISIBLE MAJOR STRUCTURES ONLY):
-  If a major structure (pool, spa, cabana, detached garage, tiki, integral
-  patio cover, original perimeter fence) is visible INSIDE THE RED POLYGON
-  and appears to be of the SAME vintage as the house — consistent
-  weathering, aligned with the original footprint, and would have been
-  visible from the first day the house existed — then it was almost
-  certainly bundled into the master construction permit. DO NOT flag it.
-  A pool in particular requires electrical, structural, and barrier
-  inspections; if it were unpermitted the AHJ would have written a
-  violation within 1–2 years of construction. Its presence for the life
-  of the home without a violation is strong evidence it WAS permitted,
-  even if a standalone "POOL" permit doesn't appear in the digital archive.
-  Florida county permit archives have poor digital coverage for master
-  construction permits issued before roughly 2010; absence of a standalone
-  permit does not equal absence of authorization.
+  Features to look for changing between THEN and NOW:
+    - Pool that wasn't there before (or vice versa — rare)
+    - New addition / new wing tacked onto the original footprint
+    - New detached structure (shed, cabana, tiki, mother-in-law)
+    - New or resurfaced driveway
+    - New patio / covered patio / screen enclosure
+    - Roof color or pattern change (indicates re-roof)
+    - New perimeter wall or fence
+    - Solar panels appearing
+    - Carport enclosed into living space (infill where overhead door was)
 
-  Flag a pool / major structure ONLY if it visibly appears to have been
-  added AFTER original construction. When uncertain, classify as "match"
-  or "uncertain", not "flag".
+  For each change you see, check the "Permits issued IN the [then]→[now]
+  window" section of the permit digest. If a matching permit exists
+  (right type, right approximate date), classify severity as "match". If
+  no matching permit exists, classify as "flag". If you can't tell
+  whether something changed, classify as "uncertain".
 
-SCOPE LIMIT — "AHJ would have caught it" reasoning is visibility-bound:
-  That inference applies ONLY to highly-visible major structures: pools,
-  cabanas, detached garages, rear additions visible from overhead, tall
-  perimeter walls. Code enforcement in Florida counties is largely
-  complaint-driven; the categories below routinely sit unpermitted for
-  decades, and absence-of-permit IS a legitimate flag for them even on
-  old homes:
-    - Interior remodels (kitchens, baths)
-    - Mechanical / electrical / plumbing swaps (A/C condensers, water
-      heaters, panel upgrades)
-    - Window and door replacements — check Street View for frame-style
-      changes that don't match the vintage
-    - Re-roofs (a re-roof done 15 years ago that matches neighbor color
-      can look like the original roof — if the permit log shows no
-      re-roof and the tile/shingle style doesn't match the era, flag it)
-    - Hidden rear additions (behind privacy fences or behind the
-      original footprint, not visible from street)
-    - Enclosed garages / carports — look in Street View for infill where
-      an overhead door used to be, mismatched wall plane, added window
-      in what was the garage opening
-    - Interior conversions (bedroom → rental unit, garage → mother-in-law
-      suite without exterior change)
-  For these categories, do NOT rely on "it's been like that since the
-  house was built" to conclude it was permitted. If the permit record is
-  silent on work visibly present, flag it or classify as "uncertain".
+CRITICAL — ORIGINAL-CONSTRUCTION RULE (features present in THEN):
+  If a pool, cabana, detached garage, integral patio cover, or perimeter
+  fence was ALREADY VISIBLE in the THEN frame — i.e. it has been there
+  for the entire comparison window — do NOT flag its absence of a
+  standalone permit. It almost certainly was bundled into the master
+  construction permit (which predates most digital county archives) and
+  would have generated a violation long ago if it were unpermitted.
+  Classify as "match" or skip it entirely.
+
+SCOPE LIMIT — inference bound:
+  "It's been like that since THEN" only protects highly-visible major
+  structures (pools, cabanas, rear additions, tall walls). It does NOT
+  excuse:
+    - Interior work implied by visible changes (new bath, new kitchen)
+    - Mechanical/electrical/plumbing swaps (A/C pad position change,
+      water heater visible in Street View)
+    - Re-roofs (roof color/pattern change between THEN and NOW)
+    - Window and door replacements (Street View frame-style changes)
+    - Enclosed garages (overhead door removed between THEN and NOW)
+
+  For these categories, absence of a matching permit IS a legitimate
+  flag.
+
+NOW-ONLY DEGRADED MODE:
+  If no THEN frame is provided (historical aerial unavailable for this
+  parcel), you still analyze the NOW imagery against the permit log as
+  you would for a single-frame review. Say "no historical frame
+  available" in your summary and focus on features that look post-
+  construction versus the original vintage.
 
 Rules:
   - Only describe what is genuinely visible. If the image quality doesn't
     let you tell, say "uncertain from imagery."
-  - Never invent a finding.
-  - Compare the subject roof tone, age, and footprint specifically to the
-    visible neighbor roofs in the wider frame. Neighbors are your control
-    group, never a finding.
+  - Never invent a finding. Never describe THEN by assumption — only by
+    what you actually see in the THEN frame.
+  - Be concrete about what changed: "roof appears uniformly dark tile
+    in NOW vs streaky lighter tile in THEN" not "roof looks different".
   - Keep each observation's text to 1-2 short sentences. Plain English.
-    No jargon.
-  - If everything looks consistent with the permit record, say so clearly
-    with severity "match".
-  - Severity "flag" is reserved for clear post-construction work INSIDE
-    the red polygon with no matching permit. "No standalone permit on
+  - Severity "flag" is reserved for clear changes INSIDE the red polygon
+    with no matching permit in the window. "No standalone permit on
     file" alone is never enough.
+  - Include at least one "match" or skip-worthy item when relevant, so
+    the realtor knows what DID line up with the permit log.
 
 Return ONLY valid JSON matching this schema — no preamble, no code fences:
 {
-  "summary": "one-sentence plain-English takeaway (max 25 words)",
+  "summary": "one-sentence plain-English takeaway about what changed THEN→NOW and whether permits explain it (max 30 words)",
   "observations": [
     {
-      "area": "Roof" | "Rear footprint" | "Fence" | "Pool" | "Shed / detached" | "Patio / cover" | "Driveway" | "Windows / doors" | "Other",
-      "whatWeSaw": "short plain-English description of what you see in the image",
-      "vsPermitRecord": "how that aligns or conflicts with the permits on file",
+      "area": "Roof" | "Rear footprint" | "Fence" | "Pool" | "Shed / detached" | "Patio / cover" | "Driveway" | "Windows / doors" | "Solar" | "Other",
+      "whatWeSaw": "short plain-English description of THEN→NOW change (or current-only finding if no THEN)",
+      "vsPermitRecord": "how that aligns or conflicts with permits issued in the window",
       "severity": "flag" | "note" | "match" | "uncertain"
     }
   ]
 }
 
-Keep the observation count between 3 and 6. Skip areas where there is nothing
-notable to say.`;
+Keep observations between 3 and 6. Skip areas with nothing notable to say.`;
 
 function parseResult(text: string): { summary: string; observations: VisionObservation[] } | null {
   const cleaned = text
@@ -204,13 +242,15 @@ function parseResult(text: string): { summary: string; observations: VisionObser
 }
 
 export async function compareImagery(opts: {
-  closeSatelliteUrl: string | null;
-  contextSatelliteUrl: string | null;
-  streetViewImages?: StreetViewImage[];
+  closeSatelliteUrl: string | null;       // NOW — Google Static Maps, parcel polygon in red
+  contextSatelliteUrl: string | null;     // NOW — wider block-context Google satellite
+  streetViewImages?: StreetViewImage[];   // NOW — ground-level Street View
+  thenAerial?: HistoricalAerialFrame | null;  // THEN — historical NAIP, no overlay
+  nowAerial?: HistoricalAerialFrame | null;   // NOW — latest NAIP, no overlay
   permits: Permit[];
   features: ExtraFeature[];
   yearBuilt: number | null;
-  polygonIsFallback?: boolean;       // tell the model when the polygon is a synthesized box
+  polygonIsFallback?: boolean;
 }): Promise<VisualComparison> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -221,6 +261,8 @@ export async function compareImagery(opts: {
         'Automated visual comparison did not run — no ANTHROPIC_API_KEY configured on the server. The static checklist below covers the areas a realtor should eyeball.',
       observations: [],
       failureReason: 'ANTHROPIC_API_KEY not set',
+      thenCaptureDate: null,
+      nowCaptureDate: null,
     };
   }
 
@@ -231,12 +273,18 @@ export async function compareImagery(opts: {
       summary: 'No satellite imagery available — address may not have geocoded.',
       observations: [],
       failureReason: 'no imagery url',
+      thenCaptureDate: null,
+      nowCaptureDate: null,
     };
   }
 
-  // Fetch all images in parallel.
   const streetViewList = (opts.streetViewImages ?? []).filter((s) => s.imageUrl);
-  const [closeB64, contextB64, ...streetViewB64] = await Promise.all([
+
+  // Fetch all images in parallel. Some may fail (historical NAIP can 404 for
+  // out-of-coverage parcels) — that's fine, we degrade gracefully.
+  const [thenAerialB64, nowAerialB64, closeB64, contextB64, ...streetViewB64] = await Promise.all([
+    opts.thenAerial?.imageUrl ? fetchImageBase64(opts.thenAerial.imageUrl) : Promise.resolve(null),
+    opts.nowAerial?.imageUrl ? fetchImageBase64(opts.nowAerial.imageUrl) : Promise.resolve(null),
     fetchImageBase64(opts.closeSatelliteUrl),
     opts.contextSatelliteUrl ? fetchImageBase64(opts.contextSatelliteUrl) : Promise.resolve(null),
     ...streetViewList.map((s) => fetchImageBase64(s.imageUrl as string)),
@@ -245,32 +293,68 @@ export async function compareImagery(opts: {
   if (!closeB64) {
     return {
       performed: false,
-      modelUsed: null,
-      summary: 'Satellite image fetch failed — skipped visual comparison.',
+      modelUsed: MODEL,
+      summary: 'Current satellite image fetch failed — skipped visual comparison.',
       observations: [],
       failureReason: 'satellite fetch failed',
+      thenCaptureDate: null,
+      nowCaptureDate: null,
     };
   }
 
-  const digest = buildPermitDigest(opts.permits, opts.features, opts.yearBuilt);
+  const thenYear = opts.thenAerial?.captureYear ?? null;
+  const nowYear = opts.nowAerial?.captureYear ?? new Date().getUTCFullYear();
+  const digest = buildPermitDigest(opts.permits, opts.features, opts.yearBuilt, thenYear, nowYear);
 
-  const userContent: any[] = [
-    {
-      type: 'text',
-      text:
-        (opts.polygonIsFallback
-          ? 'IMAGE 1 — TIGHT satellite frame. NOTE: the parcel layer was unavailable, so the red outline is a ~120ft synthetic box centered on the geocoded address. Treat it as a "subject area hint" and avoid flagging things clearly on neighboring parcels.\n'
-          : 'IMAGE 1 — TIGHT satellite frame centered on the subject parcel. The BRIGHT RED polygon outlines the subject property boundary. Everything INSIDE the red polygon is the subject; everything OUTSIDE belongs to neighbors and is never a finding for this property.\n'),
-    },
-    {
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/png', data: closeB64 },
-    },
-  ];
-  if (contextB64) {
+  const userContent: any[] = [];
+  let imageCounter = 0;
+
+  // ---- THEN ----
+  if (thenAerialB64 && opts.thenAerial) {
+    imageCounter++;
     userContent.push({
       type: 'text',
-      text: 'IMAGE 2 — WIDER block-context satellite frame. Same red polygon marks the subject parcel. Use neighbors as a visual control group for roof vintage, footprint scale, and lot size — but never cite a neighbor feature as the subject\'s.',
+      text: `IMAGE ${imageCounter} — THEN (historical aerial). NAIP capture dated ${opts.thenAerial.captureDate.slice(0, 10)}. Clipped tight to the subject parcel bbox. No polygon overlay — identify the subject by cross-referencing the building footprint against the NOW Google-satellite-with-red-polygon frame coming later.`,
+    });
+    userContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/png', data: thenAerialB64 },
+    });
+  }
+
+  // ---- NOW (NAIP, same provider, for like-for-like comparison) ----
+  if (nowAerialB64 && opts.nowAerial) {
+    imageCounter++;
+    userContent.push({
+      type: 'text',
+      text: `IMAGE ${imageCounter} — NOW (historical aerial source, latest capture). NAIP capture dated ${opts.nowAerial.captureDate.slice(0, 10)}. Same clipping and projection as THEN — use this as the like-for-like comparison.`,
+    });
+    userContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/png', data: nowAerialB64 },
+    });
+  }
+
+  // ---- NOW (Google Static Maps tight frame WITH red polygon) ----
+  imageCounter++;
+  userContent.push({
+    type: 'text',
+    text:
+      (opts.polygonIsFallback
+        ? `IMAGE ${imageCounter} — NOW (Google satellite, tight). NOTE: parcel layer unavailable; red outline is a ~120ft synthetic box centered on the geocoded address. Treat as a subject-area hint.`
+        : `IMAGE ${imageCounter} — NOW (Google satellite, tight). BRIGHT RED polygon = subject parcel boundary. This is your spatial anchor — any feature inside the red outline is the subject's; anything outside belongs to neighbors.`),
+  });
+  userContent.push({
+    type: 'image',
+    source: { type: 'base64', media_type: 'image/png', data: closeB64 },
+  });
+
+  // ---- NOW (Google context / block-wide) ----
+  if (contextB64) {
+    imageCounter++;
+    userContent.push({
+      type: 'text',
+      text: `IMAGE ${imageCounter} — NOW (Google satellite, wider block context). Same red polygon marks the subject. Use neighbors as a visual control for roof vintage, footprint scale, lot size — never cite a neighbor feature as the subject's.`,
     });
     userContent.push({
       type: 'image',
@@ -278,15 +362,14 @@ export async function compareImagery(opts: {
     });
   }
 
-  // Street View images — ground-level. No polygon overlay possible, but the
-  // model can still compare window frames, garage doors, roof edges, paint,
-  // door color, fence material etc. against the permit log.
+  // ---- NOW Street View (current) ----
   streetViewB64.forEach((b64, i) => {
     if (!b64) return;
+    imageCounter++;
     const sv = streetViewList[i];
     userContent.push({
       type: 'text',
-      text: `IMAGE ${3 + i} — Street View, ${sv.label} (heading ${sv.heading}°). Ground-level look at the property. Compare windows, doors, roof edge, fence, and any visible condenser/water-heater/electrical against the permit log.`,
+      text: `IMAGE ${imageCounter} — NOW (Street View, ${sv.label}, heading ${sv.heading}°). Ground-level look at the property. Compare windows, doors, roof edge, fence, any visible condenser/water-heater/electrical against the permit log.`,
     });
     userContent.push({
       type: 'image',
@@ -294,9 +377,13 @@ export async function compareImagery(opts: {
     });
   });
 
+  const windowText = thenYear
+    ? `Specifically focus on what changed between ${thenYear} and ${nowYear}, and whether permits issued in that window explain the changes.`
+    : `No historical aerial was available for this parcel (Planetary Computer NAIP returned no coverage). Run a current-only analysis and note the missing historical frame in your summary.`;
+
   userContent.push({
     type: 'text',
-    text: `Permit record for the subject parcel:\n${digest}\n\nAnalyze the imagery and return the JSON object per the schema in the system prompt. Remember: red polygon = subject; outside red polygon = neighbors = never a finding.`,
+    text: `Permit record for the subject parcel:\n${digest}\n\n${windowText}\n\nReturn the JSON object per the schema in the system prompt. Red polygon on the Google NOW frame = subject boundary — never flag anything outside it.`,
   });
 
   try {
@@ -309,7 +396,7 @@ export async function compareImagery(opts: {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1500,
+        max_tokens: 1800,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],
       }),
@@ -323,6 +410,8 @@ export async function compareImagery(opts: {
         summary: 'Vision comparison API call failed.',
         observations: [],
         failureReason: `HTTP ${res.status}${errText ? `: ${errText.slice(0, 300)}` : ''}`,
+        thenCaptureDate: opts.thenAerial?.captureDate ?? null,
+        nowCaptureDate: opts.nowAerial?.captureDate ?? null,
       };
     }
 
@@ -339,6 +428,8 @@ export async function compareImagery(opts: {
         summary: 'Vision model returned an unparseable response.',
         observations: [],
         failureReason: 'json parse failed',
+        thenCaptureDate: opts.thenAerial?.captureDate ?? null,
+        nowCaptureDate: opts.nowAerial?.captureDate ?? null,
       };
     }
     return {
@@ -351,6 +442,8 @@ export async function compareImagery(opts: {
           : 'No notable discrepancies observed.'),
       observations: parsed.observations,
       failureReason: null,
+      thenCaptureDate: opts.thenAerial?.captureDate ?? null,
+      nowCaptureDate: opts.nowAerial?.captureDate ?? null,
     };
   } catch (err: any) {
     return {
@@ -359,6 +452,8 @@ export async function compareImagery(opts: {
       summary: 'Vision comparison errored out.',
       observations: [],
       failureReason: String(err?.message ?? err).slice(0, 300),
+      thenCaptureDate: opts.thenAerial?.captureDate ?? null,
+      nowCaptureDate: opts.nowAerial?.captureDate ?? null,
     };
   }
 }
