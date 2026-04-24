@@ -16,7 +16,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen bg-page text-ink">{children}</body>
+      <body className="min-h-screen bg-page text-ink">
+        <div className="flex justify-end px-4 sm:px-6 pt-3">
+          <a
+            href="https://tools.palma.llc"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              color: '#b68a4b',
+              textDecoration: 'none',
+              padding: '6px 12px',
+              border: '1px solid rgba(182,138,75,0.3)',
+              borderRadius: '999px',
+            }}
+          >
+            ← All Palma Tools
+          </a>
+        </div>
+        {children}
+      </body>
     </html>
   );
 }
