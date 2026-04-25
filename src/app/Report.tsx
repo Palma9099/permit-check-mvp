@@ -218,6 +218,57 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </div>
             )}
 
+            {/* User-uploaded historical photo — when supplied, this is the
+                canonical THEN reference, paired against the closest current
+                Google Street View frame for facade comparison. */}
+            {r.thenVsNow.userUploadedThen?.dataUrl && (
+              <div className="mt-5">
+                <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                  Then vs Now — Street View (User-supplied historical photo)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+                      Then{r.thenVsNow.userUploadedThen.captureDate ? ` · ${r.thenVsNow.userUploadedThen.captureDate}` : ''}
+                      {r.thenVsNow.userUploadedThen.caption ? ` · ${r.thenVsNow.userUploadedThen.caption}` : ''}
+                    </div>
+                    <img
+                      src={r.thenVsNow.userUploadedThen.dataUrl}
+                      alt="User-uploaded historical photo"
+                      className="w-full rounded-md border border-black/10"
+                      loading="lazy"
+                    />
+                  </div>
+                  {(() => {
+                    const nowFrame = (r.thenVsNow.streetViewImages ?? []).find((s) => s.imageUrl);
+                    if (!nowFrame?.imageUrl) {
+                      return (
+                        <div className="text-[11px] text-ink-muted italic">
+                          No current Street View available for side-by-side.
+                        </div>
+                      );
+                    }
+                    return (
+                      <div>
+                        <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+                          Now · current Google Street View
+                        </div>
+                        <img
+                          src={nowFrame.imageUrl}
+                          alt={nowFrame.label}
+                          className="w-full rounded-md border border-black/10"
+                          loading="lazy"
+                        />
+                      </div>
+                    );
+                  })()}
+                </div>
+                <p className="text-[11px] text-ink-muted mt-2">
+                  Realtor-supplied THEN. Compare facade paint, front door, gates, garage door, windows on each side.
+                </p>
+              </div>
+            )}
+
             {/* Street View — Then vs Now (Mapillary), one row per fronting
                 street so corner lots show all sides. */}
             {(() => {
@@ -245,7 +296,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                           </div>
                           <img
                             src={side.then!.imageUrl}
-                            alt={`Mapillary Street View, ${side.then!.captureYear}`}
+                            alt={`Street View ${side.then!.captureYear}`}
                             className="w-full rounded-md border border-black/10"
                             loading="lazy"
                           />
@@ -256,7 +307,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                           </div>
                           <img
                             src={side.now!.imageUrl}
-                            alt={`Latest Mapillary Street View, ${side.now!.captureYear}`}
+                            alt={`Street View ${side.now!.captureYear}`}
                             className="w-full rounded-md border border-black/10"
                             loading="lazy"
                           />

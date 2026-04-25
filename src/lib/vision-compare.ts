@@ -27,6 +27,7 @@ import type {
   HistoricalStreetViewFrameType,
   Permit,
   StreetViewImage,
+  UserUploadedThen,
   VisualComparison,
   VisionObservation,
   VisionSeverity,
@@ -34,6 +35,16 @@ import type {
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-sonnet-4-5-20250929';
+
+// Parse a base64 data URL like "data:image/jpeg;base64,/9j/..." into the
+// media type + raw base64 payload Anthropic's API expects.
+function parseDataUrl(dataUrl: string): { mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; data: string } | null {
+  const m = dataUrl.match(/^data:(image\/(?:jpeg|jpg|png|webp|gif));base64,(.+)$/i);
+  if (!m) return null;
+  const rawType = m[1].toLowerCase();
+  const mediaType = (rawType === 'image/jpg' ? 'image/jpeg' : rawType) as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+  return { mediaType, data: m[2] };
+}
 
 async function fetchImageBase64(url: string, timeoutMs = 10000): Promise<string | null> {
   const ctrl = new AbortController();
@@ -281,6 +292,10 @@ export async function compareImagery(opts: {
     then: HistoricalStreetViewFrameType | null;
     now: HistoricalStreetViewFrameType | null;
   }>;
+  // Realtor-supplied historical THEN photo (data URL). When present, this
+  // becomes the canonical THEN reference for facade-level comparison —
+  // even if Google/Mapillary couldn't surface a usable historical pano.
+  userUploadedThen?: UserUploadedThen | null;
   permits: Permit[];
   features: ExtraFeature[];
   yearBuilt: number | null;
@@ -419,6 +434,30 @@ export async function compareImagery(opts: {
       type: 'image',
       source: { type: 'base64', media_type: 'image/png', data: contextB64 },
     });
+  }
+
+  // ---- USER-UPLOADED THEN (realtor-supplied historical photo) ----
+  // The realtor's escape hatch when Google/Mapillary couldn't find a
+  // usable historical pano. The user has attested this image represents
+  // the subject property at an earlier date; we treat it as authoritative
+  // for facade-level THEN reference.
+  if (opts.userUploadedThen?.dataUrl) {
+    const parsed = parseDataUrl(opts.userUploadedThen.dataUrl);
+    if (parsed) {
+      imageCounter++;
+      const dateLabel = opts.userUploadedThen.captureDate ?? 'an earlier date';
+      const captionLabel = opts.userUploadedThen.caption
+        ? ` ("${opts.userUploadedThen.caption}")`
+        : '';
+      userContent.push({
+        type: 'text',
+        text: `IMAGE ${imageCounter} — THEN STREET VIEW (USER-SUPPLIED). The realtor uploaded this photo${captionLabel} as the historical reference, attesting it shows the subject property's facade at ${dateLabel}. Treat this as the canonical THEN frame for facade-level comparison: paint color, front door, perimeter gate, garage door, windows, fence material. Compare against the current Google Street View frames coming next. Refer to it as "the user-supplied historical photo" or "the ${dateLabel} reference photo" — be specific about what changed between this photo and the current view.`,
+      });
+      userContent.push({
+        type: 'image',
+        source: { type: 'base64', media_type: parsed.mediaType, data: parsed.data },
+      });
+    }
   }
 
   // ---- THEN/NOW Street View (Mapillary historical), one pair per side ----

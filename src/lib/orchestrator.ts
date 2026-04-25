@@ -17,6 +17,7 @@ import type {
   CodeCase,
   ThenVsNow,
   ChecklistItem,
+  UserUploadedThen,
 } from './types';
 import { geocode, reverseCounty } from './geocode';
 import { getCountyAdapter, toCountyInfo } from './counties';
@@ -376,6 +377,7 @@ function summarizeBuckets(buckets: Record<number, ExtraFeature[]>, yearBuilt: nu
 export async function runDiagnostic(input: {
   address?: string;
   folio?: string;
+  userThenPhoto?: UserUploadedThen | null;
 }): Promise<DiagnosticReport> {
   const rawAddress = (input.address ?? '').trim();
   if (!rawAddress && !input.folio) {
@@ -455,6 +457,10 @@ export async function runDiagnostic(input: {
     nowAerial: historicalAerials.now,
     // Pass every Mapillary side pair so corner properties get full coverage.
     streetViewSides: historicalStreetView.sides,
+    // Realtor-supplied historical photo (optional). When provided, the AI
+    // uses it as the canonical THEN frame for facade-level comparison even
+    // if Google/Mapillary failed to find a usable front-facing capture.
+    userUploadedThen: input.userThenPhoto ?? null,
     permits,
     features,
     yearBuilt,
@@ -545,6 +551,7 @@ export async function runDiagnostic(input: {
     visualComparison,
     historicalAerials,
     historicalStreetView,
+    userUploadedThen: input.userThenPhoto ?? null,
   };
 
   const dataSources: string[] = [

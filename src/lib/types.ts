@@ -122,6 +122,20 @@ export interface HistoricalStreetViewPair {
   failureReason: string | null;
 }
 
+// Optional user-uploaded historical photo. The realtor pulls an old MLS
+// listing photo, a personal field photo, or any other dated image showing
+// the property's facade at an earlier date and supplies it as the THEN
+// reference. The vision-compare engine pairs it against the current Google
+// Street View as NOW and runs the same facade-change diff.
+export interface UserUploadedThen {
+  // base64 data URL: "data:image/jpeg;base64,..."
+  dataUrl: string;
+  // ISO date or year string the user attests the photo represents (optional)
+  captureDate: string | null;
+  // Free-text label the user can supply, e.g. "MLS 2018 listing"
+  caption: string | null;
+}
+
 export interface StreetViewImage {
   heading: number;                // 0 = north, 90 = east, 180 = south, 270 = west
   label: string;                  // human-readable, e.g. "Front (facing N)"
@@ -158,6 +172,12 @@ export interface ThenVsNow {
   // Historical Street View pair (Mapillary). Used by the AI for facade-level
   // change detection (paint, doors, gates, windows) that aerials miss.
   historicalStreetView: HistoricalStreetViewPair;
+  // User-supplied historical photo, when provided. This is the realtor's
+  // escape hatch for properties where Google/Mapillary don't have a
+  // front-facing dated capture (privacy fences, gated communities, single-
+  // capture cul-de-sacs). Echoed back from the input so the report can
+  // render it as the THEN frame and confirm the AI used it.
+  userUploadedThen: UserUploadedThen | null;
 }
 
 export type CountyTier = 'A' | 'B';

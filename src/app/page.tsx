@@ -1,8 +1,42 @@
 'use client';
 
 import { useState } from 'react';
-import type { DiagnosticReport } from '@/lib/types';
+import type { DiagnosticReport, UserUploadedThen } from '@/lib/types';
 import Report from './Report';
+
+// Read a File as a base64 data URL, downscaling to a max 1600px long edge
+// (and converting to JPEG quality 0.85) so we don't blow past the API
+// route's 6 MB cap with a 12 MP phone photo.
+function fileToScaledDataUrl(file: File, maxLongEdge = 1600, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const longEdge = Math.max(img.width, img.height);
+      const scale = longEdge > maxLongEdge ? maxLongEdge / longEdge : 1;
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error('Could not get 2D canvas context'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      URL.revokeObjectURL(url);
+      resolve(dataUrl);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not decode image'));
+    };
+    img.src = url;
+  });
+}
 
 export default function HomePage() {
   const [address, setAddress] = useState('');
@@ -11,19 +45,42 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<DiagnosticReport | null>(null);
 
+  // Optional user-uploaded historical photo (e.g. old MLS listing photo).
+  const [userPhotoFile, setUserPhotoFile] = useState<File | null>(null);
+  const [userPhotoDate, setUserPhotoDate] = useState('');
+  const [userPhotoCaption, setUserPhotoCaption] = useState('');
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setReport(null);
     setLoading(true);
     try {
-      const body: { address?: string; folio?: string } = {};
+      const body: {
+        address?: string;
+        folio?: string;
+        userThenPhoto?: UserUploadedThen | null;
+      } = {};
       if (folio.trim()) body.folio = folio.trim();
       else if (address.trim()) body.address = address.trim();
       else {
         setError('Enter an address or folio.');
         setLoading(false);
         return;
+      }
+      if (userPhotoFile) {
+        try {
+          const dataUrl = await fileToScaledDataUrl(userPhotoFile);
+          body.userThenPhoto = {
+            dataUrl,
+            captureDate: userPhotoDate.trim() || null,
+            caption: userPhotoCaption.trim() || null,
+          };
+        } catch (err: any) {
+          setError(`Couldn't read uploaded photo: ${err?.message ?? err}`);
+          setLoading(false);
+          return;
+        }
       }
       const res = await fetch('/api/check', {
         method: 'POST',
@@ -120,6 +177,59 @@ export default function HomePage() {
               className="w-full px-3 py-2 border border-black/10 rounded-md bg-white text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
           </div>
+          {/* Optional historical photo upload — for properties where Google
+              Street View has no front-facing dated capture (privacy fences,
+              gated communities, single-side cul-de-sacs). The realtor drops
+              in any old listing photo and the AI uses it as the THEN frame
+              for facade-level comparison. */}
+          <div className="sm:col-span-5 mt-2 pt-3 border-t border-black/5">
+            <details>
+              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-ink-muted hover:text-ink">
+                Optional · Upload a historical photo (older MLS listing or field photo)
+              </summary>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-5 gap-3">
+                <div className="sm:col-span-3">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-1">
+                    Historical photo
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(e) => setUserPhotoFile(e.target.files?.[0] ?? null)}
+                    className="block w-full text-sm text-ink file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-black/10 file:bg-white file:text-sm file:font-semibold file:hover:bg-black/5 file:transition"
+                  />
+                  <p className="text-[11px] text-ink-muted mt-1">
+                    Used as the THEN reference for facade comparison when Google has no front-facing historical capture.
+                  </p>
+                </div>
+                <div className="sm:col-span-1">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-1">
+                    Year / date
+                  </label>
+                  <input
+                    type="text"
+                    value={userPhotoDate}
+                    onChange={(e) => setUserPhotoDate(e.target.value)}
+                    placeholder="2018"
+                    className="w-full px-2 py-1.5 border border-black/10 rounded-md bg-white text-ink text-sm focus:outline-none focus:ring-2 focus:ring-ink/20"
+                  />
+                </div>
+                <div className="sm:col-span-1">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-1">
+                    Source / caption
+                  </label>
+                  <input
+                    type="text"
+                    value={userPhotoCaption}
+                    onChange={(e) => setUserPhotoCaption(e.target.value)}
+                    placeholder="MLS listing"
+                    className="w-full px-2 py-1.5 border border-black/10 rounded-md bg-white text-ink text-sm focus:outline-none focus:ring-2 focus:ring-ink/20"
+                  />
+                </div>
+              </div>
+            </details>
+          </div>
+
           <div className="sm:col-span-5 flex items-center justify-between gap-3 pt-2">
             <p className="text-xs text-ink-muted">
               Works for all 67 Florida counties. Live permit scraping active for

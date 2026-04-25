@@ -158,11 +158,15 @@ async function fetchGoogleHistorical(
   const panos = await searchGooglePanoramas(parcelLat, parcelLng);
   if (panos.length === 0) return null;
 
-  // Filter to panos co-located with the anchor (≤ 15m).
-  // Falls back to a 25m parcel-center radius if anchor wasn't found.
+  // Filter to panos co-located with the anchor (≤ 10m). Tight radius is
+  // intentional: a dated pano even 12-15m from the canonical fronting pano
+  // is often on the OPPOSITE curb of the same street (6704 SW 134 PL is
+  // the canonical failure mode — dated cluster sits 16m south of the
+  // metadata-API anchor that's 14m north of parcel). Falls back to a 25m
+  // parcel-center radius only if metadata API didn't return an anchor.
   const close = panos.filter((p) => {
     if (haveAnchor) {
-      return haversineM(p.panoLat, p.panoLng, anchorLat, anchorLng) <= 15;
+      return haversineM(p.panoLat, p.panoLng, anchorLat, anchorLng) <= 10;
     }
     return p.distM <= 25;
   });
@@ -312,13 +316,46 @@ async function fetchMapillaryFallback(
 export async function fetchHistoricalStreetView(
   parcelLat: number,
   parcelLng: number,
-  _currentImages: StreetViewImage[],
+  currentImages: StreetViewImage[],
 ): Promise<HistoricalStreetViewResult> {
+  // Quality gate inputs: the heading the CURRENT Street View block uses to
+  // frame the front of the subject. Historical THEN/NOW MUST land within
+  // 60° of this heading or we're rendering the wrong side of the lot.
+  const currentSvHeading: number | null =
+    typeof currentImages?.[0]?.heading === 'number' ? currentImages[0].heading : null;
+
   // Try Google first. If we get a real Then/Now pair, ship it — Google
   // coverage in FL is the better source. If Google has nothing or only one
   // capture, fall back to Mapillary.
   const google = await fetchGoogleHistorical(parcelLat, parcelLng);
   if (google && google.then && google.now) {
+    // Quality gate: make sure the historical pair is actually looking at
+    // the same SIDE of the parcel that the current SV looks at. For
+    // interior lots on cul-de-sacs (6704 SW 134 PL is the canonical case)
+    // Google's dated panos can sit on the opposite side of the parcel from
+    // wherever the metadata API picked the canonical fronting pano. Same
+    // heading from opposite sides = opposite views. Reject and fall through
+    // to "no historical available" rather than show confusing back-of-lot
+    // fence shots labeled THEN/NOW.
+    const histHeading = google.sides[0]?.approxBearingFromCenter;
+    if (
+      currentSvHeading != null &&
+      typeof histHeading === 'number' &&
+      angularDeltaDeg(histHeading, currentSvHeading) > 60
+    ) {
+      const delta = Math.round(angularDeltaDeg(histHeading, currentSvHeading));
+      console.log(
+        `[historical-streetview] Google rejected: heading delta ${delta}° between current (${Math.round(currentSvHeading)}°) and historical (${Math.round(histHeading)}°) — wrong side of parcel`,
+      );
+      return {
+        then: null,
+        now: null,
+        sides: [],
+        allFrames: google.allFrames,
+        source: 'Google Street View',
+        failureReason: `Historical street-level captures at this address are at a different angle (${Math.round(histHeading)}°) than the current Street View (${Math.round(currentSvHeading)}°). Google Street View Car never captured this property's front facade — only the side or back.`,
+      };
+    }
     console.log(
       `[historical-streetview] Google succeeded: then=${google.then.captureYear} now=${google.now.captureYear} sides=${google.sides.length}`,
     );
