@@ -24,6 +24,7 @@
 import type {
   ExtraFeature,
   HistoricalAerialFrame,
+  HistoricalStreetViewFrameType,
   Permit,
   StreetViewImage,
   VisualComparison,
@@ -146,7 +147,7 @@ CRITICAL — THEN vs NOW REASONING:
   between the THEN date and the NOW date, INSIDE the red polygon, and then
   check whether the permit log shows a matching permit in that window.
 
-  Features to look for changing between THEN and NOW:
+  Features to look for changing between THEN and NOW (aerial frames):
     - Pool that wasn't there before (or vice versa — rare)
     - New addition / new wing tacked onto the original footprint
     - New detached structure (shed, cabana, tiki, mother-in-law)
@@ -156,6 +157,24 @@ CRITICAL — THEN vs NOW REASONING:
     - New perimeter wall or fence
     - Solar panels appearing
     - Carport enclosed into living space (infill where overhead door was)
+
+  Features to look for changing between THEN and NOW (Street View frames,
+  if a Mapillary historical pano is provided alongside the current pano):
+    - Exterior paint color change on the main facade (e.g. tan → white)
+    - Front door swap (panel/style/color obviously different)
+    - Garage door swap (overhead → modern panel; or single → double opening)
+    - Front-yard perimeter gate / fence appearing, disappearing, or
+      changing material (chain-link → wrought iron, wood → CBS wall, etc.)
+    - Window frame style change (single-hung wood → modern impact frames)
+    - Exterior cladding change (stucco refinish, new wainscoting, stone
+      veneer added)
+    - Driveway material change (asphalt → pavers, plain concrete → stamped)
+    - Visible roofing material change at the eave/edge (tile → shingle etc.)
+  These facade-level changes typically require a permit (paint usually does
+  not in unincorporated Miami-Dade, but new gates, doors, windows, and
+  cladding generally do). When you flag a Street View change, name the
+  specific feature ("dark wood front door in THEN replaced with modern
+  glass-panel door in NOW") rather than "front looks different".
 
   For each change you see, check the "Permits issued IN the [then]→[now]
   window" section of the permit digest. If a matching permit exists
@@ -212,7 +231,7 @@ Return ONLY valid JSON matching this schema — no preamble, no code fences:
   "summary": "one-sentence plain-English takeaway about what changed THEN→NOW and whether permits explain it (max 30 words)",
   "observations": [
     {
-      "area": "Roof" | "Rear footprint" | "Fence" | "Pool" | "Shed / detached" | "Patio / cover" | "Driveway" | "Windows / doors" | "Solar" | "Other",
+      "area": "Roof" | "Rear footprint" | "Fence" | "Pool" | "Shed / detached" | "Patio / cover" | "Driveway" | "Windows / doors" | "Solar" | "Facade — paint" | "Front door" | "Garage door" | "Perimeter gate" | "Other",
       "whatWeSaw": "short plain-English description of THEN→NOW change (or current-only finding if no THEN)",
       "vsPermitRecord": "how that aligns or conflicts with permits issued in the window",
       "severity": "flag" | "note" | "match" | "uncertain"
@@ -248,11 +267,13 @@ function parseResult(text: string): { summary: string; observations: VisionObser
 }
 
 export async function compareImagery(opts: {
-  closeSatelliteUrl: string | null;       // NOW — Google Static Maps, parcel polygon in red
-  contextSatelliteUrl: string | null;     // NOW — wider block-context Google satellite
-  streetViewImages?: StreetViewImage[];   // NOW — ground-level Street View
-  thenAerial?: HistoricalAerialFrame | null;  // THEN — historical NAIP, no overlay
-  nowAerial?: HistoricalAerialFrame | null;   // NOW — latest NAIP, no overlay
+  closeSatelliteUrl: string | null;            // NOW — Google Static Maps, parcel polygon in red
+  contextSatelliteUrl: string | null;          // NOW — wider block-context Google satellite
+  streetViewImages?: StreetViewImage[];        // NOW — current Google Street View
+  thenAerial?: HistoricalAerialFrame | null;   // THEN — historical NAIP, no overlay
+  nowAerial?: HistoricalAerialFrame | null;    // NOW — latest NAIP, no overlay
+  thenStreetView?: HistoricalStreetViewFrameType | null;  // THEN — historical Mapillary Street View
+  nowStreetView?: HistoricalStreetViewFrameType | null;   // NOW — latest Mapillary Street View
   permits: Permit[];
   features: ExtraFeature[];
   yearBuilt: number | null;
@@ -287,12 +308,23 @@ export async function compareImagery(opts: {
   const streetViewList = (opts.streetViewImages ?? []).filter((s) => s.imageUrl);
 
   // Fetch all images in parallel. Some may fail (historical NAIP can 404 for
-  // out-of-coverage parcels) — that's fine, we degrade gracefully.
-  const [thenAerialB64, nowAerialB64, closeB64, contextB64, ...streetViewB64] = await Promise.all([
+  // out-of-coverage parcels, Mapillary may have no historical pano for the
+  // street) — that's fine, we degrade gracefully.
+  const [
+    thenAerialB64,
+    nowAerialB64,
+    closeB64,
+    contextB64,
+    thenStreetViewB64,
+    nowStreetViewB64,
+    ...streetViewB64
+  ] = await Promise.all([
     opts.thenAerial?.imageUrl ? fetchImageBase64(opts.thenAerial.imageUrl) : Promise.resolve(null),
     opts.nowAerial?.imageUrl ? fetchImageBase64(opts.nowAerial.imageUrl) : Promise.resolve(null),
     fetchImageBase64(opts.closeSatelliteUrl),
     opts.contextSatelliteUrl ? fetchImageBase64(opts.contextSatelliteUrl) : Promise.resolve(null),
+    opts.thenStreetView?.imageUrl ? fetchImageBase64(opts.thenStreetView.imageUrl) : Promise.resolve(null),
+    opts.nowStreetView?.imageUrl ? fetchImageBase64(opts.nowStreetView.imageUrl) : Promise.resolve(null),
     ...streetViewList.map((s) => fetchImageBase64(s.imageUrl as string)),
   ]);
 
@@ -374,14 +406,40 @@ export async function compareImagery(opts: {
     });
   }
 
-  // ---- NOW Street View (current) ----
+  // ---- THEN Street View (Mapillary historical) ----
+  if (thenStreetViewB64 && opts.thenStreetView) {
+    imageCounter++;
+    userContent.push({
+      type: 'text',
+      text: `IMAGE ${imageCounter} — THEN STREET VIEW (Mapillary), captured ${opts.thenStreetView.captureDate.slice(0, 10)} (${opts.thenStreetView.captureYear}). Ground-level historical view of the front of the subject. This is the THEN reference for facade-level comparison: paint color, front door, perimeter gate, garage door, windows, fence material, ground-floor cladding. Compare against the NOW Street View frame coming next.`,
+    });
+    userContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: thenStreetViewB64 },
+    });
+  }
+
+  // ---- NOW Street View (Mapillary latest) ----
+  if (nowStreetViewB64 && opts.nowStreetView) {
+    imageCounter++;
+    userContent.push({
+      type: 'text',
+      text: `IMAGE ${imageCounter} — NOW STREET VIEW (Mapillary), captured ${opts.nowStreetView.captureDate.slice(0, 10)} (${opts.nowStreetView.captureYear}). Latest ground-level view of the same property. Compare paint, doors, gates, garage, windows, fence vs THEN. Source-matched with the THEN frame so any facade change you call out should be a real change, not a provider artifact.`,
+    });
+    userContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: 'image/jpeg', data: nowStreetViewB64 },
+    });
+  }
+
+  // ---- NOW Street View (current Google, heading-aware) ----
   streetViewB64.forEach((b64, i) => {
     if (!b64) return;
     imageCounter++;
     const sv = streetViewList[i];
     userContent.push({
       type: 'text',
-      text: `IMAGE ${imageCounter} — NOW (Street View, ${sv.label}, heading ${sv.heading}°). Ground-level look at the property. Compare windows, doors, roof edge, fence, any visible condenser/water-heater/electrical against the permit log.`,
+      text: `IMAGE ${imageCounter} — NOW (Google Street View, ${sv.label}, heading ${sv.heading}°). Highest-resolution current ground-level look at the property. Use this for fine details (window frame style, condenser unit position, water-heater placement) that the Mapillary frame may be too low-res to show.`,
     });
     userContent.push({
       type: 'image',

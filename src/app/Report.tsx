@@ -149,16 +149,21 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </p>
             )}
 
-            {/* Then vs Now — historical NAIP aerial comparison */}
-            {r.thenVsNow.historicalAerials?.then && r.thenVsNow.historicalAerials?.now && (
+            {/* Then vs Now — historical NAIP (THEN) paired with current Google
+                satellite (NOW) for maximum visual sharpness. NAIP is 1m
+                native for older years and looks pixelated when upsampled;
+                Google Static Maps at zoom 20 is sub-meter and crisp. The AI
+                still receives both NAIP frames internally for like-for-like
+                change detection — this is just for the human reader. */}
+            {r.thenVsNow.historicalAerials?.then && r.thenVsNow.satelliteImageUrl && (
               <div className="mt-5">
                 <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Then vs Now — historical aerial (USDA NAIP 1m)
+                  Then vs Now — aerial comparison
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
-                      Then · {r.thenVsNow.historicalAerials.then.captureDate.slice(0, 10)}
+                      Then · {r.thenVsNow.historicalAerials.then.captureDate.slice(0, 10)} · USDA NAIP
                     </div>
                     <img
                       src={r.thenVsNow.historicalAerials.then.imageUrl}
@@ -169,11 +174,11 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                   </div>
                   <div>
                     <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
-                      Now · {r.thenVsNow.historicalAerials.now.captureDate.slice(0, 10)}
+                      Now · current · Google satellite
                     </div>
                     <img
-                      src={r.thenVsNow.historicalAerials.now.imageUrl}
-                      alt={`Latest NAIP aerial, ${r.thenVsNow.historicalAerials.now.captureYear}`}
+                      src={r.thenVsNow.satelliteImageUrl}
+                      alt="Current Google satellite view"
                       className="w-full rounded-md border border-black/10"
                       loading="lazy"
                     />
@@ -185,7 +190,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                     available for this parcel ({r.thenVsNow.historicalAerials.allFrames[0].captureYear}
                     {' '}through{' '}
                     {r.thenVsNow.historicalAerials.allFrames[r.thenVsNow.historicalAerials.allFrames.length - 1].captureYear}
-                    ). The AI compared the earliest against the latest.
+                    ). The AI compared the earliest NAIP against the latest plus current Google imagery.
                   </p>
                 )}
               </div>
@@ -196,40 +201,71 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </p>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              {r.thenVsNow.satelliteImageUrl && (
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                    Subject — satellite (parcel outlined in red)
-                  </div>
-                  <img
-                    src={r.thenVsNow.satelliteImageUrl}
-                    alt="Subject satellite view with parcel polygon overlay"
-                    className="w-full rounded-md border border-black/10"
-                    loading="lazy"
-                  />
+            {/* Block context — subject vs neighbors. The tight subject frame
+                with the red polygon is already shown above as "Now"; we drop
+                the standalone subject image here to avoid duplicating it. */}
+            {r.thenVsNow.contextSatelliteImageUrl && (
+              <div className="mt-4">
+                <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                  Block context — subject vs. neighbors
                 </div>
-              )}
-              {r.thenVsNow.contextSatelliteImageUrl && (
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                    Block context — subject vs. neighbors
-                  </div>
-                  <img
-                    src={r.thenVsNow.contextSatelliteImageUrl}
-                    alt="Wider block context with parcel polygon overlay"
-                    className="w-full rounded-md border border-black/10"
-                    loading="lazy"
-                  />
-                </div>
-              )}
-            </div>
+                <img
+                  src={r.thenVsNow.contextSatelliteImageUrl}
+                  alt="Wider block context with parcel polygon overlay"
+                  className="w-full md:w-1/2 rounded-md border border-black/10"
+                  loading="lazy"
+                />
+              </div>
+            )}
 
-            {/* Street View — heading-aware (front + angled) */}
+            {/* Street View — Then vs Now (Mapillary historical paired with
+                current). Only renders when Mapillary returned a usable
+                historical pano. */}
+            {r.thenVsNow.historicalStreetView?.then && r.thenVsNow.historicalStreetView?.now && (
+              <div className="mt-5">
+                <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                  Then vs Now — Street View (Mapillary)
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+                      Then · {r.thenVsNow.historicalStreetView.then.captureDate.slice(0, 10)}
+                    </div>
+                    <img
+                      src={r.thenVsNow.historicalStreetView.then.imageUrl}
+                      alt={`Mapillary Street View, ${r.thenVsNow.historicalStreetView.then.captureYear}`}
+                      className="w-full rounded-md border border-black/10"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+                      Now · {r.thenVsNow.historicalStreetView.now.captureDate.slice(0, 10)}
+                    </div>
+                    <img
+                      src={r.thenVsNow.historicalStreetView.now.imageUrl}
+                      alt={`Latest Mapillary Street View, ${r.thenVsNow.historicalStreetView.now.captureYear}`}
+                      className="w-full rounded-md border border-black/10"
+                      loading="lazy"
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] text-ink-muted mt-2">
+                  Compare facade paint, front door, gates, garage door, windows.
+                </p>
+              </div>
+            )}
+            {r.thenVsNow.historicalStreetView && !r.thenVsNow.historicalStreetView.then && r.thenVsNow.historicalStreetView.failureReason && (
+              <p className="text-xs text-ink-muted italic mt-3">
+                Historical Street View unavailable: {r.thenVsNow.historicalStreetView.failureReason}
+              </p>
+            )}
+
+            {/* Current Street View (Google, heading-aware) */}
             {r.thenVsNow.streetViewImages && r.thenVsNow.streetViewImages.length > 0 && (
               <div className="mt-5">
                 <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Street View — front of subject
+                  Street View — front of subject (current)
                 </div>
                 <div className={`grid gap-2 ${r.thenVsNow.streetViewImages.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2 md:grid-cols-4'}`}>
                   {r.thenVsNow.streetViewImages.map((sv, i) =>

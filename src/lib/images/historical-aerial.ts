@@ -54,8 +54,18 @@ function bboxFromParcel(
   lat: number,
   lng: number,
   polygon: ParcelRing | null | undefined,
-  paddingFeet = 40,
+  paddingFeet = 200,
 ): { minx: number; miny: number; maxx: number; maxy: number } {
+  // Why 200ft (was 40ft): NAIP is 1m native for older years (2010 captures
+  // are 1m, more recent are 30–60cm). A tight ~150ft box at 1m gives only
+  // ~46 native pixels — rendered to 640×640 that's a 13× upscale, which
+  // shows as heavy pixelation in the report. A 200ft padding around a
+  // typical 70×80ft lot puts the bbox closer to ~470ft per side, ≈ 143m,
+  // ≈ 143 native pixels at 1m and ≈ 477 at 30cm. Render-time upscale drops
+  // to 1.3–4×, looks substantially sharper. Trade-off: subject is a smaller
+  // fraction of the frame — but the AI cross-references the Google NOW
+  // satellite frame (with red polygon overlay) for spatial anchoring, so it
+  // can still tell which building is the subject.
   if (polygon && polygon.length >= 3) {
     let minLat = polygon[0][0];
     let maxLat = polygon[0][0];
@@ -76,9 +86,9 @@ function bboxFromParcel(
       maxy: maxLat + padLat,
     };
   }
-  // Fallback: ~140ft box around the geocoded point.
-  const halfLat = 70 / FEET_PER_DEG_LAT;
-  const halfLng = 70 / FEET_PER_DEG_LNG_FL;
+  // Fallback: ~470ft box around the geocoded point.
+  const halfLat = 235 / FEET_PER_DEG_LAT;
+  const halfLng = 235 / FEET_PER_DEG_LNG_FL;
   return {
     minx: lng - halfLng,
     miny: lat - halfLat,

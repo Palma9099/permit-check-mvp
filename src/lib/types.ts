@@ -94,6 +94,26 @@ export interface HistoricalAerialPair {
   failureReason: string | null;
 }
 
+// Historical Street View pair from Mapillary. When the API returns no usable
+// THEN frame we still emit the result with then=null and a failureReason —
+// the report should render "no historical Street View available" instead of
+// silently dropping the section.
+export interface HistoricalStreetViewFrameType {
+  captureDate: string;
+  captureYear: number;
+  imageUrl: string;
+  heading: number;
+  label: string;
+}
+
+export interface HistoricalStreetViewPair {
+  then: HistoricalStreetViewFrameType | null;
+  now: HistoricalStreetViewFrameType | null;
+  allFrames: HistoricalStreetViewFrameType[];
+  source: string | null;
+  failureReason: string | null;
+}
+
 export interface StreetViewImage {
   heading: number;                // 0 = north, 90 = east, 180 = south, 270 = west
   label: string;                  // human-readable, e.g. "Front (facing N)"
@@ -127,6 +147,9 @@ export interface ThenVsNow {
   // Historical aerial pair (Planetary Computer NAIP). Used by the AI call
   // for Then-vs-Now and rendered in the report as a side-by-side comparison.
   historicalAerials: HistoricalAerialPair;
+  // Historical Street View pair (Mapillary). Used by the AI for facade-level
+  // change detection (paint, doors, gates, windows) that aerials miss.
+  historicalStreetView: HistoricalStreetViewPair;
 }
 
 export type CountyTier = 'A' | 'B';

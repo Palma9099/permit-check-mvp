@@ -1,27 +1,22 @@
-// Historical Street View — deferred.
+// Historical Street View — backed by Mapillary.
 //
-// Shipping status: NOT wired into the AI vision call. The Planetary Computer
-// NAIP integration gives us a rock-solid Then-vs-Now for the satellite side;
-// adding a historical Street View source correctly requires picking between:
+// Adrian's actual use case (FL residential due-diligence) needs Then-vs-Now
+// Street View to catch facade changes that don't show up from above:
+// repainted exterior, replaced front door, new perimeter gates, swapped
+// windows. Aerial imagery misses all of these.
 //
-//   (a) Google's internal photometa endpoint (the one the Google Maps frontend
-//       uses when you click the little clock icon). Returns a JSON blob with
-//       historical panos and capture dates. Problems: undocumented, pb-param
-//       protobuf format changes without notice, arguably violates Google TOS
-//       for commercial scraping, no stable contract.
+// Mapillary is the right source: free, documented, OAuth-token auth, returns
+// historical street-level panos with capture dates. Coverage on FL residential
+// streets is uneven (good on main roads, sparse on cul-de-sacs), so this
+// module honestly returns null when no historical pair is available rather
+// than fabricating a comparison.
 //
-//   (b) Mapillary API. Documented, free, Meta-owned. Historical panos with
-//       capture dates. Florida residential coverage is uneven — solid on
-//       main roads, sparse on quiet cul-de-sacs. Requires MAPILLARY_TOKEN
-//       env var.
-//
-//   (c) Accept "current-only" for the AI call and keep the existing Google
-//       Street View timeline click-through link in the UI so the realtor
-//       can eyeball history themselves.
-//
-// For now we ship (c). This file is the hook for a future (b) implementation.
+// The vision-compare prompt knows to use this pair specifically for
+// facade/door/gate/paint/window changes, separate from the satellite-based
+// roof/footprint/pool reasoning.
 
 import type { StreetViewImage } from '../types';
+import { fetchMapillaryHistorical } from './mapillary';
 
 export interface HistoricalStreetViewFrame {
   captureDate: string;
@@ -39,19 +34,31 @@ export interface HistoricalStreetViewResult {
   failureReason: string | null;
 }
 
-// Placeholder — returns an empty result with a human-readable note so the
-// orchestrator and report render cleanly until Mapillary is wired in.
 export async function fetchHistoricalStreetView(
-  _lat: number,
-  _lng: number,
+  parcelLat: number,
+  parcelLng: number,
   _currentImages: StreetViewImage[],
 ): Promise<HistoricalStreetViewResult> {
+  const m = await fetchMapillaryHistorical(parcelLat, parcelLng);
+
+  const toFrame = (img: typeof m.then): HistoricalStreetViewFrame | null => {
+    if (!img) return null;
+    return {
+      captureDate: img.capturedAt,
+      captureYear: img.capturedYear,
+      imageUrl: img.imageUrl,
+      heading: Math.round(img.compassAngle),
+      label: `Mapillary pano · ${img.capturedAt.slice(0, 10)} · facing ${Math.round(img.bearingToSubject)}°`,
+    };
+  };
+
+  const allFrames = m.allFrames.map(toFrame).filter((f): f is HistoricalStreetViewFrame => f !== null);
+
   return {
-    then: null,
-    now: null,
-    allFrames: [],
-    source: null,
-    failureReason:
-      'Street View historical panos are not yet wired into the AI comparison. Use the Street View timeline link below to review past panos manually.',
+    then: toFrame(m.then),
+    now: toFrame(m.now),
+    allFrames,
+    source: m.source,
+    failureReason: m.failureReason,
   };
 }

@@ -67,6 +67,43 @@ function parseHomestead(pa: any): {
   return { baseYear: base, percent: pct, statusText: text.trim() };
 }
 
+// Year built is exposed at PropertyInfo.YearBuilt as a number for single-
+// building parcels and as the literal string "Multiple (See Building Info.)"
+// for parcels with more than one building footprint. In the second case the
+// PA UI links to the BuildingInfos array; each building has an `Actual` year.
+// We take the earliest Actual across all buildings as the parcel's year built
+// (matches what the PA web UI shows on the cover sheet).
+function resolveYearBuilt(pa: any): number | null {
+  const pi = pa?.PropertyInfo ?? {};
+  if (typeof pi.YearBuilt === 'number' && pi.YearBuilt > 1800) return pi.YearBuilt;
+  if (typeof pi.YearBuilt === 'string') {
+    const n = Number(pi.YearBuilt.replace(/\D+/g, ''));
+    if (Number.isFinite(n) && n > 1800) return n;
+  }
+  // Fall through: scan BuildingInfos for the earliest Actual year built.
+  const infos: any[] = pa?.Building?.BuildingInfos ?? [];
+  const actualYears = infos
+    .map((b) => (typeof b?.Actual === 'number' ? b.Actual : null))
+    .filter((y): y is number => typeof y === 'number' && y > 1800);
+  if (actualYears.length === 0) return null;
+  return Math.min(...actualYears);
+}
+
+// PA returns the city as the literal "Unincorporated County" for parcels
+// outside any incorporated municipality. That's not a place name a buyer
+// will recognize, so we expand it to "Unincorporated Miami-Dade County".
+function normalizeMiamiDadeCity(city: string | null | undefined): string | null {
+  if (!city) return null;
+  const c = city.trim();
+  if (/^unincorporated\s+county$/i.test(c)) return 'Unincorporated Miami-Dade County';
+  return c;
+}
+
+function normalizeMiamiDadeAddress(addr: string | null | undefined): string | null {
+  if (!addr) return null;
+  return addr.replace(/,\s*Unincorporated County,/i, ', Unincorporated Miami-Dade County,');
+}
+
 function dedupeExtraFeatures(arr: any[]): ExtraFeature[] {
   const seen = new Set<string>();
   const out: ExtraFeature[] = [];
@@ -156,12 +193,12 @@ export const miamiDadeAdapter: CountyAdapter = {
       propertyBasics: {
         folio,
         prettyFolio: prettyFolio(folio),
-        siteAddress: cleanString(pa.SiteAddress?.[0]?.Address) || null,
+        siteAddress: normalizeMiamiDadeAddress(cleanString(pa.SiteAddress?.[0]?.Address)) || null,
         mailingAddress: mailMatch.mail,
         mailingMatchesSite: mailMatch.matches,
         owner: cleanString(pa.OwnerInfos?.[0]?.Name) || null,
         subdivision: cleanString(pa.LegalDescription?.[0]?.Description) || null,
-        yearBuilt: toNum(pi.YearBuilt),
+        yearBuilt: resolveYearBuilt(pa),
         heatedArea: toNum(pi.BuildingHeatedArea),
         totalArea: toNum(pi.BuildingActualArea),
         lotSize: toNum(pi.LotSize),

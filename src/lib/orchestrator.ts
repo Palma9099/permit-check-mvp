@@ -28,6 +28,7 @@ import {
 } from './images/google-satellite';
 import { buildStreetViewUrlsTowardParcel } from './images/streetview';
 import { fetchHistoricalAerials } from './images/historical-aerial';
+import { fetchHistoricalStreetView } from './images/streetview-historical';
 import { compareImagery } from './vision-compare';
 import { recordToLedger } from './ledger';
 
@@ -430,7 +431,18 @@ export async function runDiagnostic(input: {
     fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
   ]);
 
-  // 6. Vision comparison — now with THEN (historical NAIP) vs NOW frames.
+  // 5b. Historical Street View (Mapillary). Runs after the current Street
+  //     View call because we want to know whether to even bother — if there
+  //     are no current panos at all, the subject is in a gated/private area
+  //     where Mapillary almost certainly has nothing either.
+  const historicalStreetView = await fetchHistoricalStreetView(
+    geo.lat,
+    geo.lng,
+    streetViewImages,
+  );
+
+  // 6. Vision comparison — THEN (historical NAIP + historical Street View)
+  //    vs NOW (current Google sat + current Street View).
   const features = adapterResult.extraFeatures;
   const permits = adapterResult.permits;
   const yearBuilt = adapterResult.propertyBasics.yearBuilt;
@@ -441,6 +453,8 @@ export async function runDiagnostic(input: {
     streetViewImages,
     thenAerial: historicalAerials.then,
     nowAerial: historicalAerials.now,
+    thenStreetView: historicalStreetView.then,
+    nowStreetView: historicalStreetView.now,
     permits,
     features,
     yearBuilt,
@@ -530,6 +544,7 @@ export async function runDiagnostic(input: {
     visualChecklist: buildVisualChecklist(yearBuilt, permits, features),
     visualComparison,
     historicalAerials,
+    historicalStreetView,
   };
 
   const dataSources: string[] = [
@@ -545,6 +560,11 @@ export async function runDiagnostic(input: {
   if (historicalAerials.then && historicalAerials.now) {
     dataSources.push(
       `Microsoft Planetary Computer (USDA NAIP) for historical aerial imagery — compared ${historicalAerials.then.captureYear} vs ${historicalAerials.now.captureYear}`,
+    );
+  }
+  if (historicalStreetView.then && historicalStreetView.now) {
+    dataSources.push(
+      `Mapillary Graph API for historical Street View — compared ${historicalStreetView.then.captureYear} vs ${historicalStreetView.now.captureYear}`,
     );
   }
 

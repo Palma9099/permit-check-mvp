@@ -94,8 +94,16 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   const thenAerialBufPromise = report.thenVsNow?.historicalAerials?.then?.imageUrl
     ? fetchImageBuffer(report.thenVsNow.historicalAerials.then.imageUrl)
     : Promise.resolve(null);
-  const nowAerialBufPromise = report.thenVsNow?.historicalAerials?.now?.imageUrl
-    ? fetchImageBuffer(report.thenVsNow.historicalAerials.now.imageUrl)
+  // Note: nowAerial NAIP is no longer rendered (we pair THEN NAIP with the
+  // sharper Google satellite for NOW). The AI vision call still receives the
+  // NAIP NOW frame separately for like-for-like change detection.
+
+  // Mapillary historical Street View pair, when available.
+  const thenSvBufPromise = report.thenVsNow?.historicalStreetView?.then?.imageUrl
+    ? fetchImageBuffer(report.thenVsNow.historicalStreetView.then.imageUrl)
+    : Promise.resolve(null);
+  const nowSvBufPromise = report.thenVsNow?.historicalStreetView?.now?.imageUrl
+    ? fetchImageBuffer(report.thenVsNow.historicalStreetView.now.imageUrl)
     : Promise.resolve(null);
 
   const doc = new PDFDocument({
@@ -206,16 +214,16 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       );
     }
 
-    // Then-vs-Now historical aerial pair (NAIP) — rendered first so it reads
-    // as the hero of the visual review.
+    // Then-vs-Now aerial pair — NAIP for THEN paired with current Google
+    // satellite for NOW (sub-meter, much sharper than upsampled 1m NAIP).
     const thenAerialBuf = await thenAerialBufPromise;
-    const nowAerialBuf = await nowAerialBufPromise;
+    const closeBuf = await closeBufPromise;
+    const contextBuf = await contextBufPromise;
     const thenFrame = report.thenVsNow.historicalAerials?.then ?? null;
-    const nowFrame = report.thenVsNow.historicalAerials?.now ?? null;
-    if (thenAerialBuf && nowAerialBuf && thenFrame && nowFrame) {
+    if (thenAerialBuf && closeBuf && thenFrame) {
       ensureSpace(doc, 260);
       doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
-        .text('THEN vs NOW — HISTORICAL AERIAL (USDA NAIP, 1M)', 56, doc.y, { characterSpacing: 1 });
+        .text('THEN vs NOW — AERIAL COMPARISON', 56, doc.y, { characterSpacing: 1 });
       doc.moveDown(0.3);
       const pairGap = 12;
       const pairW = Math.floor((contentWidth - pairGap) / 2);
@@ -226,7 +234,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
         pairMaxH = Math.max(pairMaxH, doc.y);
       } catch { /* ignore */ }
       try {
-        doc.image(nowAerialBuf, 56 + pairW + pairGap, pairY, { width: pairW });
+        doc.image(closeBuf, 56 + pairW + pairGap, pairY, { width: pairW });
         pairMaxH = Math.max(pairMaxH, doc.y);
       } catch { /* ignore */ }
       doc.y = pairMaxH;
@@ -236,7 +244,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
         .fontSize(8.5)
         .fillColor(COLORS.inkMuted)
         .text(
-          `Left: ${thenFrame.captureDate.slice(0, 10)} (${thenFrame.captureYear}).  Right: ${nowFrame.captureDate.slice(0, 10)} (${nowFrame.captureYear}).  Imagery: Microsoft Planetary Computer / USDA NAIP.`,
+          `Left: ${thenFrame.captureDate.slice(0, 10)} (USDA NAIP).  Right: current (Google satellite, parcel outlined in red).`,
           56,
           doc.y,
           { width: contentWidth },
@@ -256,30 +264,13 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       doc.moveDown(0.4);
     }
 
-    // Side-by-side images: subject (tight) and block context
-    const closeBuf = await closeBufPromise;
-    const contextBuf = await contextBufPromise;
-    const imgGap = 12;
-    const imgWidth = Math.floor((contentWidth - imgGap) / 2);
-    const startY = doc.y;
-
-    if (closeBuf || contextBuf) {
-      let nextY = startY;
-      if (closeBuf) {
-        try {
-          doc.image(closeBuf, 56, startY, { width: imgWidth });
-          nextY = Math.max(nextY, doc.y);
-        } catch { /* ignore */ }
-      }
-      if (contextBuf) {
-        try {
-          doc.image(contextBuf, 56 + imgWidth + imgGap, startY, { width: imgWidth });
-          nextY = Math.max(nextY, doc.y);
-        } catch { /* ignore */ }
-      } else if (closeBuf) {
-        // No context image — already drew close; doc.y is current
-      }
-      doc.y = nextY;
+    // Block context — only render the wider neighbor frame here. The tight
+    // subject frame with the red polygon is already shown above as "Now".
+    if (contextBuf) {
+      const ctxW = Math.floor(contentWidth * 0.6);
+      try {
+        doc.image(contextBuf, 56, doc.y, { width: ctxW });
+      } catch { /* ignore */ }
       doc.moveDown(0.3);
       const parcelSrc = report.thenVsNow?.parcelPolygonSource
         ? `  Parcel boundary: ${report.thenVsNow.parcelPolygonSource}.`
@@ -289,9 +280,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
         .fontSize(8.5)
         .fillColor(COLORS.inkMuted)
         .text(
-          (contextBuf
-            ? 'Left: subject parcel (red outline).  Right: block context.  Imagery: Google satellite.'
-            : 'Subject parcel (red outline) — Google satellite.') + parcelSrc,
+          'Block context — subject vs. neighbors. Google satellite.' + parcelSrc,
           56,
           doc.y,
           { width: contentWidth },
@@ -305,10 +294,55 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       label: sv.label,
       buf: svBufs[i],
     })).filter((x) => x.buf);
+    // Mapillary Street View THEN/NOW pair (if available) — render BEFORE
+    // the current-only Google Street View so the historical comparison is
+    // the visual hero.
+    const thenSvBuf = await thenSvBufPromise;
+    const nowSvBuf = await nowSvBufPromise;
+    const thenSvFrame = report.thenVsNow.historicalStreetView?.then ?? null;
+    const nowSvFrame = report.thenVsNow.historicalStreetView?.now ?? null;
+    if (thenSvBuf && nowSvBuf && thenSvFrame && nowSvFrame) {
+      ensureSpace(doc, 240);
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
+        .text('THEN vs NOW — STREET VIEW (MAPILLARY)', 56, doc.y, { characterSpacing: 1 });
+      doc.moveDown(0.3);
+      const svPairGap = 12;
+      const svPairW = Math.floor((contentWidth - svPairGap) / 2);
+      const svPairY = doc.y;
+      let svPairMaxH = svPairY;
+      try {
+        doc.image(thenSvBuf, 56, svPairY, { width: svPairW });
+        svPairMaxH = Math.max(svPairMaxH, doc.y);
+      } catch { /* ignore */ }
+      try {
+        doc.image(nowSvBuf, 56 + svPairW + svPairGap, svPairY, { width: svPairW });
+        svPairMaxH = Math.max(svPairMaxH, doc.y);
+      } catch { /* ignore */ }
+      doc.y = svPairMaxH;
+      doc.moveDown(0.2);
+      doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(COLORS.inkMuted)
+        .text(
+          `Left: ${thenSvFrame.captureDate.slice(0, 10)} (${thenSvFrame.captureYear}).  Right: ${nowSvFrame.captureDate.slice(0, 10)} (${nowSvFrame.captureYear}).  Compare paint, doors, gates, garage, windows.  Imagery: Mapillary.`,
+          56,
+          doc.y,
+          { width: contentWidth },
+        );
+      doc.moveDown(0.5);
+    } else if (report.thenVsNow.historicalStreetView?.failureReason) {
+      doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(COLORS.inkMuted)
+        .text(
+          `Historical Street View unavailable: ${report.thenVsNow.historicalStreetView.failureReason}`,
+          56,
+          doc.y,
+          { width: contentWidth },
+        );
+      doc.moveDown(0.4);
+    }
+
     if (svImages.length > 0) {
       ensureSpace(doc, 180);
       doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
-        .text('STREET VIEW — FOUR HEADINGS', 56, doc.y, { characterSpacing: 1 });
+        .text('STREET VIEW — FRONT OF SUBJECT (CURRENT)', 56, doc.y, { characterSpacing: 1 });
       doc.moveDown(0.3);
       const perRow = Math.min(4, svImages.length);
       const svGap = 8;
