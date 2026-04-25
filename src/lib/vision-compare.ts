@@ -37,12 +37,18 @@ const MODEL = 'claude-sonnet-4-5-20250929';
 async function fetchImageBase64(url: string, timeoutMs = 10000): Promise<string | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  const urlForLog = url.length > 120 ? url.slice(0, 120) + '...' : url;
   try {
     const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const bodyPreview = await res.text().catch(() => '').then((b) => b.slice(0, 200));
+      console.error(`[vision-compare] fetchImageBase64 non-OK: status=${res.status} url=${urlForLog} body=${bodyPreview}`);
+      return null;
+    }
     const ab = await res.arrayBuffer();
     return Buffer.from(ab).toString('base64');
-  } catch {
+  } catch (err: any) {
+    console.error(`[vision-compare] fetchImageBase64 threw: url=${urlForLog} err=${String(err?.message ?? err).slice(0, 200)}`);
     return null;
   } finally {
     clearTimeout(t);
@@ -291,6 +297,9 @@ export async function compareImagery(opts: {
   ]);
 
   if (!closeB64) {
+    console.error(
+      `[vision-compare] bailing — closeB64 is null. closeSatelliteUrl=${(opts.closeSatelliteUrl ?? '').slice(0, 200)}`,
+    );
     return {
       performed: false,
       modelUsed: MODEL,
@@ -301,6 +310,9 @@ export async function compareImagery(opts: {
       nowCaptureDate: null,
     };
   }
+  console.log(
+    `[vision-compare] fetched all imagery, calling Anthropic. then=${opts.thenAerial?.captureYear ?? 'none'} now=${opts.nowAerial?.captureYear ?? 'current'} streetViews=${streetViewB64.filter(Boolean).length}`,
+  );
 
   const thenYear = opts.thenAerial?.captureYear ?? null;
   const nowYear = opts.nowAerial?.captureYear ?? new Date().getUTCFullYear();
@@ -404,6 +416,7 @@ export async function compareImagery(opts: {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
+      console.error(`[vision-compare] Anthropic non-OK: status=${res.status} body=${errText.slice(0, 400)}`);
       return {
         performed: false,
         modelUsed: MODEL,
@@ -446,6 +459,7 @@ export async function compareImagery(opts: {
       nowCaptureDate: opts.nowAerial?.captureDate ?? null,
     };
   } catch (err: any) {
+    console.error(`[vision-compare] threw: ${String(err?.message ?? err).slice(0, 300)}`);
     return {
       performed: false,
       modelUsed: MODEL,
