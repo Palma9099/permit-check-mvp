@@ -1,24 +1,34 @@
-// Historical Street View — Google primary, Mapillary fallback.
+// Historical Street View — Google sole source.
 //
 // Adrian's actual use case (FL residential due-diligence) needs Then-vs-Now
 // Street View to catch facade changes that don't show up from above:
 // repainted exterior, replaced front door, new perimeter gates, swapped
 // windows. Aerial imagery misses all of these.
 //
-// SOURCE PRIORITY:
-//   1. Google Street View historical — call GeoPhotoService.SingleImageSearch
-//      with the timeline flag set to get all panos at the parcel (often goes
-//      back to 2007/2008 in urban FL). Render the earliest + latest via
-//      Static Street View API. THIS IS THE PRIMARY SOURCE because Google's
-//      coverage on FL residential streets is dramatically better than
-//      Mapillary's.
+// We use Google Street View as the only source, both for historical and
+// current panos. Google's FL coverage is dramatically better than the
+// open-data alternatives (Mapillary, Bing Streetside), and using one
+// provider means THEN and NOW frames are source-matched out of the box —
+// same lens, same projection, same color profile. Comparison artifacts
+// drop to zero.
 //
-//   2. Mapillary — open data, Meta-owned, free OAuth token. Falls back when
-//      Google has nothing for the parcel (rare on FL residential, common in
-//      gated communities or unbuilt areas). Coverage is uneven on FL
-//      residential streets but it's worth a shot.
+// Pipeline:
+//   1. GeoPhotoService.SingleImageSearch with the timeline flag returns
+//      every dated pano at the parcel, often going back to 2007/2008 in
+//      urban FL.
+//   2. Anchor to the canonical fronting pano (the same one current-SV
+//      uses) and filter dated panos to those co-located with it. This
+//      keeps THEN and NOW on the same camera segment.
+//   3. Render earliest + latest via the documented Static Street View API
+//      with `pano=ID&heading=H`. Paid, licensed, fully legitimate use.
+//   4. Quality gate: if the historical cluster heading is more than 60°
+//      off from the current-SV heading, suppress entirely — that's the
+//      sign Google's only dated coverage is on the wrong side of the lot
+//      (privacy fence, cul-de-sac wrong-curb, etc.). Show an honest
+//      "historical not available" line and let the realtor use the
+//      manual upload slot for the THEN reference.
 //
-// We honestly return then=null + a failureReason when no historical pair is
+// We honestly return then=null + a failureReason when no usable pair is
 // available — never fabricate a comparison.
 //
 // The vision-compare prompt knows to use these pairs specifically for
@@ -26,7 +36,6 @@
 // roof/footprint/pool reasoning.
 
 import type { StreetViewImage } from '../types';
-import { fetchMapillaryHistorical } from './mapillary';
 import { getStreetViewMeta } from './streetview';
 import {
   searchGooglePanoramas,
@@ -258,8 +267,8 @@ async function fetchGoogleHistorical(
       allFrames,
       source: 'Google Street View',
       failureReason: onlyYear
-        ? `Google Street View has only one capture span at this parcel (${onlyYear}) — no THEN frame to compare. Try Mapillary fallback.`
-        : 'Google Street View returned no dated captures.',
+        ? `Google Street View has only one capture span at this parcel (${onlyYear}) — no THEN frame to compare. Use the manual upload slot for a historical reference photo.`
+        : 'Google Street View returned no dated captures for this parcel.',
     };
   }
 
@@ -270,46 +279,6 @@ async function fetchGoogleHistorical(
     allFrames,
     source: 'Google Street View',
     failureReason: null,
-  };
-}
-
-async function fetchMapillaryFallback(
-  parcelLat: number,
-  parcelLng: number,
-): Promise<HistoricalStreetViewResult> {
-  const m = await fetchMapillaryHistorical(parcelLat, parcelLng);
-
-  const toFrame = (img: typeof m.then, sideLabel?: string): HistoricalStreetViewFrame | null => {
-    if (!img) return null;
-    return {
-      captureDate: img.capturedAt,
-      captureYear: img.capturedYear,
-      imageUrl: img.imageUrl,
-      heading: Math.round(img.compassAngle),
-      label: sideLabel
-        ? `${sideLabel} · ${img.capturedAt.slice(0, 10)}`
-        : `Mapillary pano · ${img.capturedAt.slice(0, 10)} · facing ${Math.round(img.bearingToSubject)}°`,
-    };
-  };
-
-  const allFrames = m.allFrames
-    .map((f) => toFrame(f))
-    .filter((f): f is HistoricalStreetViewFrame => f !== null);
-
-  const sides = m.sides.map((s): HistoricalStreetViewSidePair => ({
-    sideLabel: s.sideLabel,
-    approxBearingFromCenter: s.approxBearingFromCenter,
-    then: toFrame(s.then, `${s.sideLabel} — Then`),
-    now: toFrame(s.now, `${s.sideLabel} — Now`),
-  }));
-
-  return {
-    then: toFrame(m.then, 'Primary front — Then'),
-    now: toFrame(m.now, 'Primary front — Now'),
-    sides,
-    allFrames,
-    source: m.source,
-    failureReason: m.failureReason,
   };
 }
 
@@ -324,18 +293,31 @@ export async function fetchHistoricalStreetView(
   const currentSvHeading: number | null =
     typeof currentImages?.[0]?.heading === 'number' ? currentImages[0].heading : null;
 
-  // Try Google first. If we get a real Then/Now pair, ship it — Google
-  // coverage in FL is the better source. If Google has nothing or only one
-  // capture, fall back to Mapillary.
+  // Google sole source. If Google can't produce a clean THEN/NOW pair (no
+  // dated coverage, only a single capture, or the dated panos sit on the
+  // wrong side of the lot), we return an honest failureReason and let the
+  // realtor's manual photo upload fill in the THEN reference.
   const google = await fetchGoogleHistorical(parcelLat, parcelLng);
-  if (google && google.then && google.now) {
+
+  if (!google) {
+    return {
+      then: null,
+      now: null,
+      sides: [],
+      allFrames: [],
+      source: 'Google Street View',
+      failureReason: 'No Google Street View panos found for this parcel.',
+    };
+  }
+
+  if (google.then && google.now) {
     // Quality gate: make sure the historical pair is actually looking at
     // the same SIDE of the parcel that the current SV looks at. For
     // interior lots on cul-de-sacs (6704 SW 134 PL is the canonical case)
     // Google's dated panos can sit on the opposite side of the parcel from
     // wherever the metadata API picked the canonical fronting pano. Same
-    // heading from opposite sides = opposite views. Reject and fall through
-    // to "no historical available" rather than show confusing back-of-lot
+    // heading from opposite sides = opposite views. Reject and surface
+    // "no historical available" rather than show confusing back-of-lot
     // fence shots labeled THEN/NOW.
     const histHeading = google.sides[0]?.approxBearingFromCenter;
     if (
@@ -353,7 +335,7 @@ export async function fetchHistoricalStreetView(
         sides: [],
         allFrames: google.allFrames,
         source: 'Google Street View',
-        failureReason: `Historical street-level captures at this address are at a different angle (${Math.round(histHeading)}°) than the current Street View (${Math.round(currentSvHeading)}°). Google Street View Car never captured this property's front facade — only the side or back.`,
+        failureReason: `Historical street-level captures at this address are at a different angle (${Math.round(histHeading)}°) than the current Street View (${Math.round(currentSvHeading)}°). Google Street View Car never captured this property's front facade — only the side or back. Use the manual upload slot for a historical reference photo.`,
       };
     }
     console.log(
@@ -362,26 +344,11 @@ export async function fetchHistoricalStreetView(
     return google;
   }
 
+  // Google found panos but couldn't produce a usable Then/Now pair (e.g.
+  // only one dated capture). Pass through the honest failureReason; the
+  // UI shows the line and the realtor can use the manual upload slot.
   console.log(
-    `[historical-streetview] Google insufficient (${google?.failureReason ?? 'no result'}), falling back to Mapillary`,
+    `[historical-streetview] Google produced no Then/Now pair: ${google.failureReason ?? 'unknown'}`,
   );
-  const mapillary = await fetchMapillaryFallback(parcelLat, parcelLng);
-  if (mapillary.then && mapillary.now) {
-    console.log(
-      `[historical-streetview] Mapillary succeeded: then=${mapillary.then.captureYear} now=${mapillary.now.captureYear}`,
-    );
-    return mapillary;
-  }
-
-  // Neither source produced a real pair. Prefer the Google result for its
-  // failureReason (more accurate), but include Mapillary's allFrames if any.
-  const failureReason = google?.failureReason ?? mapillary.failureReason ?? 'No historical Street View available for this parcel.';
-  return {
-    then: null,
-    now: google?.now ?? mapillary.now,
-    sides: (google?.sides ?? []).length > 0 ? (google!.sides) : mapillary.sides,
-    allFrames: [...(google?.allFrames ?? []), ...mapillary.allFrames],
-    source: google?.source ?? mapillary.source,
-    failureReason,
-  };
+  return google;
 }
