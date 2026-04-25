@@ -225,13 +225,13 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               )}
             </div>
 
-            {/* Street View thumbnails */}
+            {/* Street View — heading-aware (front + angled) */}
             {r.thenVsNow.streetViewImages && r.thenVsNow.streetViewImages.length > 0 && (
               <div className="mt-5">
                 <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Street View — four headings
+                  Street View — front of subject
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div className={`grid gap-2 ${r.thenVsNow.streetViewImages.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2 md:grid-cols-4'}`}>
                   {r.thenVsNow.streetViewImages.map((sv, i) =>
                     sv.imageUrl ? (
                       <div key={i} className="space-y-1">

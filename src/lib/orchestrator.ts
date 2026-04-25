@@ -26,7 +26,7 @@ import {
   buildSubjectSatelliteUrl,
   buildContextSatelliteUrl,
 } from './images/google-satellite';
-import { buildStreetViewUrls, hasStreetView } from './images/streetview';
+import { buildStreetViewUrlsTowardParcel } from './images/streetview';
 import { fetchHistoricalAerials } from './images/historical-aerial';
 import { compareImagery } from './vision-compare';
 import { recordToLedger } from './ledger';
@@ -418,17 +418,17 @@ export async function runDiagnostic(input: {
   const closeSatUrl = buildSubjectSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
   const contextSatUrl = buildContextSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
 
-  // 5. Street View + historical NAIP (in parallel). Street View is metadata-
-  //    checked first to avoid showing a placeholder. Historical NAIP comes
-  //    from Planetary Computer; it's fine if it returns nothing outside the
-  //    continental US or where NAIP coverage is sparse.
-  const [svOk, historicalAerials] = await Promise.all([
-    hasStreetView(geo.lat, geo.lng),
+  // 5. Street View + historical NAIP (in parallel). Street View is now
+  //    heading-aware: we look up the pano location and aim back at the
+  //    parcel, so the AI gets the actual front of the subject instead of
+  //    4 cardinal-direction frames where 2-3 face nothing useful.
+  //    Historical NAIP comes from Planetary Computer; it's fine if it
+  //    returns nothing outside the continental US or where coverage is
+  //    sparse.
+  const [streetViewImages, historicalAerials] = await Promise.all([
+    buildStreetViewUrlsTowardParcel(geo.lat, geo.lng, { fov: 90 }),
     fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
   ]);
-  const streetViewImages = svOk
-    ? buildStreetViewUrls({ lat: geo.lat, lng: geo.lng, headings: [0, 90, 180, 270], fov: 90 })
-    : [];
 
   // 6. Vision comparison — now with THEN (historical NAIP) vs NOW frames.
   const features = adapterResult.extraFeatures;

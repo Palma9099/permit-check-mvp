@@ -40,10 +40,23 @@ async function queryEsriByPoint(
   lng: number,
   opts: EsriQueryOpts,
 ): Promise<ParcelPolygonResult | null> {
+  // Use a small envelope (~5m) instead of a strict point intersect. A strict
+  // point hits "no features" whenever the geocoded pin lands on a property
+  // line, the right-of-way, or just outside the polygon by a few feet — which
+  // is common for residential rooftop geocoding. The envelope tolerates that
+  // and still returns the single parcel containing the address.
+  const DELTA = 0.00005; // ~5m at FL latitudes
+  const envelope = {
+    xmin: lng - DELTA,
+    ymin: lat - DELTA,
+    xmax: lng + DELTA,
+    ymax: lat + DELTA,
+    spatialReference: { wkid: 4326 },
+  };
   try {
     const u = new URL(opts.baseUrl + '/query');
-    u.searchParams.set('geometry', JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }));
-    u.searchParams.set('geometryType', 'esriGeometryPoint');
+    u.searchParams.set('geometry', JSON.stringify(envelope));
+    u.searchParams.set('geometryType', 'esriGeometryEnvelope');
     u.searchParams.set('inSR', '4326');
     u.searchParams.set('outSR', '4326');
     u.searchParams.set('spatialRel', 'esriSpatialRelIntersects');
@@ -55,8 +68,15 @@ async function queryEsriByPoint(
     const timeout = setTimeout(() => ctrl.abort(), 8000);
     const res = await fetch(u.toString(), { signal: ctrl.signal, cache: 'no-store' });
     clearTimeout(timeout);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[parcel] ${opts.sourceLabel} HTTP ${res.status}`);
+      return null;
+    }
     const data: any = await res.json();
+    if (data?.error) {
+      console.error(`[parcel] ${opts.sourceLabel} error: ${JSON.stringify(data.error).slice(0, 200)}`);
+      return null;
+    }
     const rings: any[] | undefined = data?.features?.[0]?.geometry?.rings;
     if (!Array.isArray(rings) || rings.length === 0) return null;
     const ring = rings[0];
@@ -65,7 +85,8 @@ async function queryEsriByPoint(
     const latLngRing: ParcelRing = ring.map((pt: any[]) => [Number(pt[1]), Number(pt[0])]);
     if (latLngRing.some(([la, ln]) => !Number.isFinite(la) || !Number.isFinite(ln))) return null;
     return { polygon: latLngRing, source: opts.sourceLabel, isFallback: false };
-  } catch {
+  } catch (err: any) {
+    console.error(`[parcel] ${opts.sourceLabel} threw: ${String(err?.message ?? err).slice(0, 200)}`);
     return null;
   }
 }
@@ -77,7 +98,9 @@ async function queryEsriByPoint(
 
 const COUNTY_ENDPOINTS: Record<string, EsriQueryOpts> = {
   'miami-dade': {
-    baseUrl: 'https://services.arcgis.com/8Pc9XBTAsYuxx9Ny/arcgis/rest/services/MDC_Parcel/FeatureServer/0',
+    // Verified Apr 2026: this is the live Miami-Dade hosted parcel layer.
+    // The previous URL (MDC_Parcel/FeatureServer/0) returned 400 "Invalid URL".
+    baseUrl: 'https://services.arcgis.com/8Pc9XBTAsYuxx9Ny/arcgis/rest/services/ParcelsView_gdb/FeatureServer/0',
     sourceLabel: 'Miami-Dade GIS parcel layer',
   },
   'broward': {
@@ -98,12 +121,14 @@ const COUNTY_ENDPOINTS: Record<string, EsriQueryOpts> = {
   },
 };
 
-// Statewide fallback — Florida Department of Revenue publishes a rolled-up
-// parcel layer that covers all 67 counties.
-const STATEWIDE_ENDPOINT: EsriQueryOpts = {
-  baseUrl: 'https://services1.arcgis.com/KdZm1lEtbRM3E29W/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0',
-  sourceLabel: 'Florida DOR Statewide Cadastral',
-};
+// Statewide fallback. The previous URL is dead (returns 400 Invalid URL); none
+// of the obvious replacements (FDOR / FGDL / DEP) currently expose a public
+// unauthenticated parcel REST endpoint that I could verify. Set to null until
+// we identify a working statewide source — for now, addresses outside the
+// per-county list fall through directly to the synthetic box.
+// TODO: try the DOR FTP/zip layer mirrored to GeoPlatform, or a per-county
+// ArcGIS hub for each of the 62 remaining FL counties.
+const STATEWIDE_ENDPOINT: EsriQueryOpts | null = null;
 
 // ---------------------------------------------------------------------------
 // Fallback polygon — a small square around the point, in lat/lng.
@@ -111,8 +136,11 @@ const STATEWIDE_ENDPOINT: EsriQueryOpts = {
 // a "subject area" box when no real parcel polygon is retrievable.
 // ---------------------------------------------------------------------------
 
-function fallbackSquare(lat: number, lng: number, meters = 18): ParcelPolygonResult {
+function fallbackSquare(lat: number, lng: number, meters = 12): ParcelPolygonResult {
   // Rough degree-per-meter at Florida latitudes (~25–30°N).
+  // 12m half-side ≈ 80ft total — fits inside a typical urban Miami residential
+  // lot (50–75ft wide) without spilling into neighbors. The previous 18m
+  // half-side ≈ 120ft frequently overlapped two adjacent parcels.
   const dLat = meters / 111_320;                       // ~1 deg lat ≈ 111.32 km
   const dLng = meters / (111_320 * Math.cos((lat * Math.PI) / 180));
   const polygon: ParcelRing = [
@@ -124,7 +152,7 @@ function fallbackSquare(lat: number, lng: number, meters = 18): ParcelPolygonRes
   ];
   return {
     polygon,
-    source: 'synthesized ~120ft box around geocoded point (no parcel layer available)',
+    source: 'synthesized ~80ft box around geocoded point (no parcel layer available)',
     isFallback: true,
   };
 }
@@ -147,9 +175,11 @@ export async function fetchParcelPolygon(
     }
   }
 
-  // 2. Statewide.
-  const s = await queryEsriByPoint(lat, lng, STATEWIDE_ENDPOINT);
-  if (s) return s;
+  // 2. Statewide (currently null — see comment above).
+  if (STATEWIDE_ENDPOINT) {
+    const s = await queryEsriByPoint(lat, lng, STATEWIDE_ENDPOINT);
+    if (s) return s;
+  }
 
   // 3. Fallback box — so the red outline still shows up on the sat image.
   return fallbackSquare(lat, lng);
