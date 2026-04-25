@@ -202,11 +202,18 @@ export function pickThenNow(
 
 // Build a Google Street View Static API URL that renders a SPECIFIC pano
 // (current or historical) looking toward the parcel.
+//
+// PITCH: 5° up by default. FL residential lots commonly have a 5-6ft solid
+// privacy fence right at the property line. With pitch 0° (level) the
+// camera frame is half-fence half-house; with pitch 5° (slight up) the
+// fence sits at the bottom of the frame and the front facade dominates the
+// upper 2/3 — which is what the realtor actually wants to compare.
 export function buildHistoricalStaticUrl(
   panoId: string,
   heading: number,
   size: { w: number; h: number } = { w: 640, h: 480 },
   fov = 90,
+  pitch = 5,
 ): string | null {
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return null;
@@ -214,7 +221,7 @@ export function buildHistoricalStaticUrl(
   u.searchParams.set('size', `${size.w}x${size.h}`);
   u.searchParams.set('pano', panoId);
   u.searchParams.set('heading', heading.toFixed(1));
-  u.searchParams.set('pitch', '0');
+  u.searchParams.set('pitch', String(pitch));
   u.searchParams.set('fov', String(fov));
   u.searchParams.set('return_error_code', 'true');
   u.searchParams.set('key', key);

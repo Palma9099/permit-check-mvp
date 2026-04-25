@@ -27,6 +27,7 @@
 
 import type { StreetViewImage } from '../types';
 import { fetchMapillaryHistorical } from './mapillary';
+import { getStreetViewMeta } from './streetview';
 import {
   searchGooglePanoramas,
   clusterPanosBySide,
@@ -123,19 +124,48 @@ function angularDeltaDeg(a: number, b: number): number {
   return d > 180 ? 360 - d : d;
 }
 
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const Δφ = toRad(lat2 - lat1);
+  const Δλ = toRad(lng2 - lng1);
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
 async function fetchGoogleHistorical(
   parcelLat: number,
   parcelLng: number,
 ): Promise<HistoricalStreetViewResult | null> {
+  // Anchor: use the documented Street View metadata API to find the
+  // canonical "best fronting" pano position. This is the pano the CURRENT
+  // Street View block in the report uses, so anchoring historical timeline
+  // frames to its position guarantees THEN/NOW render from the same camera
+  // location and look at the same side of the property as current SV.
+  //
+  // For interior lots on cul-de-sacs (like 6704 SW 134 PL) Google's
+  // SingleImageSearch returns pano clusters on BOTH sides of the parcel —
+  // up the street and down the street — and the cluster-centroid heading
+  // can land the camera looking through a fence at the back yard. The
+  // anchor pano resolves that: only panos co-located with the anchor count.
+  const anchorMeta = await getStreetViewMeta(parcelLat, parcelLng, 25);
+  const anchorLat = anchorMeta.ok && anchorMeta.panoLat != null ? anchorMeta.panoLat : parcelLat;
+  const anchorLng = anchorMeta.ok && anchorMeta.panoLng != null ? anchorMeta.panoLng : parcelLng;
+  const haveAnchor = anchorMeta.ok && anchorMeta.panoLat != null;
+
   const panos = await searchGooglePanoramas(parcelLat, parcelLng);
   if (panos.length === 0) return null;
 
-  // Drop panos farther than 25m. At FL residential lot scale (typically
-  // 60-80ft frontages, 100-120ft depth), the Street View car driving down
-  // the fronting street puts the camera ~5-15m from the parcel center.
-  // Anything beyond 25m is almost always around the corner on a
-  // perpendicular street, not actually fronting the subject.
-  const close = panos.filter((p) => p.distM <= 25);
+  // Filter to panos co-located with the anchor (≤ 15m).
+  // Falls back to a 25m parcel-center radius if anchor wasn't found.
+  const close = panos.filter((p) => {
+    if (haveAnchor) {
+      return haversineM(p.panoLat, p.panoLng, anchorLat, anchorLng) <= 15;
+    }
+    return p.distM <= 25;
+  });
   if (close.length === 0) {
     return {
       then: null,
@@ -143,28 +173,26 @@ async function fetchGoogleHistorical(
       sides: [],
       allFrames: [],
       source: 'Google Street View',
-      failureReason: `Found ${panos.length} Google panos but none within 25m of the parcel.`,
+      failureReason: haveAnchor
+        ? `Found ${panos.length} Google panos but none co-located (within 15m) of the canonical fronting pano at ${anchorLat.toFixed(5)},${anchorLng.toFixed(5)}.`
+        : `Found ${panos.length} Google panos but none within 25m of the parcel.`,
     };
   }
 
-  // Cluster by approach bearing. Interior lots collapse to 1 cluster;
-  // corner lots keep 2.
-  const allClusters = clusterPanosBySide(close);
+  // Heading: bearing from the anchor pano to the parcel center. This is the
+  // same heading the current SV block uses, so historical THEN/NOW frames
+  // get rendered with the EXACT geometry as the current frame — same side
+  // of the lot, same angle, same fence position, same view of the front.
+  // (Each pano has a slightly different position but they're all within
+  // 15m of the anchor, so the bearing-to-parcel from any of them is within
+  // ~5° of this anchor heading — close enough for clean comparison.)
+  const sharedHeading = bearingFromTo(anchorLat, anchorLng, parcelLat, parcelLng);
 
-  // For interior lots we should only emit ONE side. Drop secondary clusters
-  // unless they have at least 3 panos AND a centroid that's clearly off-axis
-  // from the primary (>= 60° apart). Otherwise they're likely artifact
-  // groupings of one or two stragglers near the property edge.
-  const primaryCluster = allClusters[0];
-  const primaryClusterHeading = primaryCluster ? clusterHeadingFromCentroid(primaryCluster, parcelLat, parcelLng) : 0;
-  const clusters = primaryCluster ? [primaryCluster] : [];
-  for (const c of allClusters.slice(1)) {
-    if (c.length < 3) continue;
-    const ch = clusterHeadingFromCentroid(c, parcelLat, parcelLng);
-    const delta = angularDeltaDeg(ch, primaryClusterHeading);
-    if (delta < 60) continue;
-    clusters.push(c);
-  }
+  // Cluster only for the rare corner lot where panos beyond 15m of the
+  // anchor genuinely sit on a perpendicular fronting street. With our 15m
+  // anchor filter we usually collapse to 1 cluster — that's correct for
+  // 99% of FL residential lots.
+  const clusters = clusterPanosBySide(close);
 
   // For each surviving cluster, pick best Then/Now pair (≥3 year span).
   const sidePairs: HistoricalStreetViewSidePair[] = [];
@@ -173,25 +201,21 @@ async function fetchGoogleHistorical(
   clusters.forEach((cluster, idx) => {
     if (cluster.length === 0) return;
     const sideLabel = idx === 0 ? 'Primary front' : `Side ${idx + 1}`;
-    // SHARED heading for every frame in this cluster: subject sits at the
-    // same angular position in THEN and NOW, so the only difference is the
-    // property itself.
-    const clusterHeading = clusterHeadingFromCentroid(cluster, parcelLat, parcelLng);
     const { then, now } = pickThenNow(cluster, 3);
 
-    const thenFrame = then ? googlePanoToFrame(then, clusterHeading, sideLabel, 'then') : null;
-    const nowFrame = now ? googlePanoToFrame(now, clusterHeading, sideLabel, 'now') : null;
+    const thenFrame = then ? googlePanoToFrame(then, sharedHeading, sideLabel, 'then') : null;
+    const nowFrame = now ? googlePanoToFrame(now, sharedHeading, sideLabel, 'now') : null;
 
     sidePairs.push({
       sideLabel,
-      approxBearingFromCenter: clusterHeading,
+      approxBearingFromCenter: sharedHeading,
       then: thenFrame,
       now: nowFrame,
     });
 
     // Add every dated pano in the cluster to allFrames for completeness.
     for (const p of cluster) {
-      const f = googlePanoToFrame(p, clusterHeading, sideLabel, 'now');
+      const f = googlePanoToFrame(p, sharedHeading, sideLabel, 'now');
       if (f) allFrames.push(f);
     }
   });
