@@ -98,13 +98,14 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   // sharper Google satellite for NOW). The AI vision call still receives the
   // NAIP NOW frame separately for like-for-like change detection.
 
-  // Mapillary historical Street View pair, when available.
-  const thenSvBufPromise = report.thenVsNow?.historicalStreetView?.then?.imageUrl
-    ? fetchImageBuffer(report.thenVsNow.historicalStreetView.then.imageUrl)
-    : Promise.resolve(null);
-  const nowSvBufPromise = report.thenVsNow?.historicalStreetView?.now?.imageUrl
-    ? fetchImageBuffer(report.thenVsNow.historicalStreetView.now.imageUrl)
-    : Promise.resolve(null);
+  // Mapillary historical Street View — one Then/Now pair per side (corner
+  // lots have 2+). Pre-fetch all of them in parallel.
+  const sideThenBufPromises = (report.thenVsNow?.historicalStreetView?.sides ?? []).map((s) =>
+    s.then?.imageUrl ? fetchImageBuffer(s.then.imageUrl) : Promise.resolve(null),
+  );
+  const sideNowBufPromises = (report.thenVsNow?.historicalStreetView?.sides ?? []).map((s) =>
+    s.now?.imageUrl ? fetchImageBuffer(s.now.imageUrl) : Promise.resolve(null),
+  );
 
   const doc = new PDFDocument({
     size: 'LETTER',
@@ -294,40 +295,52 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
       label: sv.label,
       buf: svBufs[i],
     })).filter((x) => x.buf);
-    // Mapillary Street View THEN/NOW pair (if available) — render BEFORE
-    // the current-only Google Street View so the historical comparison is
-    // the visual hero.
-    const thenSvBuf = await thenSvBufPromise;
-    const nowSvBuf = await nowSvBufPromise;
-    const thenSvFrame = report.thenVsNow.historicalStreetView?.then ?? null;
-    const nowSvFrame = report.thenVsNow.historicalStreetView?.now ?? null;
-    if (thenSvBuf && nowSvBuf && thenSvFrame && nowSvFrame) {
+    // Mapillary Street View THEN/NOW pairs — one row per fronting street.
+    const sideThenBufs = await Promise.all(sideThenBufPromises);
+    const sideNowBufs = await Promise.all(sideNowBufPromises);
+    const allSides = report.thenVsNow.historicalStreetView?.sides ?? [];
+    const usableSides = allSides
+      .map((side, idx) => ({ side, thenBuf: sideThenBufs[idx], nowBuf: sideNowBufs[idx] }))
+      .filter((x) => x.thenBuf && x.nowBuf && x.side.then && x.side.now);
+
+    if (usableSides.length > 0) {
       ensureSpace(doc, 240);
+      const heading = usableSides.length > 1
+        ? `THEN vs NOW — STREET VIEW (MAPILLARY · ${usableSides.length} SIDES)`
+        : 'THEN vs NOW — STREET VIEW (MAPILLARY)';
       doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
-        .text('THEN vs NOW — STREET VIEW (MAPILLARY)', 56, doc.y, { characterSpacing: 1 });
+        .text(heading, 56, doc.y, { characterSpacing: 1 });
       doc.moveDown(0.3);
       const svPairGap = 12;
       const svPairW = Math.floor((contentWidth - svPairGap) / 2);
-      const svPairY = doc.y;
-      let svPairMaxH = svPairY;
-      try {
-        doc.image(thenSvBuf, 56, svPairY, { width: svPairW });
-        svPairMaxH = Math.max(svPairMaxH, doc.y);
-      } catch { /* ignore */ }
-      try {
-        doc.image(nowSvBuf, 56 + svPairW + svPairGap, svPairY, { width: svPairW });
-        svPairMaxH = Math.max(svPairMaxH, doc.y);
-      } catch { /* ignore */ }
-      doc.y = svPairMaxH;
-      doc.moveDown(0.2);
-      doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(COLORS.inkMuted)
-        .text(
-          `Left: ${thenSvFrame.captureDate.slice(0, 10)} (${thenSvFrame.captureYear}).  Right: ${nowSvFrame.captureDate.slice(0, 10)} (${nowSvFrame.captureYear}).  Compare paint, doors, gates, garage, windows.  Imagery: Mapillary.`,
-          56,
-          doc.y,
-          { width: contentWidth },
-        );
-      doc.moveDown(0.5);
+      for (const { side, thenBuf, nowBuf } of usableSides) {
+        ensureSpace(doc, 200);
+        if (usableSides.length > 1) {
+          doc.font('Helvetica-Bold').fontSize(8).fillColor(COLORS.inkMuted)
+            .text(side.sideLabel.toUpperCase(), 56, doc.y, { characterSpacing: 1 });
+          doc.moveDown(0.2);
+        }
+        const svPairY = doc.y;
+        let svPairMaxH = svPairY;
+        try {
+          doc.image(thenBuf as Buffer, 56, svPairY, { width: svPairW });
+          svPairMaxH = Math.max(svPairMaxH, doc.y);
+        } catch { /* ignore */ }
+        try {
+          doc.image(nowBuf as Buffer, 56 + svPairW + svPairGap, svPairY, { width: svPairW });
+          svPairMaxH = Math.max(svPairMaxH, doc.y);
+        } catch { /* ignore */ }
+        doc.y = svPairMaxH;
+        doc.moveDown(0.2);
+        doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(COLORS.inkMuted)
+          .text(
+            `Left: ${side.then!.captureDate.slice(0, 10)} (${side.then!.captureYear}).  Right: ${side.now!.captureDate.slice(0, 10)} (${side.now!.captureYear}).  Imagery: Mapillary.`,
+            56,
+            doc.y,
+            { width: contentWidth },
+          );
+        doc.moveDown(0.5);
+      }
     } else if (report.thenVsNow.historicalStreetView?.failureReason) {
       doc.font('Helvetica-Oblique').fontSize(8.5).fillColor(COLORS.inkMuted)
         .text(

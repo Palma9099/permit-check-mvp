@@ -117,13 +117,23 @@ export async function hasStreetView(lat: number, lng: number, radiusM = 50): Pro
   return meta.ok;
 }
 
-// Build heading-aware Street View URLs that aim at the parcel center.
-//   - Calls metadata to find the actual pano location.
-//   - Computes bearing pano → parcel.
-//   - Returns 2 images: primary front view + a +25° offset for parallax.
+// Build heading-aware Street View URLs that aim at the parcel from EVERY
+// street the parcel touches. Critical for corner lots — there's a Street
+// View pano on each fronting street, each facing a different side, and a
+// single-pano lookup misses the back/side exposure entirely.
 //
-// On any failure (no pano, missing key, missing pano location), falls back
-// to the old 4-cardinal grid so the report still shows something.
+// Approach:
+//   1. Sample metadata at the parcel center AND at 4 offsets (~30m N/E/S/W).
+//      Each offset hops the search closer to a different street, so corner
+//      properties surface multiple unique panos.
+//   2. Dedupe by pano_id. Drop any pano farther than ~60m from the parcel
+//      (those are panos on the next block, not relevant).
+//   3. For each unique pano, compute bearing back to parcel and emit one
+//      front-facing frame.
+//   4. For the closest pano, also emit a +25° angled frame for parallax.
+//   5. Cap at 4 frames total (one per side of a corner lot is plenty).
+//
+// Falls back to the old 4-cardinal grid only when metadata returns nothing.
 export async function buildStreetViewUrlsTowardParcel(
   parcelLat: number,
   parcelLng: number,
@@ -132,37 +142,122 @@ export async function buildStreetViewUrlsTowardParcel(
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return [];
 
-  const meta = await getStreetViewMeta(parcelLat, parcelLng, 80);
-  if (!meta.ok || meta.panoLat == null || meta.panoLng == null) {
-    // Fall back to the old grid so the realtor at least sees something.
+  // Sample at the center plus 4 offsets ~30m in each cardinal direction.
+  // 30m ≈ 0.00027° lat, 0.0003° lng at FL latitudes — far enough to push
+  // the metadata "closest pano" search toward a different street on a
+  // corner lot, close enough to stay near the subject.
+  const dLat = 30 / 111_320;
+  const dLng = 30 / (111_320 * Math.cos((parcelLat * Math.PI) / 180));
+  const samplePoints: Array<{ lat: number; lng: number }> = [
+    { lat: parcelLat, lng: parcelLng },
+    { lat: parcelLat + dLat, lng: parcelLng },          // toward North
+    { lat: parcelLat - dLat, lng: parcelLng },          // toward South
+    { lat: parcelLat, lng: parcelLng + dLng },          // toward East
+    { lat: parcelLat, lng: parcelLng - dLng },          // toward West
+  ];
+
+  const metas = await Promise.all(
+    samplePoints.map((p) => getStreetViewMeta(p.lat, p.lng, 60)),
+  );
+
+  // Compute distance from each pano to the parcel, dedupe by panoId,
+  // and keep panos within 60m. (PanoId comes back via the metadata
+  // endpoint when Google returns OK; on the rare miss we fall back.)
+  type Cand = {
+    panoLat: number;
+    panoLng: number;
+    distM: number;
+    bearing: number;
+    panoKey: string;
+  };
+  const cands: Cand[] = [];
+  for (const m of metas) {
+    if (!m.ok || m.panoLat == null || m.panoLng == null) continue;
+    const distM = haversineMeters(m.panoLat, m.panoLng, parcelLat, parcelLng);
+    if (distM > 60) continue;
+    const bearing = bearingDeg(m.panoLat, m.panoLng, parcelLat, parcelLng);
+    // Use coarse 5m grid as a dedupe key — distinct panos on different
+    // streets will land in different cells, the same pano queried from 5
+    // angles will land in the same cell.
+    const panoKey = `${Math.round(m.panoLat * 20000)}|${Math.round(m.panoLng * 20000)}`;
+    if (cands.some((c) => c.panoKey === panoKey)) continue;
+    cands.push({ panoLat: m.panoLat, panoLng: m.panoLng, distM, bearing, panoKey });
+  }
+
+  if (cands.length === 0) {
     return buildStreetViewUrls({ lat: parcelLat, lng: parcelLng });
   }
 
-  const front = bearingDeg(meta.panoLat, meta.panoLng, parcelLat, parcelLng);
-  const offset = opts?.offsetDeg ?? 25;
-  const headings = [front, (front + offset + 360) % 360];
+  // Sort by distance to parcel — closest pano first (the "primary" front).
+  cands.sort((a, b) => a.distM - b.distM);
+
+  // For corner lots we typically end up with 2 distinct panos. Cap at 4
+  // total frames (front + angled-front for the closest, then one front
+  // shot per additional unique pano).
   const size = opts?.size ?? { w: 640, h: 480 };
   const fov = opts?.fov ?? 90;
+  const offset = opts?.offsetDeg ?? 25;
 
-  return headings.map((h, i) => {
-    const u = new URL('https://maps.googleapis.com/maps/api/streetview');
-    u.searchParams.set('size', `${size.w}x${size.h}`);
-    // Use the pano location (not the parcel) so heading is interpreted from
-    // the actual camera point. Otherwise Google snaps to a different pano.
-    u.searchParams.set('location', `${meta.panoLat},${meta.panoLng}`);
-    u.searchParams.set('heading', h.toFixed(1));
-    u.searchParams.set('pitch', '0');
-    u.searchParams.set('fov', String(fov));
-    u.searchParams.set('source', 'outdoor');
-    u.searchParams.set('return_error_code', 'true');
-    u.searchParams.set('key', key);
-    const label = i === 0
-      ? `Street View — front of subject (heading ${h.toFixed(0)}°)`
-      : `Street View — angled (heading ${h.toFixed(0)}°, +${offset}° offset)`;
-    return {
-      heading: Math.round(h),
-      label,
-      imageUrl: u.toString(),
-    };
+  const frames: StreetViewImage[] = [];
+  cands.slice(0, 3).forEach((c, i) => {
+    // Primary front frame for this pano.
+    frames.push(buildSv({
+      key, size, fov,
+      panoLat: c.panoLat, panoLng: c.panoLng,
+      heading: c.bearing,
+      label: i === 0
+        ? `Street View — primary front (heading ${c.bearing.toFixed(0)}°)`
+        : `Street View — side ${i + 1} (heading ${c.bearing.toFixed(0)}°)`,
+    }));
+    // Add an angled frame ONLY for the closest pano, so we don't blow up
+    // the AI prompt with redundant near-duplicate views.
+    if (i === 0 && frames.length < 4) {
+      const angled = (c.bearing + offset + 360) % 360;
+      frames.push(buildSv({
+        key, size, fov,
+        panoLat: c.panoLat, panoLng: c.panoLng,
+        heading: angled,
+        label: `Street View — angled (+${offset}°, heading ${angled.toFixed(0)}°)`,
+      }));
+    }
   });
+
+  return frames.slice(0, 4);
+}
+
+// Haversine — meters between two lat/lng pairs.
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const Δφ = toRad(lat2 - lat1);
+  const Δλ = toRad(lng2 - lng1);
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function buildSv(opts: {
+  key: string;
+  size: { w: number; h: number };
+  fov: number;
+  panoLat: number;
+  panoLng: number;
+  heading: number;
+  label: string;
+}): StreetViewImage {
+  const u = new URL('https://maps.googleapis.com/maps/api/streetview');
+  u.searchParams.set('size', `${opts.size.w}x${opts.size.h}`);
+  u.searchParams.set('location', `${opts.panoLat},${opts.panoLng}`);
+  u.searchParams.set('heading', opts.heading.toFixed(1));
+  u.searchParams.set('pitch', '0');
+  u.searchParams.set('fov', String(opts.fov));
+  u.searchParams.set('source', 'outdoor');
+  u.searchParams.set('return_error_code', 'true');
+  u.searchParams.set('key', opts.key);
+  return {
+    heading: Math.round(opts.heading),
+    label: opts.label,
+    imageUrl: u.toString(),
+  };
 }

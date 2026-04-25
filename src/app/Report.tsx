@@ -218,43 +218,56 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </div>
             )}
 
-            {/* Street View — Then vs Now (Mapillary historical paired with
-                current). Only renders when Mapillary returned a usable
-                historical pano. */}
-            {r.thenVsNow.historicalStreetView?.then && r.thenVsNow.historicalStreetView?.now && (
-              <div className="mt-5">
-                <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Then vs Now — Street View (Mapillary)
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
-                      Then · {r.thenVsNow.historicalStreetView.then.captureDate.slice(0, 10)}
-                    </div>
-                    <img
-                      src={r.thenVsNow.historicalStreetView.then.imageUrl}
-                      alt={`Mapillary Street View, ${r.thenVsNow.historicalStreetView.then.captureYear}`}
-                      className="w-full rounded-md border border-black/10"
-                      loading="lazy"
-                    />
+            {/* Street View — Then vs Now (Mapillary), one row per fronting
+                street so corner lots show all sides. */}
+            {(() => {
+              const sides = r.thenVsNow.historicalStreetView?.sides ?? [];
+              const usableSides = sides.filter((s) => s.then && s.now);
+              if (usableSides.length === 0) return null;
+              return (
+                <div className="mt-5">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                    Then vs Now — Street View (Mapillary){usableSides.length > 1 ? ` · ${usableSides.length} sides` : ''}
                   </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
-                      Now · {r.thenVsNow.historicalStreetView.now.captureDate.slice(0, 10)}
+                  {usableSides.map((side, sIdx) => (
+                    <div key={sIdx} className={sIdx > 0 ? 'mt-4' : ''}>
+                      {usableSides.length > 1 && (
+                        <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-2">
+                          {side.sideLabel}
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+                            Then · {side.then!.captureDate.slice(0, 10)}
+                          </div>
+                          <img
+                            src={side.then!.imageUrl}
+                            alt={`Mapillary Street View, ${side.then!.captureYear}`}
+                            className="w-full rounded-md border border-black/10"
+                            loading="lazy"
+                          />
+                        </div>
+                        <div>
+                          <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
+                            Now · {side.now!.captureDate.slice(0, 10)}
+                          </div>
+                          <img
+                            src={side.now!.imageUrl}
+                            alt={`Latest Mapillary Street View, ${side.now!.captureYear}`}
+                            className="w-full rounded-md border border-black/10"
+                            loading="lazy"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <img
-                      src={r.thenVsNow.historicalStreetView.now.imageUrl}
-                      alt={`Latest Mapillary Street View, ${r.thenVsNow.historicalStreetView.now.captureYear}`}
-                      className="w-full rounded-md border border-black/10"
-                      loading="lazy"
-                    />
-                  </div>
+                  ))}
+                  <p className="text-[11px] text-ink-muted mt-2">
+                    Compare facade paint, front door, gates, garage door, windows on each side.
+                  </p>
                 </div>
-                <p className="text-[11px] text-ink-muted mt-2">
-                  Compare facade paint, front door, gates, garage door, windows.
-                </p>
-              </div>
-            )}
+              );
+            })()}
             {r.thenVsNow.historicalStreetView && !r.thenVsNow.historicalStreetView.then && r.thenVsNow.historicalStreetView.failureReason && (
               <p className="text-xs text-ink-muted italic mt-3">
                 Historical Street View unavailable: {r.thenVsNow.historicalStreetView.failureReason}

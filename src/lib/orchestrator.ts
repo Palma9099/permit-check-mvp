@@ -453,8 +453,8 @@ export async function runDiagnostic(input: {
     streetViewImages,
     thenAerial: historicalAerials.then,
     nowAerial: historicalAerials.now,
-    thenStreetView: historicalStreetView.then,
-    nowStreetView: historicalStreetView.now,
+    // Pass every Mapillary side pair so corner properties get full coverage.
+    streetViewSides: historicalStreetView.sides,
     permits,
     features,
     yearBuilt,

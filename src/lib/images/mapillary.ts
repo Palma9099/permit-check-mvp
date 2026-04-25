@@ -42,10 +42,22 @@ export interface MapillaryImage {
   alignmentDeg: number;     // 0-180, how off-axis camera was from facing parcel (0 = perfect)
 }
 
-export interface MapillaryHistoricalResult {
+// A single street's worth of Mapillary coverage: earliest + latest pano
+// captured FROM approximately the same camera location (e.g. "the front
+// street view"). For a corner lot we typically get 2 of these — one per
+// fronting street.
+export interface MapillarySidePair {
+  sideLabel: string;                  // "Primary front", "Side 2", etc.
+  approxBearingFromCenter: number;    // average bearing the panos approached the parcel from
   then: MapillaryImage | null;
   now: MapillaryImage | null;
-  allFrames: MapillaryImage[];     // all qualifying frames, oldest → newest
+}
+
+export interface MapillaryHistoricalResult {
+  then: MapillaryImage | null;        // earliest across ALL sides — back-compat
+  now: MapillaryImage | null;         // latest across ALL sides — back-compat
+  sides: MapillarySidePair[];         // grouped by camera-location cluster (one per street)
+  allFrames: MapillaryImage[];        // every qualifying frame, oldest → newest
   source: string;
   failureReason: string | null;
 }
@@ -142,6 +154,7 @@ export async function fetchMapillaryHistorical(
     return {
       then: null,
       now: null,
+      sides: [],
       allFrames: [],
       source,
       failureReason: 'MAPILLARY_TOKEN not set on server — historical Street View skipped.',
@@ -156,6 +169,7 @@ export async function fetchMapillaryHistorical(
     return {
       then: null,
       now: null,
+      sides: [],
       allFrames: [],
       source,
       failureReason: 'No Mapillary panos within 50m of this parcel.',
@@ -195,6 +209,7 @@ export async function fetchMapillaryHistorical(
     return {
       then: null,
       now: null,
+      sides: [],
       allFrames: [],
       source,
       failureReason:
@@ -202,28 +217,90 @@ export async function fetchMapillaryHistorical(
     };
   }
 
-  const earliest = scored[0];
-  const latest = scored[scored.length - 1];
-
-  // Don't return a degenerate then==now pair. If only one usable frame
-  // exists, surface it as "now" and leave then null.
-  if (earliest.id === latest.id) {
-    return { then: null, now: latest, allFrames: scored, source, failureReason: null };
+  // Group by approximate camera bearing-toward-parcel. Two panos coming
+  // from the same direction (within ~50°) are most likely the same street;
+  // panos coming from very different directions (e.g. north vs east) are
+  // different streets — i.e. a corner lot's two frontages.
+  const SIDE_BEARING_TOLERANCE = 50;
+  type SideBucket = { centerBearing: number; frames: MapillaryImage[] };
+  const sides: SideBucket[] = [];
+  for (const f of scored) {
+    const existing = sides.find((s) => angularDelta(s.centerBearing, f.bearingToSubject) <= SIDE_BEARING_TOLERANCE);
+    if (existing) {
+      existing.frames.push(f);
+      // Roll the center bearing toward the new frame so the bucket tracks
+      // the average direction.
+      existing.centerBearing = (existing.centerBearing + f.bearingToSubject) / 2;
+    } else {
+      sides.push({ centerBearing: f.bearingToSubject, frames: [f] });
+    }
   }
 
-  // Avoid noise: only call something a real "Then" if it's at least
-  // 2 calendar years before the latest capture. Otherwise the comparison
-  // is just two photos from the same drive-by.
-  const yearsApart = latest.capturedYear - earliest.capturedYear;
-  if (yearsApart < 2) {
+  // Build a Then/Now pair per side. Sort sides by frame count (most-covered
+  // street first → primary), then label them.
+  sides.sort((a, b) => b.frames.length - a.frames.length);
+
+  const sidePairs: MapillarySidePair[] = sides.map((s, i) => {
+    s.frames.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+    const earliest = s.frames[0];
+    const latest = s.frames[s.frames.length - 1];
+    const sameId = earliest.id === latest.id;
+    const yearsApart = latest.capturedYear - earliest.capturedYear;
+    const then = sameId || yearsApart < 2 ? null : earliest;
+    return {
+      sideLabel: i === 0 ? 'Primary front' : `Side ${i + 1}`,
+      approxBearingFromCenter: s.centerBearing,
+      then,
+      now: latest,
+    };
+  });
+
+  // Back-compat fields: pick the side with the best then/now pair (longest
+  // span between THEN and NOW), or just the most-covered side if none has
+  // a real THEN.
+  const sidesWithThen = sidePairs.filter((s) => s.then);
+  let primary: MapillarySidePair | null;
+  if (sidesWithThen.length > 0) {
+    sidesWithThen.sort((a, b) => {
+      const yA = (a.now?.capturedYear ?? 0) - (a.then?.capturedYear ?? 0);
+      const yB = (b.now?.capturedYear ?? 0) - (b.then?.capturedYear ?? 0);
+      return yB - yA;
+    });
+    primary = sidesWithThen[0];
+  } else {
+    primary = sidePairs[0] ?? null;
+  }
+
+  if (!primary) {
     return {
       then: null,
-      now: latest,
+      now: null,
+      sides: sidePairs,
       allFrames: scored,
       source,
-      failureReason: `Only ${yearsApart} year(s) between earliest and latest Mapillary capture — too close for a meaningful Then-vs-Now.`,
+      failureReason: 'No usable Mapillary side after grouping.',
     };
   }
 
-  return { then: earliest, now: latest, allFrames: scored, source, failureReason: null };
+  if (!primary.then) {
+    return {
+      then: null,
+      now: primary.now,
+      sides: sidePairs,
+      allFrames: scored,
+      source,
+      failureReason: primary.now
+        ? `Only one Mapillary capture at this location (${primary.now.capturedYear}) — no THEN frame to compare.`
+        : 'No usable Mapillary frames.',
+    };
+  }
+
+  return {
+    then: primary.then,
+    now: primary.now,
+    sides: sidePairs,
+    allFrames: scored,
+    source,
+    failureReason: null,
+  };
 }

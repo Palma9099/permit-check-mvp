@@ -269,11 +269,18 @@ function parseResult(text: string): { summary: string; observations: VisionObser
 export async function compareImagery(opts: {
   closeSatelliteUrl: string | null;            // NOW — Google Static Maps, parcel polygon in red
   contextSatelliteUrl: string | null;          // NOW — wider block-context Google satellite
-  streetViewImages?: StreetViewImage[];        // NOW — current Google Street View
+  streetViewImages?: StreetViewImage[];        // NOW — current Google Street View (multi-side aware)
   thenAerial?: HistoricalAerialFrame | null;   // THEN — historical NAIP, no overlay
   nowAerial?: HistoricalAerialFrame | null;    // NOW — latest NAIP, no overlay
-  thenStreetView?: HistoricalStreetViewFrameType | null;  // THEN — historical Mapillary Street View
-  nowStreetView?: HistoricalStreetViewFrameType | null;   // NOW — latest Mapillary Street View
+  // Per-side Mapillary historical pairs. For typical lots there's 1 side;
+  // for corner lots there are 2+. Each side is the same physical street
+  // captured at different dates. The AI gets to see all pairs and call out
+  // facade changes per side.
+  streetViewSides?: Array<{
+    sideLabel: string;
+    then: HistoricalStreetViewFrameType | null;
+    now: HistoricalStreetViewFrameType | null;
+  }>;
   permits: Permit[];
   features: ExtraFeature[];
   yearBuilt: number | null;
@@ -307,26 +314,34 @@ export async function compareImagery(opts: {
 
   const streetViewList = (opts.streetViewImages ?? []).filter((s) => s.imageUrl);
 
+  // Flatten the multi-side Mapillary historical pairs into a parallel list of
+  // {label, then, now} so we can fetch and reference them by index.
+  const sides = (opts.streetViewSides ?? []).filter(
+    (s) => s.then?.imageUrl || s.now?.imageUrl,
+  );
+
   // Fetch all images in parallel. Some may fail (historical NAIP can 404 for
   // out-of-coverage parcels, Mapillary may have no historical pano for the
   // street) — that's fine, we degrade gracefully.
-  const [
-    thenAerialB64,
-    nowAerialB64,
-    closeB64,
-    contextB64,
-    thenStreetViewB64,
-    nowStreetViewB64,
-    ...streetViewB64
-  ] = await Promise.all([
+  const sideThenPromises = sides.map((s) =>
+    s.then?.imageUrl ? fetchImageBase64(s.then.imageUrl) : Promise.resolve(null),
+  );
+  const sideNowPromises = sides.map((s) =>
+    s.now?.imageUrl ? fetchImageBase64(s.now.imageUrl) : Promise.resolve(null),
+  );
+
+  const fixed = await Promise.all([
     opts.thenAerial?.imageUrl ? fetchImageBase64(opts.thenAerial.imageUrl) : Promise.resolve(null),
     opts.nowAerial?.imageUrl ? fetchImageBase64(opts.nowAerial.imageUrl) : Promise.resolve(null),
     fetchImageBase64(opts.closeSatelliteUrl),
     opts.contextSatelliteUrl ? fetchImageBase64(opts.contextSatelliteUrl) : Promise.resolve(null),
-    opts.thenStreetView?.imageUrl ? fetchImageBase64(opts.thenStreetView.imageUrl) : Promise.resolve(null),
-    opts.nowStreetView?.imageUrl ? fetchImageBase64(opts.nowStreetView.imageUrl) : Promise.resolve(null),
-    ...streetViewList.map((s) => fetchImageBase64(s.imageUrl as string)),
   ]);
+  const [thenAerialB64, nowAerialB64, closeB64, contextB64] = fixed;
+  const sideThenB64 = await Promise.all(sideThenPromises);
+  const sideNowB64 = await Promise.all(sideNowPromises);
+  const streetViewB64 = await Promise.all(
+    streetViewList.map((s) => fetchImageBase64(s.imageUrl as string)),
+  );
 
   if (!closeB64) {
     console.error(
@@ -343,7 +358,7 @@ export async function compareImagery(opts: {
     };
   }
   console.log(
-    `[vision-compare] fetched all imagery, calling Anthropic. then=${opts.thenAerial?.captureYear ?? 'none'} now=${opts.nowAerial?.captureYear ?? 'current'} streetViews=${streetViewB64.filter(Boolean).length}`,
+    `[vision-compare] fetched all imagery, calling Anthropic. aerial then=${opts.thenAerial?.captureYear ?? 'none'} now=${opts.nowAerial?.captureYear ?? 'current'} | sv-current=${streetViewB64.filter(Boolean).length} sv-historical-sides=${sides.length}`,
   );
 
   const thenYear = opts.thenAerial?.captureYear ?? null;
@@ -406,31 +421,37 @@ export async function compareImagery(opts: {
     });
   }
 
-  // ---- THEN Street View (Mapillary historical) ----
-  if (thenStreetViewB64 && opts.thenStreetView) {
-    imageCounter++;
-    userContent.push({
-      type: 'text',
-      text: `IMAGE ${imageCounter} — THEN STREET VIEW (Mapillary), captured ${opts.thenStreetView.captureDate.slice(0, 10)} (${opts.thenStreetView.captureYear}). Ground-level historical view of the front of the subject. This is the THEN reference for facade-level comparison: paint color, front door, perimeter gate, garage door, windows, fence material, ground-floor cladding. Compare against the NOW Street View frame coming next.`,
-    });
-    userContent.push({
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/jpeg', data: thenStreetViewB64 },
-    });
-  }
-
-  // ---- NOW Street View (Mapillary latest) ----
-  if (nowStreetViewB64 && opts.nowStreetView) {
-    imageCounter++;
-    userContent.push({
-      type: 'text',
-      text: `IMAGE ${imageCounter} — NOW STREET VIEW (Mapillary), captured ${opts.nowStreetView.captureDate.slice(0, 10)} (${opts.nowStreetView.captureYear}). Latest ground-level view of the same property. Compare paint, doors, gates, garage, windows, fence vs THEN. Source-matched with the THEN frame so any facade change you call out should be a real change, not a provider artifact.`,
-    });
-    userContent.push({
-      type: 'image',
-      source: { type: 'base64', media_type: 'image/jpeg', data: nowStreetViewB64 },
-    });
-  }
+  // ---- THEN/NOW Street View (Mapillary historical), one pair per side ----
+  // For corner lots we get multiple sides — emit a labeled THEN/NOW pair
+  // for each so the AI can flag facade changes per street independently.
+  sides.forEach((side, idx) => {
+    const tB64 = sideThenB64[idx];
+    const nB64 = sideNowB64[idx];
+    const tFrame = side.then;
+    const nFrame = side.now;
+    if (tB64 && tFrame) {
+      imageCounter++;
+      userContent.push({
+        type: 'text',
+        text: `IMAGE ${imageCounter} — THEN STREET VIEW (Mapillary, ${side.sideLabel}), captured ${tFrame.captureDate.slice(0, 10)} (${tFrame.captureYear}). Historical ground-level view of the ${side.sideLabel.toLowerCase()} of the subject. Use this as the THEN reference for facade-level comparison on this side: paint color, front door, perimeter gate, garage door, windows, fence material. Compare against the matching NOW frame.`,
+      });
+      userContent.push({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: tB64 },
+      });
+    }
+    if (nB64 && nFrame) {
+      imageCounter++;
+      userContent.push({
+        type: 'text',
+        text: `IMAGE ${imageCounter} — NOW STREET VIEW (Mapillary, ${side.sideLabel}), captured ${nFrame.captureDate.slice(0, 10)} (${nFrame.captureYear}). Latest ground-level view of the same side. Compare paint, doors, gates, garage, windows, fence vs the THEN frame for this side. Source-matched with THEN so any change you call out should be real, not a provider artifact.`,
+      });
+      userContent.push({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: nB64 },
+      });
+    }
+  });
 
   // ---- NOW Street View (current Google, heading-aware) ----
   streetViewB64.forEach((b64, i) => {

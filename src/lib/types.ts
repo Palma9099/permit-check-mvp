@@ -106,9 +106,17 @@ export interface HistoricalStreetViewFrameType {
   label: string;
 }
 
+export interface HistoricalStreetViewSide {
+  sideLabel: string;
+  approxBearingFromCenter: number;
+  then: HistoricalStreetViewFrameType | null;
+  now: HistoricalStreetViewFrameType | null;
+}
+
 export interface HistoricalStreetViewPair {
   then: HistoricalStreetViewFrameType | null;
   now: HistoricalStreetViewFrameType | null;
+  sides: HistoricalStreetViewSide[];
   allFrames: HistoricalStreetViewFrameType[];
   source: string | null;
   failureReason: string | null;
