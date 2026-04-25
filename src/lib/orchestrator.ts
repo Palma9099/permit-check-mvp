@@ -563,8 +563,9 @@ export async function runDiagnostic(input: {
     );
   }
   if (historicalStreetView.then && historicalStreetView.now) {
+    const src = historicalStreetView.source ?? 'Historical Street View';
     dataSources.push(
-      `Mapillary Graph API for historical Street View — compared ${historicalStreetView.then.captureYear} vs ${historicalStreetView.now.captureYear}`,
+      `${src} — compared ${historicalStreetView.then.captureYear} vs ${historicalStreetView.now.captureYear}`,
     );
   }
 

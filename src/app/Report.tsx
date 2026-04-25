@@ -227,7 +227,9 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               return (
                 <div className="mt-5">
                   <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                    Then vs Now — Street View (Mapillary){usableSides.length > 1 ? ` · ${usableSides.length} sides` : ''}
+                    Then vs Now — Street View
+                    {r.thenVsNow.historicalStreetView?.source ? ` (${r.thenVsNow.historicalStreetView.source})` : ''}
+                    {usableSides.length > 1 ? ` · ${usableSides.length} sides` : ''}
                   </div>
                   {usableSides.map((side, sIdx) => (
                     <div key={sIdx} className={sIdx > 0 ? 'mt-4' : ''}>

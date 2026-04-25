@@ -191,23 +191,43 @@ export async function buildStreetViewUrlsTowardParcel(
   // Sort by distance to parcel — closest pano first (the "primary" front).
   cands.sort((a, b) => a.distM - b.distM);
 
-  // For corner lots we typically end up with 2 distinct panos. Cap at 4
-  // total frames (front + angled-front for the closest, then one front
-  // shot per additional unique pano).
+  // Filter out fake "side N" candidates that are actually just farther-down
+  // panos on the SAME street as the primary. Two panos on the same street
+  // (the car driving down it) will have bearings-toward-parcel that are
+  // either nearly identical (camera-pano just shifted along the curb) or
+  // ~180° opposite (other curb of the same road). EITHER case means there's
+  // no NEW visual info — the primary pano already covers that street.
+  // A real corner lot's second street will produce a pano whose
+  // bearing-toward-parcel is roughly perpendicular (~90° off) to the primary.
+  const primary = cands[0];
+  const accepted: typeof cands = [primary];
+  const SAME_STREET_TOLERANCE_DEG = 35;        // |bearingDelta| ≤ 35°  → same street, near curb
+  const OPPOSITE_CURB_TOLERANCE_DEG = 35;      // |bearingDelta| ∈ [180-35, 180+35] → same street, far curb
+  for (const c of cands.slice(1)) {
+    const delta = angularDelta(c.bearing, primary.bearing);
+    const isSameStreetSameCurb = delta <= SAME_STREET_TOLERANCE_DEG;
+    const isSameStreetOppositeCurb = Math.abs(delta - 180) <= OPPOSITE_CURB_TOLERANCE_DEG;
+    if (isSameStreetSameCurb || isSameStreetOppositeCurb) continue;
+    accepted.push(c);
+  }
+
+  // Cap at 4 total frames. For an interior lot we'll have 1 accepted pano
+  // → 1 primary + 1 angled. For a real corner lot we'll have 2 accepted
+  // panos → 1 frame per fronting street + 1 angled on the primary.
   const size = opts?.size ?? { w: 640, h: 480 };
   const fov = opts?.fov ?? 90;
   const offset = opts?.offsetDeg ?? 25;
 
   const frames: StreetViewImage[] = [];
-  cands.slice(0, 3).forEach((c, i) => {
+  accepted.slice(0, 3).forEach((c, i) => {
     // Primary front frame for this pano.
     frames.push(buildSv({
       key, size, fov,
       panoLat: c.panoLat, panoLng: c.panoLng,
       heading: c.bearing,
       label: i === 0
-        ? `Street View — primary front (heading ${c.bearing.toFixed(0)}°)`
-        : `Street View — side ${i + 1} (heading ${c.bearing.toFixed(0)}°)`,
+        ? `Street View — front of subject (${c.bearing.toFixed(0)}°)`
+        : `Street View — side ${i + 1} of corner lot (${c.bearing.toFixed(0)}°)`,
     }));
     // Add an angled frame ONLY for the closest pano, so we don't blow up
     // the AI prompt with redundant near-duplicate views.
@@ -217,12 +237,18 @@ export async function buildStreetViewUrlsTowardParcel(
         key, size, fov,
         panoLat: c.panoLat, panoLng: c.panoLng,
         heading: angled,
-        label: `Street View — angled (+${offset}°, heading ${angled.toFixed(0)}°)`,
+        label: `Street View — angled view (+${offset}°)`,
       }));
     }
   });
 
   return frames.slice(0, 4);
+}
+
+// Smallest absolute angular difference between two compass headings (0-180).
+function angularDelta(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
 }
 
 // Haversine — meters between two lat/lng pairs.
