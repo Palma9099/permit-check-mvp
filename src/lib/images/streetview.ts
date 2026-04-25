@@ -142,12 +142,15 @@ export async function buildStreetViewUrlsTowardParcel(
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return [];
 
-  // Sample at the center plus 4 offsets ~30m in each cardinal direction.
-  // 30m ≈ 0.00027° lat, 0.0003° lng at FL latitudes — far enough to push
-  // the metadata "closest pano" search toward a different street on a
-  // corner lot, close enough to stay near the subject.
-  const dLat = 30 / 111_320;
-  const dLng = 30 / (111_320 * Math.cos((parcelLat * Math.PI) / 180));
+  // Sample at the center plus 4 offsets ~12m in each cardinal direction.
+  // The 30m offset we used previously was hopping aggressively to perpendicular
+  // streets even on interior lots — picking up panos around the corner that
+  // happened to be closer to the offset point than the actual fronting
+  // pano. 12m stays inside the parcel for typical FL residential lots
+  // (60-80ft frontage = 18-24m wide), still nudges the search toward a
+  // different fronting street for true corner lots.
+  const dLat = 12 / 111_320;
+  const dLng = 12 / (111_320 * Math.cos((parcelLat * Math.PI) / 180));
   const samplePoints: Array<{ lat: number; lng: number }> = [
     { lat: parcelLat, lng: parcelLng },
     { lat: parcelLat + dLat, lng: parcelLng },          // toward North
@@ -156,13 +159,15 @@ export async function buildStreetViewUrlsTowardParcel(
     { lat: parcelLat, lng: parcelLng - dLng },          // toward West
   ];
 
+  // Each metadata search uses a tight 25m radius — a real corner-lot side
+  // pano will be within that, anything farther is around-the-corner.
   const metas = await Promise.all(
-    samplePoints.map((p) => getStreetViewMeta(p.lat, p.lng, 60)),
+    samplePoints.map((p) => getStreetViewMeta(p.lat, p.lng, 25)),
   );
 
   // Compute distance from each pano to the parcel, dedupe by panoId,
-  // and keep panos within 60m. (PanoId comes back via the metadata
-  // endpoint when Google returns OK; on the rare miss we fall back.)
+  // and keep panos within 25m. Anything farther is almost always around
+  // the corner on a perpendicular street, not actually fronting the subject.
   type Cand = {
     panoLat: number;
     panoLng: number;
@@ -174,7 +179,7 @@ export async function buildStreetViewUrlsTowardParcel(
   for (const m of metas) {
     if (!m.ok || m.panoLat == null || m.panoLng == null) continue;
     const distM = haversineMeters(m.panoLat, m.panoLng, parcelLat, parcelLng);
-    if (distM > 60) continue;
+    if (distM > 25) continue;
     const bearing = bearingDeg(m.panoLat, m.panoLng, parcelLat, parcelLng);
     // Use coarse 5m grid as a dedupe key — distinct panos on different
     // streets will land in different cells, the same pano queried from 5
@@ -203,7 +208,13 @@ export async function buildStreetViewUrlsTowardParcel(
   const accepted: typeof cands = [primary];
   const SAME_STREET_TOLERANCE_DEG = 35;        // |bearingDelta| ≤ 35°  → same street, near curb
   const OPPOSITE_CURB_TOLERANCE_DEG = 35;      // |bearingDelta| ∈ [180-35, 180+35] → same street, far curb
+  // Hard distance cap relative to primary: a real corner-lot side pano
+  // sits roughly the same distance from the parcel as the primary.
+  // Around-the-corner panos can be 2-3× farther — drop those even if their
+  // bearing looks legit.
+  const MAX_SIDE_DIST_M = Math.max(primary.distM * 1.6, 15);
   for (const c of cands.slice(1)) {
+    if (c.distM > MAX_SIDE_DIST_M) continue;
     const delta = angularDelta(c.bearing, primary.bearing);
     const isSameStreetSameCurb = delta <= SAME_STREET_TOLERANCE_DEG;
     const isSameStreetOppositeCurb = Math.abs(delta - 180) <= OPPOSITE_CURB_TOLERANCE_DEG;

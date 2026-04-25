@@ -159,7 +159,7 @@ CRITICAL — THEN vs NOW REASONING:
     - Carport enclosed into living space (infill where overhead door was)
 
   Features to look for changing between THEN and NOW (Street View frames,
-  if a Mapillary historical pano is provided alongside the current pano):
+  if a historical pano is provided alongside the current pano):
     - Exterior paint color change on the main facade (e.g. tan → white)
     - Front door swap (panel/style/color obviously different)
     - Garage door swap (overhead → modern panel; or single → double opening)
@@ -433,7 +433,7 @@ export async function compareImagery(opts: {
       imageCounter++;
       userContent.push({
         type: 'text',
-        text: `IMAGE ${imageCounter} — THEN STREET VIEW (Mapillary, ${side.sideLabel}), captured ${tFrame.captureDate.slice(0, 10)} (${tFrame.captureYear}). Historical ground-level view of the ${side.sideLabel.toLowerCase()} of the subject. Use this as the THEN reference for facade-level comparison on this side: paint color, front door, perimeter gate, garage door, windows, fence material. Compare against the matching NOW frame.`,
+        text: `IMAGE ${imageCounter} — THEN STREET VIEW (${side.sideLabel}), captured ${tFrame.captureDate.slice(0, 10)} (${tFrame.captureYear}). Historical ground-level view of the ${side.sideLabel.toLowerCase()} of the subject. Use this as the THEN reference for facade-level comparison on this side: paint color, front door, perimeter gate, garage door, windows, fence material. Compare against the matching NOW frame. Refer to it as "the ${tFrame.captureYear} Street View frame" — do NOT name a specific imagery provider in your finding text.`,
       });
       userContent.push({
         type: 'image',
@@ -444,7 +444,7 @@ export async function compareImagery(opts: {
       imageCounter++;
       userContent.push({
         type: 'text',
-        text: `IMAGE ${imageCounter} — NOW STREET VIEW (Mapillary, ${side.sideLabel}), captured ${nFrame.captureDate.slice(0, 10)} (${nFrame.captureYear}). Latest ground-level view of the same side. Compare paint, doors, gates, garage, windows, fence vs the THEN frame for this side. Source-matched with THEN so any change you call out should be real, not a provider artifact.`,
+        text: `IMAGE ${imageCounter} — NOW STREET VIEW (${side.sideLabel}), captured ${nFrame.captureDate.slice(0, 10)} (${nFrame.captureYear}). Latest ground-level view of the same side. Compare paint, doors, gates, garage, windows, fence vs the THEN frame for this side. Source-matched with THEN — same provider, same heading, same field of view — so any change you call out should be real, not a provider artifact. Refer to it as "the ${nFrame.captureYear} Street View frame" — do NOT name a specific imagery provider in your finding text.`,
       });
       userContent.push({
         type: 'image',
