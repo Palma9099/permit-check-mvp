@@ -29,6 +29,7 @@ import {
 import { buildStreetViewUrls, hasStreetView } from './images/streetview';
 import { fetchHistoricalAerials } from './images/historical-aerial';
 import { compareImagery } from './vision-compare';
+import { recordToLedger } from './ledger';
 
 // ---------------------------------------------------------------------------
 // Flag / confidence / next-steps / checklist builders — shared across
@@ -556,7 +557,7 @@ export async function runDiagnostic(input: {
     'This tool never makes legal or final compliance determinations. Always verify with the AHJ before acting.',
   ];
 
-  return {
+  const finalReport: DiagnosticReport = {
     generatedAt: new Date().toISOString(),
     query: {
       address: rawAddress || geo.formattedAddress,
@@ -610,6 +611,13 @@ export async function runDiagnostic(input: {
     thenVsNow,
     bottomLine,
   };
+
+  // Append every successful diagnostic to the Palma Ledger. Fire-and-log:
+  // ledger failures NEVER block the user response. Skipped silently for
+  // counties not yet in scope (Miami-Dade / Broward / Palm Beach in Phase 1).
+  await recordToLedger(countyKey, { lat: geo.lat, lng: geo.lng }, finalReport);
+
+  return finalReport;
 }
 
 // Used by /api/check/pdf to ensure a CountyInfo is present even on legacy
