@@ -141,13 +141,31 @@ export async function buildStreetViewEngine(opts: {
   }
 
   // 4. Cluster dated panos by camera position. Most addresses → 1 cluster.
-  //    True corner lots → 2 clusters (one per fronting street).
-  const clusters = clusterByPosition(usableDated, CLUSTER_RADIUS_M);
+  //    Addresses where Google did multiple drives from different positions
+  //    (e.g. one drive on the front street and one on a back alley) → 2+
+  //    clusters.
+  const rawClusters = clusterByPosition(usableDated, CLUSTER_RADIUS_M);
 
-  // 5. For each cluster, build the THEN/NOW pair using a SHARED heading
-  //    computed from the cluster centroid → aim. Every pano in the cluster
-  //    (THEN, NOW, in-between) renders with the same heading from its own
-  //    physical position. Same view, different dates.
+  // 5. Sort clusters by LATEST DATE in each cluster, descending. The cluster
+  //    with the most recent capture is the most likely to be Google's
+  //    current fronting drive — it's what shows up by default in
+  //    maps.google.com when you open Street View at this address. For 6704
+  //    SW 134 PL specifically: Google added a 2025 drive on the north curb
+  //    that captures the front facade. The OLD 2008-2022 cluster on the
+  //    south curb has more captures but doesn't see the front.
+  const clusters = rawClusters.slice().sort((a, b) => {
+    const aLatest = maxDate(a);
+    const bLatest = maxDate(b);
+    if (aLatest !== bLatest) return bLatest.localeCompare(aLatest);
+    return b.length - a.length; // tie-break by size
+  });
+
+  // 6. For each cluster, build a THEN/NOW pair. Render EACH pano with its
+  //    OWN per-pano bearing-to-aim — same camera position renders the same
+  //    pano-relative geometry. Within a tight cluster (8m radius) per-pano
+  //    bearings differ by <5°, so THEN and NOW look at the building from
+  //    nearly identical angles. Across clusters they may differ — that's
+  //    accurate, not a bug; the building is in every frame.
   const sides: StreetViewSidePair[] = [];
   const currentFrames: StreetViewImage[] = [];
   const allFrames: StreetViewHistoricalFrame[] = [];
@@ -157,50 +175,43 @@ export async function buildStreetViewEngine(opts: {
     const earliest = cluster[0];
     const latest = cluster[cluster.length - 1];
 
-    const cLat = cluster.reduce((s, p) => s + p.panoLat, 0) / cluster.length;
-    const cLng = cluster.reduce((s, p) => s + p.panoLng, 0) / cluster.length;
-    const sharedHeading = bearingFromTo(cLat, cLng, opts.aimLat, opts.aimLng);
-
+    const earliestHeading = bearingFromTo(earliest.panoLat, earliest.panoLng, opts.aimLat, opts.aimLng);
+    const latestHeading = bearingFromTo(latest.panoLat, latest.panoLng, opts.aimLat, opts.aimLng);
     const sideLabel = idx === 0 ? 'Primary front' : `Side ${idx + 1}`;
 
-    // NOW = latest dated pano, rendered with shared heading.
-    const nowUrl = buildHistoricalStaticUrl(latest.panoId, sharedHeading, size, fov, DEFAULT_PITCH);
-
-    // THEN = earliest dated pano IF the year gap is meaningful (≥3 years).
-    // Otherwise THEN stays null and we skip the historical side.
+    const nowUrl = buildHistoricalStaticUrl(latest.panoId, latestHeading, size, fov, DEFAULT_PITCH);
     const yearsApart = (latest.year ?? 0) - (earliest.year ?? 0);
     const thenUrl =
       yearsApart >= MIN_THEN_NOW_YEARS
-        ? buildHistoricalStaticUrl(earliest.panoId, sharedHeading, size, fov, DEFAULT_PITCH)
+        ? buildHistoricalStaticUrl(earliest.panoId, earliestHeading, size, fov, DEFAULT_PITCH)
         : null;
 
-    // Primary cluster's NOW pano goes into the current frames list.
+    // Primary cluster's NOW pano goes into the current frames list (this is
+    // the canonical "current view of the front of the subject").
     if (idx === 0 && nowUrl) {
       currentFrames.push({
-        heading: Math.round(sharedHeading),
-        label: `Street View — front of subject (${sharedHeading.toFixed(0)}°, ${latest.date})`,
+        heading: Math.round(latestHeading),
+        label: `Street View — front of subject (${latestHeading.toFixed(0)}°, ${latest.date})`,
         imageUrl: nowUrl,
       });
-    }
-    // Other clusters (corner-lot side fronts) also become current frames.
-    if (idx > 0 && nowUrl) {
+    } else if (idx > 0 && nowUrl) {
       currentFrames.push({
-        heading: Math.round(sharedHeading),
-        label: `Street View — ${sideLabel} (${sharedHeading.toFixed(0)}°, ${latest.date})`,
+        heading: Math.round(latestHeading),
+        label: `Street View — ${sideLabel} (${latestHeading.toFixed(0)}°, ${latest.date})`,
         imageUrl: nowUrl,
       });
     }
 
     sides.push({
       sideLabel,
-      approxBearingFromCenter: sharedHeading,
+      approxBearingFromCenter: latestHeading,
       then:
         thenUrl && earliest.date && earliest.year
           ? {
               captureDate: `${earliest.date}-01T00:00:00Z`,
               captureYear: earliest.year,
               imageUrl: thenUrl,
-              heading: Math.round(sharedHeading),
+              heading: Math.round(earliestHeading),
               label: `${sideLabel} — Then · ${earliest.date}`,
             }
           : null,
@@ -210,7 +221,7 @@ export async function buildStreetViewEngine(opts: {
               captureDate: `${latest.date}-01T00:00:00Z`,
               captureYear: latest.year,
               imageUrl: nowUrl,
-              heading: Math.round(sharedHeading),
+              heading: Math.round(latestHeading),
               label: `${sideLabel} — Now · ${latest.date}`,
             }
           : null,
@@ -218,13 +229,14 @@ export async function buildStreetViewEngine(opts: {
 
     // Track every dated pano in the cluster for completeness.
     for (const p of cluster) {
-      const url = buildHistoricalStaticUrl(p.panoId, sharedHeading, size, fov, DEFAULT_PITCH);
+      const phead = bearingFromTo(p.panoLat, p.panoLng, opts.aimLat, opts.aimLng);
+      const url = buildHistoricalStaticUrl(p.panoId, phead, size, fov, DEFAULT_PITCH);
       if (url && p.date && p.year) {
         allFrames.push({
           captureDate: `${p.date}-01T00:00:00Z`,
           captureYear: p.year,
           imageUrl: url,
-          heading: Math.round(sharedHeading),
+          heading: Math.round(phead),
           label: `${sideLabel} · ${p.date}`,
         });
       }
@@ -278,8 +290,17 @@ function clusterByPosition<T extends { panoLat: number; panoLng: number }>(
     if (existing) existing.push(it);
     else groups.push([it]);
   }
-  groups.sort((a, b) => b.length - a.length);
+  // No final sort here — caller sorts based on the criterion they care
+  // about (size, latest date, etc.).
   return groups;
+}
+
+function maxDate<T extends { date?: string | null }>(items: T[]): string {
+  let best = '';
+  for (const it of items) {
+    if (it.date && it.date > best) best = it.date;
+  }
+  return best;
 }
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
