@@ -22,14 +22,13 @@ import type {
 import { geocode, reverseCounty } from './geocode';
 import { getCountyAdapter, toCountyInfo } from './counties';
 import { FL_COUNTY_DIRECTORY } from './counties/portals';
-import { fetchParcelPolygon } from './parcel';
+import { fetchParcelPolygon, polygonCentroid } from './parcel';
 import {
   buildSubjectSatelliteUrl,
   buildContextSatelliteUrl,
 } from './images/google-satellite';
-import { buildStreetViewUrlsTowardParcel } from './images/streetview';
+import { buildStreetViewEngine } from './images/streetview';
 import { fetchHistoricalAerials } from './images/historical-aerial';
-import { fetchHistoricalStreetView } from './images/streetview-historical';
 import { compareImagery } from './vision-compare';
 import { recordToLedger } from './ledger';
 
@@ -417,31 +416,49 @@ export async function runDiagnostic(input: {
   // 3. Parcel polygon.
   const polygon = await fetchParcelPolygon(geo.lat, geo.lng, countyKey);
 
+  // 3b. Aim point — the canonical "where the camera should look" coord.
+  //     Polygon centroid is much closer to the actual building than the
+  //     parcel-line geocode for typical FL residential lots (rectangular,
+  //     house in the middle 60-70%). Falls back to the geocode when no
+  //     polygon is available (synthetic-fallback case).
+  const aim = polygon.polygon && !polygon.isFallback
+    ? polygonCentroid(polygon.polygon)
+    : { lat: geo.lat, lng: geo.lng };
+
   // 4. Google Static Maps URLs with polygon overlay.
   const closeSatUrl = buildSubjectSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
   const contextSatUrl = buildContextSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
 
-  // 5. Street View + historical NAIP (in parallel). Street View is now
-  //    heading-aware: we look up the pano location and aim back at the
-  //    parcel, so the AI gets the actual front of the subject instead of
-  //    4 cardinal-direction frames where 2-3 face nothing useful.
-  //    Historical NAIP comes from Planetary Computer; it's fine if it
-  //    returns nothing outside the continental US or where coverage is
-  //    sparse.
-  const [streetViewImages, historicalAerials] = await Promise.all([
-    buildStreetViewUrlsTowardParcel(geo.lat, geo.lng, { fov: 90 }),
+  // 5. Street View (unified engine) + historical NAIP, in parallel.
+  //    The Street View engine returns BOTH the current frames and the
+  //    historical THEN/NOW pairs from one Google pano-list call, all
+  //    rendered with bearing-to-aim so the camera points at the building
+  //    rather than at the parcel-line geocode.
+  const [svEngine, historicalAerials] = await Promise.all([
+    buildStreetViewEngine({
+      searchLat: geo.lat,
+      searchLng: geo.lng,
+      aimLat: aim.lat,
+      aimLng: aim.lng,
+    }),
     fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
   ]);
+  const streetViewImages = svEngine.current;
 
-  // 5b. Historical Street View (Mapillary). Runs after the current Street
-  //     View call because we want to know whether to even bother — if there
-  //     are no current panos at all, the subject is in a gated/private area
-  //     where Mapillary almost certainly has nothing either.
-  const historicalStreetView = await fetchHistoricalStreetView(
-    geo.lat,
-    geo.lng,
-    streetViewImages,
-  );
+  // Reshape engine output into the HistoricalStreetViewPair the report and
+  // vision-compare expect.
+  const primarySide =
+    svEngine.historicalSides.find((s) => s.then && s.now) ??
+    svEngine.historicalSides[0] ??
+    null;
+  const historicalStreetView = {
+    then: primarySide?.then ?? null,
+    now: primarySide?.now ?? null,
+    sides: svEngine.historicalSides,
+    allFrames: svEngine.allFrames,
+    source: svEngine.source,
+    failureReason: svEngine.failureReason,
+  };
 
   // 6. Vision comparison — THEN (historical NAIP + historical Street View)
   //    vs NOW (current Google sat + current Street View).

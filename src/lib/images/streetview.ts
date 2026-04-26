@@ -1,46 +1,299 @@
-// Google Street View Static API — heading-aware URL builder.
+// Unified Street View engine — Google sole source.
 //
-// The naive 4-cardinal-headings approach (N/E/S/W) wastes 2–3 of 4 frames on
-// pavement or the neighbor across the street, because the camera at the road
-// rarely faces the subject from a cardinal direction. The AI vision call can
-// usually reconcile that against the satellite anchor, but it's noisy and
-// makes the report look like it's mixing parcels.
+// PROBLEM THIS REPLACES:
+// The old code had two parallel pipelines:
+//   - Current SV via Google's documented metadata API + offset sampling
+//   - Historical SV via Google's SingleImageSearch
+// They returned panos at different positions, computed headings against the
+// parcel centroid (or worse, the parcel-line geocode), and rendered frames
+// that pointed at "somewhere in the lot" rather than at the house. For
+// 6704 SW 134 PL specifically, the rendered THEN/NOW pair pointed
+// north-northwest at the back fence while Google Maps' own viewer at the
+// same pano shows the front of the house when pointed west-southwest —
+// because the house is on the WEST side of the lot, not at the centroid
+// of the parcel-line geocode.
 //
-// New approach:
-//   1. Call the metadata endpoint at the parcel center to get the actual
-//      pano location (lat/lng of the closest Street View capture point).
-//   2. Compute the great-circle bearing FROM the pano TO the parcel center.
-//      That's the heading that puts the subject squarely in the frame.
-//   3. Return two images: the primary front-facing shot at that bearing, and
-//      one slight-angle shot at bearing + 25° for parallax.
+// NEW ENGINE:
+//   1. Caller passes in two points:
+//        searchLat/searchLng = where to look for Google panos (parcel center)
+//        aimLat/aimLng       = what the camera should point AT (polygon
+//                              centroid — almost always the building)
+//   2. ONE call to Google's SingleImageSearch returns all panos at the
+//      parcel, both Street View Car captures (with dates) and user photo
+//      spheres (no dates).
+//   3. We use only the dated Street View Car panos and only those within
+//      30m of the AIM point. Cluster by camera position so corner lots
+//      that have panos on two distinct fronting streets emit two side
+//      pairs.
+//   4. For each cluster, compute ONE shared heading: bearing from the
+//      cluster centroid → aim point. That's "look at the house from where
+//      the car was." Same heading is applied to every pano in that cluster
+//      (THEN, NOW, every drive in between), so THEN/NOW frames are
+//      identical geometry — only the date changes.
+//   5. Pick LATEST dated pano in the primary cluster as the canonical
+//      "current" frame. Pick EARLIEST as THEN if there's at least a 3-year
+//      gap.
 //
-// Falls back to the old 4-cardinal grid only if the metadata call fails or
-// returns no usable location.
-//
-// Metadata response (free tier, no quota cost):
-//   { status: "OK", pano_id, location: { lat, lng }, date }
-// Static image:
-//   https://maps.googleapis.com/maps/api/streetview?size=640x480&location=...&heading=...&pitch=0&fov=90&key=...
+// This is the only Street View entry point for the orchestrator. The old
+// streetview-historical.ts wraps this engine for backward compatibility.
 
 import type { StreetViewImage } from '../types';
+import {
+  searchGooglePanoramas,
+  buildHistoricalStaticUrl,
+  type GooglePano,
+} from './google-historical';
 
-export interface StreetViewOpts {
-  lat: number;
-  lng: number;
-  headings?: number[];
-  size?: { w: number; h: number };
+export interface StreetViewHistoricalFrame {
+  captureDate: string;       // ISO timestamp (year-month-01T00:00:00Z)
+  captureYear: number;
+  imageUrl: string;
+  heading: number;           // compass heading (0-359)
+  label: string;             // human-readable for the report
+}
+
+export interface StreetViewSidePair {
+  sideLabel: string;                    // "Primary front", "Side 2", etc.
+  approxBearingFromCenter: number;      // shared heading for this side
+  then: StreetViewHistoricalFrame | null;
+  now: StreetViewHistoricalFrame | null;
+}
+
+export interface StreetViewEngineResult {
+  // Current frames for the report's "Street View — front of subject" block.
+  // Always 1 frame today (one cluster = one front view). Multiple frames
+  // when corner-lot detection emits a side per fronting street.
+  current: StreetViewImage[];
+  // Historical THEN/NOW pairs. Same panos as `current`, just multiple dates.
+  historicalSides: StreetViewSidePair[];
+  // All dated panos discovered (for vision-compare's `allFrames`).
+  allFrames: StreetViewHistoricalFrame[];
+  // Source label for the report.
+  source: string;
+  // Honest reason if we couldn't produce a usable result.
+  failureReason: string | null;
+}
+
+const DEFAULT_FOV = 110;            // wide enough that aim imprecision still fits the building
+const DEFAULT_PITCH = 5;            // tilt up 5° to clear privacy fences
+const MAX_PANO_DIST_M = 30;         // panos beyond this aren't really fronting the parcel
+const CLUSTER_RADIUS_M = 8;         // panos within 8m of each other = same cluster (one side)
+const MIN_THEN_NOW_YEARS = 3;       // require ≥3yr span for a real THEN/NOW
+
+// Public API: build the entire Street View block — current + historical —
+// from one unified pipeline.
+export async function buildStreetViewEngine(opts: {
+  searchLat: number;
+  searchLng: number;
+  aimLat: number;
+  aimLng: number;
   fov?: number;
+  size?: { w: number; h: number };
+}): Promise<StreetViewEngineResult> {
+  const fov = opts.fov ?? DEFAULT_FOV;
+  const size = opts.size ?? { w: 640, h: 480 };
+
+  // 1. Pull every pano Google has near the parcel.
+  const allPanos = await searchGooglePanoramas(opts.searchLat, opts.searchLng);
+  if (allPanos.length === 0) {
+    return emptyResult('No Google Street View panos near this location.');
+  }
+
+  // 2. Recompute distance/bearing relative to the AIM point (not the search
+  //    point). Aim is what the camera should look at — for a typical FL lot
+  //    that's the polygon centroid, which is much closer to the actual house
+  //    than the parcel-line geocode.
+  const enriched = allPanos.map((p) => {
+    const distToAim = haversineMeters(p.panoLat, p.panoLng, opts.aimLat, opts.aimLng);
+    const bearingToAim = bearingFromTo(p.panoLat, p.panoLng, opts.aimLat, opts.aimLng);
+    return { ...p, distToAim, bearingToAim };
+  });
+
+  // 3. Keep only DATED Street View Car captures within 30m of aim.
+  //    User photo spheres (date=null) are dropped — they aren't part of
+  //    a historical sequence and Google doesn't include them in the
+  //    timeline-slider history anyway.
+  const usableDated = enriched
+    .filter((p) => p.date != null)
+    .filter((p) => p.distToAim <= MAX_PANO_DIST_M);
+
+  if (usableDated.length === 0) {
+    // No dated panos near aim. Try a "current only" render from the closest
+    // pano at all (could be undated photo sphere) so the report still shows
+    // something for the front view.
+    const fallback = enriched
+      .filter((p) => p.distToAim <= MAX_PANO_DIST_M)
+      .sort((a, b) => a.distToAim - b.distToAim)[0];
+    if (!fallback) {
+      return emptyResult(`No Google Street View panos within ${MAX_PANO_DIST_M}m of the property.`);
+    }
+    const heading = fallback.bearingToAim;
+    const url = buildHistoricalStaticUrl(fallback.panoId, heading, size, fov, DEFAULT_PITCH);
+    return {
+      current: url
+        ? [{ heading: Math.round(heading), label: `Street View — front of subject (${heading.toFixed(0)}°)`, imageUrl: url }]
+        : [],
+      historicalSides: [],
+      allFrames: [],
+      source: 'Google Street View',
+      failureReason: 'No dated Street View Car captures near this property — current view only, no historical timeline available.',
+    };
+  }
+
+  // 4. Cluster dated panos by camera position. Most addresses → 1 cluster.
+  //    True corner lots → 2 clusters (one per fronting street).
+  const clusters = clusterByPosition(usableDated, CLUSTER_RADIUS_M);
+
+  // 5. For each cluster, build the THEN/NOW pair using a SHARED heading
+  //    computed from the cluster centroid → aim. Every pano in the cluster
+  //    (THEN, NOW, in-between) renders with the same heading from its own
+  //    physical position. Same view, different dates.
+  const sides: StreetViewSidePair[] = [];
+  const currentFrames: StreetViewImage[] = [];
+  const allFrames: StreetViewHistoricalFrame[] = [];
+
+  for (const [idx, cluster] of clusters.entries()) {
+    cluster.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''));
+    const earliest = cluster[0];
+    const latest = cluster[cluster.length - 1];
+
+    const cLat = cluster.reduce((s, p) => s + p.panoLat, 0) / cluster.length;
+    const cLng = cluster.reduce((s, p) => s + p.panoLng, 0) / cluster.length;
+    const sharedHeading = bearingFromTo(cLat, cLng, opts.aimLat, opts.aimLng);
+
+    const sideLabel = idx === 0 ? 'Primary front' : `Side ${idx + 1}`;
+
+    // NOW = latest dated pano, rendered with shared heading.
+    const nowUrl = buildHistoricalStaticUrl(latest.panoId, sharedHeading, size, fov, DEFAULT_PITCH);
+
+    // THEN = earliest dated pano IF the year gap is meaningful (≥3 years).
+    // Otherwise THEN stays null and we skip the historical side.
+    const yearsApart = (latest.year ?? 0) - (earliest.year ?? 0);
+    const thenUrl =
+      yearsApart >= MIN_THEN_NOW_YEARS
+        ? buildHistoricalStaticUrl(earliest.panoId, sharedHeading, size, fov, DEFAULT_PITCH)
+        : null;
+
+    // Primary cluster's NOW pano goes into the current frames list.
+    if (idx === 0 && nowUrl) {
+      currentFrames.push({
+        heading: Math.round(sharedHeading),
+        label: `Street View — front of subject (${sharedHeading.toFixed(0)}°, ${latest.date})`,
+        imageUrl: nowUrl,
+      });
+    }
+    // Other clusters (corner-lot side fronts) also become current frames.
+    if (idx > 0 && nowUrl) {
+      currentFrames.push({
+        heading: Math.round(sharedHeading),
+        label: `Street View — ${sideLabel} (${sharedHeading.toFixed(0)}°, ${latest.date})`,
+        imageUrl: nowUrl,
+      });
+    }
+
+    sides.push({
+      sideLabel,
+      approxBearingFromCenter: sharedHeading,
+      then:
+        thenUrl && earliest.date && earliest.year
+          ? {
+              captureDate: `${earliest.date}-01T00:00:00Z`,
+              captureYear: earliest.year,
+              imageUrl: thenUrl,
+              heading: Math.round(sharedHeading),
+              label: `${sideLabel} — Then · ${earliest.date}`,
+            }
+          : null,
+      now:
+        nowUrl && latest.date && latest.year
+          ? {
+              captureDate: `${latest.date}-01T00:00:00Z`,
+              captureYear: latest.year,
+              imageUrl: nowUrl,
+              heading: Math.round(sharedHeading),
+              label: `${sideLabel} — Now · ${latest.date}`,
+            }
+          : null,
+    });
+
+    // Track every dated pano in the cluster for completeness.
+    for (const p of cluster) {
+      const url = buildHistoricalStaticUrl(p.panoId, sharedHeading, size, fov, DEFAULT_PITCH);
+      if (url && p.date && p.year) {
+        allFrames.push({
+          captureDate: `${p.date}-01T00:00:00Z`,
+          captureYear: p.year,
+          imageUrl: url,
+          heading: Math.round(sharedHeading),
+          label: `${sideLabel} · ${p.date}`,
+        });
+      }
+    }
+  }
+
+  // 6. Determine failureReason for the historical pair. A successful pair
+  //    requires AT LEAST one cluster with both a THEN and a NOW frame.
+  const hasUsableSide = sides.some((s) => s.then && s.now);
+  let failureReason: string | null = null;
+  if (!hasUsableSide) {
+    const onlyYear = sides[0]?.now?.captureYear ?? null;
+    failureReason = onlyYear
+      ? `Google Street View has only one dated capture span at this property (${onlyYear}) — no THEN frame to compare. Use the manual upload slot for a historical reference photo.`
+      : 'Google Street View returned no dated captures near this property.';
+  }
+
+  return {
+    current: currentFrames,
+    historicalSides: sides,
+    allFrames,
+    source: 'Google Street View',
+    failureReason,
+  };
 }
 
-function labelForHeading(h: number): string {
-  const normalized = ((h % 360) + 360) % 360;
-  const names = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  const idx = Math.round(normalized / 45) % 8;
-  return `Street View facing ${names[idx]}`;
+// Helpers
+// ----------------------------------------------------------------------------
+
+function emptyResult(failureReason: string): StreetViewEngineResult {
+  return {
+    current: [],
+    historicalSides: [],
+    allFrames: [],
+    source: 'Google Street View',
+    failureReason,
+  };
 }
 
-// Great-circle bearing from point A to point B, in degrees clockwise from north.
-function bearingDeg(fromLat: number, fromLng: number, toLat: number, toLng: number): number {
+// Group panos into clusters. Two panos within `radiusM` meters of each
+// other land in the same cluster. Largest cluster (most panos) ranks first.
+function clusterByPosition<T extends { panoLat: number; panoLng: number }>(
+  items: T[],
+  radiusM: number,
+): T[][] {
+  const groups: T[][] = [];
+  for (const it of items) {
+    const existing = groups.find((g) =>
+      g.some((p) => haversineMeters(p.panoLat, p.panoLng, it.panoLat, it.panoLng) <= radiusM),
+    );
+    if (existing) existing.push(it);
+    else groups.push([it]);
+  }
+  groups.sort((a, b) => b.length - a.length);
+  return groups;
+}
+
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const φ1 = toRad(lat1);
+  const φ2 = toRad(lat2);
+  const Δφ = toRad(lat2 - lat1);
+  const Δλ = toRad(lng2 - lng1);
+  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function bearingFromTo(fromLat: number, fromLng: number, toLat: number, toLng: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const toDeg = (r: number) => (r * 180) / Math.PI;
   const φ1 = toRad(fromLat);
@@ -48,38 +301,37 @@ function bearingDeg(fromLat: number, fromLng: number, toLat: number, toLng: numb
   const Δλ = toRad(toLng - fromLng);
   const y = Math.sin(Δλ) * Math.cos(φ2);
   const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  const θ = Math.atan2(y, x);
-  return (toDeg(θ) + 360) % 360;
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
-export function buildStreetViewUrls(opts: StreetViewOpts): StreetViewImage[] {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
-  if (!key) return [];
+// ============================================================================
+// BACKWARD-COMPAT SHIMS
+// ============================================================================
+// The orchestrator and other callers still import the old API. Provide thin
+// wrappers so we can ship the engine rebuild without rewriting every caller.
 
-  const size = opts.size ?? { w: 640, h: 480 };
-  const fov = opts.fov ?? 90;
-  const headings = opts.headings ?? [0, 90, 180, 270];
-
-  return headings.map((h) => {
-    const u = new URL('https://maps.googleapis.com/maps/api/streetview');
-    u.searchParams.set('size', `${size.w}x${size.h}`);
-    u.searchParams.set('location', `${opts.lat},${opts.lng}`);
-    u.searchParams.set('heading', String(h));
-    u.searchParams.set('pitch', '0');
-    u.searchParams.set('fov', String(fov));
-    u.searchParams.set('source', 'outdoor');
-    u.searchParams.set('return_error_code', 'true');
-    u.searchParams.set('key', key);
-    return {
-      heading: h,
-      label: labelForHeading(h),
-      imageUrl: u.toString(),
-    };
+// Old API: buildStreetViewUrlsTowardParcel(parcelLat, parcelLng, opts).
+// Returns just the current frames. New engine handles current + historical
+// in one call; if a caller only wants current, this wrapper hides the rest.
+export async function buildStreetViewUrlsTowardParcel(
+  parcelLat: number,
+  parcelLng: number,
+  opts?: { fov?: number; size?: { w: number; h: number } },
+): Promise<StreetViewImage[]> {
+  const result = await buildStreetViewEngine({
+    searchLat: parcelLat,
+    searchLng: parcelLng,
+    aimLat: parcelLat,
+    aimLng: parcelLng,
+    fov: opts?.fov,
+    size: opts?.size,
   });
+  return result.current;
 }
 
-// Metadata response shape we care about.
-interface StreetViewMeta {
+// Old API: getStreetViewMeta(lat, lng, radiusM). Documented metadata-only
+// endpoint. Kept for code that still calls it; not used by the new engine.
+export interface StreetViewMeta {
   ok: boolean;
   panoLat: number | null;
   panoLng: number | null;
@@ -111,190 +363,8 @@ export async function getStreetViewMeta(lat: number, lng: number, radiusM = 80):
   }
 }
 
-// Back-compat thin wrapper used by other callers — returns just the boolean.
+// Old API: hasStreetView(lat, lng). Boolean check used in a couple places.
 export async function hasStreetView(lat: number, lng: number, radiusM = 50): Promise<boolean> {
   const meta = await getStreetViewMeta(lat, lng, radiusM);
   return meta.ok;
-}
-
-// Build heading-aware Street View URLs that aim at the parcel from EVERY
-// street the parcel touches. Critical for corner lots — there's a Street
-// View pano on each fronting street, each facing a different side, and a
-// single-pano lookup misses the back/side exposure entirely.
-//
-// Approach:
-//   1. Sample metadata at the parcel center AND at 4 offsets (~30m N/E/S/W).
-//      Each offset hops the search closer to a different street, so corner
-//      properties surface multiple unique panos.
-//   2. Dedupe by pano_id. Drop any pano farther than ~60m from the parcel
-//      (those are panos on the next block, not relevant).
-//   3. For each unique pano, compute bearing back to parcel and emit one
-//      front-facing frame.
-//   4. For the closest pano, also emit a +25° angled frame for parallax.
-//   5. Cap at 4 frames total (one per side of a corner lot is plenty).
-//
-// Falls back to the old 4-cardinal grid only when metadata returns nothing.
-export async function buildStreetViewUrlsTowardParcel(
-  parcelLat: number,
-  parcelLng: number,
-  opts?: { fov?: number; size?: { w: number; h: number }; offsetDeg?: number },
-): Promise<StreetViewImage[]> {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
-  if (!key) return [];
-
-  // Sample at the center plus 4 offsets ~12m in each cardinal direction.
-  // The 30m offset we used previously was hopping aggressively to perpendicular
-  // streets even on interior lots — picking up panos around the corner that
-  // happened to be closer to the offset point than the actual fronting
-  // pano. 12m stays inside the parcel for typical FL residential lots
-  // (60-80ft frontage = 18-24m wide), still nudges the search toward a
-  // different fronting street for true corner lots.
-  const dLat = 12 / 111_320;
-  const dLng = 12 / (111_320 * Math.cos((parcelLat * Math.PI) / 180));
-  const samplePoints: Array<{ lat: number; lng: number }> = [
-    { lat: parcelLat, lng: parcelLng },
-    { lat: parcelLat + dLat, lng: parcelLng },          // toward North
-    { lat: parcelLat - dLat, lng: parcelLng },          // toward South
-    { lat: parcelLat, lng: parcelLng + dLng },          // toward East
-    { lat: parcelLat, lng: parcelLng - dLng },          // toward West
-  ];
-
-  // Each metadata search uses a tight 25m radius — a real corner-lot side
-  // pano will be within that, anything farther is around-the-corner.
-  const metas = await Promise.all(
-    samplePoints.map((p) => getStreetViewMeta(p.lat, p.lng, 25)),
-  );
-
-  // Compute distance from each pano to the parcel, dedupe by panoId,
-  // and keep panos within 25m. Anything farther is almost always around
-  // the corner on a perpendicular street, not actually fronting the subject.
-  type Cand = {
-    panoLat: number;
-    panoLng: number;
-    distM: number;
-    bearing: number;
-    panoKey: string;
-  };
-  const cands: Cand[] = [];
-  for (const m of metas) {
-    if (!m.ok || m.panoLat == null || m.panoLng == null) continue;
-    const distM = haversineMeters(m.panoLat, m.panoLng, parcelLat, parcelLng);
-    if (distM > 25) continue;
-    const bearing = bearingDeg(m.panoLat, m.panoLng, parcelLat, parcelLng);
-    // Use coarse 5m grid as a dedupe key — distinct panos on different
-    // streets will land in different cells, the same pano queried from 5
-    // angles will land in the same cell.
-    const panoKey = `${Math.round(m.panoLat * 20000)}|${Math.round(m.panoLng * 20000)}`;
-    if (cands.some((c) => c.panoKey === panoKey)) continue;
-    cands.push({ panoLat: m.panoLat, panoLng: m.panoLng, distM, bearing, panoKey });
-  }
-
-  if (cands.length === 0) {
-    return buildStreetViewUrls({ lat: parcelLat, lng: parcelLng });
-  }
-
-  // Sort by distance to parcel — closest pano first (the "primary" front).
-  cands.sort((a, b) => a.distM - b.distM);
-
-  // Filter out fake "side N" candidates that are actually just farther-down
-  // panos on the SAME street as the primary. Two panos on the same street
-  // (the car driving down it) will have bearings-toward-parcel that are
-  // either nearly identical (camera-pano just shifted along the curb) or
-  // ~180° opposite (other curb of the same road). EITHER case means there's
-  // no NEW visual info — the primary pano already covers that street.
-  // A real corner lot's second street will produce a pano whose
-  // bearing-toward-parcel is roughly perpendicular (~90° off) to the primary.
-  const primary = cands[0];
-  const accepted: typeof cands = [primary];
-  const SAME_STREET_TOLERANCE_DEG = 35;        // |bearingDelta| ≤ 35°  → same street, near curb
-  const OPPOSITE_CURB_TOLERANCE_DEG = 35;      // |bearingDelta| ∈ [180-35, 180+35] → same street, far curb
-  // Hard distance cap relative to primary: a real corner-lot side pano
-  // sits roughly the same distance from the parcel as the primary.
-  // Around-the-corner panos can be 2-3× farther — drop those even if their
-  // bearing looks legit.
-  const MAX_SIDE_DIST_M = Math.max(primary.distM * 1.6, 15);
-  for (const c of cands.slice(1)) {
-    if (c.distM > MAX_SIDE_DIST_M) continue;
-    const delta = angularDelta(c.bearing, primary.bearing);
-    const isSameStreetSameCurb = delta <= SAME_STREET_TOLERANCE_DEG;
-    const isSameStreetOppositeCurb = Math.abs(delta - 180) <= OPPOSITE_CURB_TOLERANCE_DEG;
-    if (isSameStreetSameCurb || isSameStreetOppositeCurb) continue;
-    accepted.push(c);
-  }
-
-  // Cap at 4 total frames. For an interior lot we'll have 1 accepted pano
-  // → 1 primary + 1 angled. For a real corner lot we'll have 2 accepted
-  // panos → 1 frame per fronting street + 1 angled on the primary.
-  const size = opts?.size ?? { w: 640, h: 480 };
-  const fov = opts?.fov ?? 90;
-  const offset = opts?.offsetDeg ?? 25;
-
-  const frames: StreetViewImage[] = [];
-  accepted.slice(0, 3).forEach((c, i) => {
-    // Primary front frame for this pano.
-    frames.push(buildSv({
-      key, size, fov,
-      panoLat: c.panoLat, panoLng: c.panoLng,
-      heading: c.bearing,
-      label: i === 0
-        ? `Street View — front of subject (${c.bearing.toFixed(0)}°)`
-        : `Street View — side ${i + 1} of corner lot (${c.bearing.toFixed(0)}°)`,
-    }));
-    // Add an angled frame ONLY for the closest pano, so we don't blow up
-    // the AI prompt with redundant near-duplicate views.
-    if (i === 0 && frames.length < 4) {
-      const angled = (c.bearing + offset + 360) % 360;
-      frames.push(buildSv({
-        key, size, fov,
-        panoLat: c.panoLat, panoLng: c.panoLng,
-        heading: angled,
-        label: `Street View — angled view (+${offset}°)`,
-      }));
-    }
-  });
-
-  return frames.slice(0, 4);
-}
-
-// Smallest absolute angular difference between two compass headings (0-180).
-function angularDelta(a: number, b: number): number {
-  const d = Math.abs(a - b) % 360;
-  return d > 180 ? 360 - d : d;
-}
-
-// Haversine — meters between two lat/lng pairs.
-function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6_371_000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const φ1 = toRad(lat1);
-  const φ2 = toRad(lat2);
-  const Δφ = toRad(lat2 - lat1);
-  const Δλ = toRad(lng2 - lng1);
-  const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(a));
-}
-
-function buildSv(opts: {
-  key: string;
-  size: { w: number; h: number };
-  fov: number;
-  panoLat: number;
-  panoLng: number;
-  heading: number;
-  label: string;
-}): StreetViewImage {
-  const u = new URL('https://maps.googleapis.com/maps/api/streetview');
-  u.searchParams.set('size', `${opts.size.w}x${opts.size.h}`);
-  u.searchParams.set('location', `${opts.panoLat},${opts.panoLng}`);
-  u.searchParams.set('heading', opts.heading.toFixed(1));
-  u.searchParams.set('pitch', '0');
-  u.searchParams.set('fov', String(opts.fov));
-  u.searchParams.set('source', 'outdoor');
-  u.searchParams.set('return_error_code', 'true');
-  u.searchParams.set('key', opts.key);
-  return {
-    heading: Math.round(opts.heading),
-    label: opts.label,
-    imageUrl: u.toString(),
-  };
 }

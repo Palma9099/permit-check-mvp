@@ -184,3 +184,40 @@ export async function fetchParcelPolygon(
   // 3. Fallback box — so the red outline still shows up on the sat image.
   return fallbackSquare(lat, lng);
 }
+
+// Centroid of a polygon ring, computed via the standard shoelace formula.
+// This is the geographic center of the lot — for typical FL residential
+// parcels (rectangular, house in the middle 60-70% of the lot), the centroid
+// is within a few meters of the actual building. Used as the canonical
+// "aim point" so Street View headings point at the house, not at a parcel-
+// line geocode that lands in the front yard or on the curb.
+export function polygonCentroid(ring: ParcelRing): { lat: number; lng: number } {
+  if (!ring || ring.length === 0) return { lat: 0, lng: 0 };
+  // Drop a duplicate closing point if present (GeoJSON style).
+  const pts = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+    ? ring.slice(0, -1)
+    : ring;
+  const n = pts.length;
+  if (n === 0) return { lat: 0, lng: 0 };
+  if (n === 1) return { lat: pts[0][0], lng: pts[0][1] };
+
+  let area = 0;
+  let cLat = 0;
+  let cLng = 0;
+  for (let i = 0; i < n; i++) {
+    const [lat1, lng1] = pts[i];
+    const [lat2, lng2] = pts[(i + 1) % n];
+    const cross = lng1 * lat2 - lng2 * lat1;
+    area += cross;
+    cLat += (lat1 + lat2) * cross;
+    cLng += (lng1 + lng2) * cross;
+  }
+  area /= 2;
+  if (Math.abs(area) < 1e-12) {
+    // Degenerate polygon (collinear points) — fall back to arithmetic mean.
+    const sumLat = pts.reduce((s, p) => s + p[0], 0);
+    const sumLng = pts.reduce((s, p) => s + p[1], 0);
+    return { lat: sumLat / n, lng: sumLng / n };
+  }
+  return { lat: cLat / (6 * area), lng: cLng / (6 * area) };
+}
