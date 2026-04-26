@@ -37,7 +37,7 @@
 // This is the only Street View entry point for the orchestrator. The old
 // streetview-historical.ts wraps this engine for backward compatibility.
 
-import type { StreetViewImage } from '../types';
+import type { ParcelRing, StreetViewImage } from '../types';
 import {
   searchGooglePanoramas,
   buildHistoricalStaticUrl,
@@ -87,6 +87,13 @@ export async function buildStreetViewEngine(opts: {
   searchLng: number;
   aimLat: number;
   aimLng: number;
+  // When provided, headings are computed perpendicular to the nearest
+  // polygon edge pointing INTO the polygon — that's "look at the building
+  // from the road" rather than "look at the polygon centroid." For typical
+  // FL residential lots where the house sits a few feet inside one of the
+  // shorter polygon edges, this matches what Google Maps does when you
+  // click into Street View at the address.
+  aimPolygon?: ParcelRing | null;
   fov?: number;
   size?: { w: number; h: number };
 }): Promise<StreetViewEngineResult> {
@@ -175,8 +182,14 @@ export async function buildStreetViewEngine(opts: {
     const earliest = cluster[0];
     const latest = cluster[cluster.length - 1];
 
-    const earliestHeading = bearingFromTo(earliest.panoLat, earliest.panoLng, opts.aimLat, opts.aimLng);
-    const latestHeading = bearingFromTo(latest.panoLat, latest.panoLng, opts.aimLat, opts.aimLng);
+    const earliestHeading = bearingToBuilding(
+      earliest.panoLat, earliest.panoLng,
+      opts.aimPolygon ?? null, opts.aimLat, opts.aimLng,
+    );
+    const latestHeading = bearingToBuilding(
+      latest.panoLat, latest.panoLng,
+      opts.aimPolygon ?? null, opts.aimLat, opts.aimLng,
+    );
     const sideLabel = idx === 0 ? 'Primary front' : `Side ${idx + 1}`;
 
     const nowUrl = buildHistoricalStaticUrl(latest.panoId, latestHeading, size, fov, DEFAULT_PITCH);
@@ -229,7 +242,7 @@ export async function buildStreetViewEngine(opts: {
 
     // Track every dated pano in the cluster for completeness.
     for (const p of cluster) {
-      const phead = bearingFromTo(p.panoLat, p.panoLng, opts.aimLat, opts.aimLng);
+      const phead = bearingToBuilding(p.panoLat, p.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng);
       const url = buildHistoricalStaticUrl(p.panoId, phead, size, fov, DEFAULT_PITCH);
       if (url && p.date && p.year) {
         allFrames.push({
@@ -323,6 +336,86 @@ function bearingFromTo(fromLat: number, fromLng: number, toLat: number, toLng: n
   const y = Math.sin(Δλ) * Math.cos(φ2);
   const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function angularDelta(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+// Compute the heading from a pano position TOWARD the building inside a
+// parcel polygon. The building isn't necessarily at the polygon centroid
+// — typical FL lots have the house set close to one edge with deeper yard
+// behind. Aiming at centroid points the camera at empty yard.
+//
+// Approach: find the polygon edge nearest to the pano (that's the lot's
+// road-facing edge for any pano on the road). The heading we want is
+// PERPENDICULAR to that edge, pointing INTO the polygon (away from the
+// pano). For 6704 SW 134 PL this produces ~268° from the south curb pano,
+// matching Google Maps' default Street View heading of 263°.
+//
+// Falls back to the simple bearing-to-aim when no polygon is available
+// (synthetic-fallback parcels in counties without a real GIS layer).
+function bearingToBuilding(
+  panoLat: number,
+  panoLng: number,
+  polygon: ParcelRing | null,
+  fallbackAimLat: number,
+  fallbackAimLng: number,
+): number {
+  if (!polygon || polygon.length < 3) {
+    return bearingFromTo(panoLat, panoLng, fallbackAimLat, fallbackAimLng);
+  }
+  // Find the polygon edge nearest to the pano.
+  let bestDist = Infinity;
+  let bestFrom: [number, number] | null = null;
+  let bestTo: [number, number] | null = null;
+  for (let i = 0; i < polygon.length - 1; i++) {
+    const from = polygon[i];
+    const to = polygon[i + 1];
+    const d = distancePointToSegmentMeters(panoLat, panoLng, from[0], from[1], to[0], to[1]);
+    if (d < bestDist) {
+      bestDist = d;
+      bestFrom = from;
+      bestTo = to;
+    }
+  }
+  if (!bestFrom || !bestTo) {
+    return bearingFromTo(panoLat, panoLng, fallbackAimLat, fallbackAimLng);
+  }
+  // Edge direction.
+  const edgeBearing = bearingFromTo(bestFrom[0], bestFrom[1], bestTo[0], bestTo[1]);
+  // Two perpendiculars; pick the one that points toward the edge midpoint
+  // (i.e., into the polygon, away from where the pano sits).
+  const perp1 = (edgeBearing + 90) % 360;
+  const perp2 = (edgeBearing - 90 + 360) % 360;
+  const midLat = (bestFrom[0] + bestTo[0]) / 2;
+  const midLng = (bestFrom[1] + bestTo[1]) / 2;
+  const panoToMid = bearingFromTo(panoLat, panoLng, midLat, midLng);
+  return angularDelta(perp1, panoToMid) <= angularDelta(perp2, panoToMid) ? perp1 : perp2;
+}
+
+// Distance from a point to a line segment, in meters. Uses an
+// equirectangular local projection centered at the point — accurate to
+// sub-meter at parcel-scale distances in FL.
+function distancePointToSegmentMeters(
+  pLat: number, pLng: number,
+  aLat: number, aLng: number,
+  bLat: number, bLng: number,
+): number {
+  const cosLat = Math.cos((pLat * Math.PI) / 180);
+  const ax = (aLng - pLng) * 111_320 * cosLat;
+  const ay = (aLat - pLat) * 111_320;
+  const bx = (bLng - pLng) * 111_320 * cosLat;
+  const by = (bLat - pLat) * 111_320;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt(ax * ax + ay * ay);
+  const t = Math.max(0, Math.min(1, -((ax * dx) + (ay * dy)) / lenSq));
+  const projX = ax + t * dx;
+  const projY = ay + t * dy;
+  return Math.sqrt(projX * projX + projY * projY);
 }
 
 // ============================================================================

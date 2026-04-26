@@ -440,6 +440,12 @@ export async function runDiagnostic(input: {
       searchLng: geo.lng,
       aimLat: aim.lat,
       aimLng: aim.lng,
+      // Pass the parcel polygon so the engine can compute headings
+      // perpendicular to the road-facing edge instead of just bearing-to-
+      // centroid. The building usually sits close to one edge of the lot
+      // with the front yard between it and the road; perpendicular-to-edge
+      // points the camera at the building, not into the empty yard.
+      aimPolygon: polygon.polygon && !polygon.isFallback ? polygon.polygon : null,
     }),
     fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
   ]);
