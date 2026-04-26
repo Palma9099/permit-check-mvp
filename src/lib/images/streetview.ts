@@ -153,18 +153,25 @@ export async function buildStreetViewEngine(opts: {
   //    clusters.
   const rawClusters = clusterByPosition(usableDated, CLUSTER_RADIUS_M);
 
-  // 5. Sort clusters by LATEST DATE in each cluster, descending. The cluster
-  //    with the most recent capture is the most likely to be Google's
-  //    current fronting drive — it's what shows up by default in
-  //    maps.google.com when you open Street View at this address. For 6704
-  //    SW 134 PL specifically: Google added a 2025 drive on the north curb
-  //    that captures the front facade. The OLD 2008-2022 cluster on the
-  //    south curb has more captures but doesn't see the front.
+  // 5. Sort clusters by DISTANCE FROM CLUSTER CENTROID TO THE AIM POINT,
+  //    ascending. The closest cluster to the address is the one Google
+  //    Maps points to by default when you click into Street View at the
+  //    address. Address-closest is the front-facing road cluster for the
+  //    typical FL residential lot — that's the realtor's mental model.
+  //
+  //    For 6704 SW 134 PL: south cluster centroid is ~14m from the polygon
+  //    centroid (front curb on SW 134 PL), north cluster is ~25m (a recent
+  //    drive on the back/side road). South wins primary even though north
+  //    has a 2025 capture — south has the front view AND historical
+  //    captures going back to 2008.
   const clusters = rawClusters.slice().sort((a, b) => {
-    const aLatest = maxDate(a);
-    const bLatest = maxDate(b);
-    if (aLatest !== bLatest) return bLatest.localeCompare(aLatest);
-    return b.length - a.length; // tie-break by size
+    const aDist = clusterDistanceToPoint(a, opts.aimLat, opts.aimLng);
+    const bDist = clusterDistanceToPoint(b, opts.aimLat, opts.aimLng);
+    if (aDist !== bDist) return aDist - bDist;
+    // Tie-break: more recent capture, then more captures.
+    const dateCompare = maxDate(b).localeCompare(maxDate(a));
+    if (dateCompare !== 0) return dateCompare;
+    return b.length - a.length;
   });
 
   // 6. For each cluster, build a THEN/NOW pair. Render EACH pano with its
@@ -314,6 +321,17 @@ function maxDate<T extends { date?: string | null }>(items: T[]): string {
     if (it.date && it.date > best) best = it.date;
   }
   return best;
+}
+
+function clusterDistanceToPoint<T extends { panoLat: number; panoLng: number }>(
+  cluster: T[],
+  lat: number,
+  lng: number,
+): number {
+  if (cluster.length === 0) return Infinity;
+  const cLat = cluster.reduce((s, p) => s + p.panoLat, 0) / cluster.length;
+  const cLng = cluster.reduce((s, p) => s + p.panoLng, 0) / cluster.length;
+  return haversineMeters(cLat, cLng, lat, lng);
 }
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
