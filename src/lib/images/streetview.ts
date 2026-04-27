@@ -77,7 +77,12 @@ export interface StreetViewEngineResult {
 const DEFAULT_FOV = 110;            // wide enough that aim imprecision still fits the building
 const DEFAULT_PITCH = 5;            // tilt up 5° to clear privacy fences
 const MAX_PANO_DIST_M = 30;         // panos beyond this aren't really fronting the parcel
-const CLUSTER_RADIUS_M = 8;         // panos within 8m of each other = same cluster (one side)
+const CLUSTER_RADIUS_M = 5;         // panos within 5m of cluster centroid = same cluster.
+                                    // Tight enough that bridge panos can't drift the centroid
+                                    // across the parcel (e.g. south curb to north curb is ~28m,
+                                    // requires multiple sub-5m centroid steps which only happen
+                                    // when there's actually a continuous capture from one side
+                                    // to the other — i.e. a real drive that should cluster).
 const MIN_THEN_NOW_YEARS = 3;       // require ≥3yr span for a real THEN/NOW
 
 // Public API: build the entire Street View block — current + historical —
@@ -116,35 +121,21 @@ export async function buildStreetViewEngine(opts: {
     return { ...p, distToAim, bearingToAim };
   });
 
-  // 3. Keep only DATED Street View Car captures within 30m of aim AND on
-  //    the same SIDE of the parcel as the geocoded address.
-  //
-  //    "Same side" = same polygon-edge orientation. Geocoded addresses for
-  //    FL residential lots land on the curb of the road they're addressed
-  //    on; that curb is the front edge of the parcel. Panos on the same
-  //    edge orientation are front-facing (the camera sees the front
-  //    facade). Panos on a perpendicular edge — north-curb captures of a
-  //    south-facing house, etc. — get excluded from the primary front
-  //    comparison.
-  //
-  //    For 6704 SW 134 PL: geocode (25.7038, -80.4112) is nearest to the
-  //    polygon's east edge running N-S. South curb panos at (25.7037,
-  //    -80.4112) are nearest to that same east edge → KEEP. The 2025
-  //    north pano at (25.7039, -80.4115) is nearest to the polygon's
-  //    NORTH edge (running E-W) → EXCLUDE. Bridge panos along the north
-  //    perimeter → EXCLUDE.
-  const frontEdgeBearing = opts.aimPolygon
-    ? findNearestEdgeBearing(opts.aimPolygon, opts.searchLat, opts.searchLng)
-    : null;
+  // 3. Keep only DATED Street View Car captures within 30m of aim. We
+  //    don't try to filter by which polygon edge they face — that turned
+  //    out to be too brittle when Google rooftop geocodes land INSIDE the
+  //    polygon (ambiguous "front edge"). Instead the engine relies on:
+  //      a. Centroid-based clustering with a tight 5m radius so bridge
+  //         panos can't merge the south curb and the north curb into one
+  //         drifty cluster.
+  //      b. Closest-cluster-to-aim primary selection so the front-facing
+  //         road wins when multiple distinct clusters exist.
+  //      c. Per-pano perpendicular-to-nearest-polygon-edge heading so each
+  //         frame points the camera at the building from wherever the
+  //         camera actually was.
   const usableDated = enriched
     .filter((p) => p.date != null)
-    .filter((p) => p.distToAim <= MAX_PANO_DIST_M)
-    .filter((p) => {
-      if (frontEdgeBearing == null || !opts.aimPolygon) return true;
-      const panoEdgeBearing = findNearestEdgeBearing(opts.aimPolygon, p.panoLat, p.panoLng);
-      if (panoEdgeBearing == null) return true;
-      return isSameEdgeOrientation(frontEdgeBearing, panoEdgeBearing);
-    });
+    .filter((p) => p.distToAim <= MAX_PANO_DIST_M);
 
   if (usableDated.length === 0) {
     // No dated panos near aim. Try a "current only" render from the closest
