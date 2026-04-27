@@ -298,21 +298,48 @@ function emptyResult(failureReason: string): StreetViewEngineResult {
 
 // Group panos into clusters. Two panos within `radiusM` meters of each
 // other land in the same cluster. Largest cluster (most panos) ranks first.
+// CENTROID-based clustering — each pano joins the cluster whose CENTROID
+// is closest, but only if within `radiusM`. Otherwise it starts a new
+// cluster.
+//
+// We deliberately don't use single-link (chaining) clustering here. With
+// chaining, bridge panos at intermediate positions can merge two clusters
+// that are physically far apart — e.g. for 6704 SW 134 PL the south curb
+// pano cluster (front-of-house) and the north curb 2025 pano (back/side)
+// are 28m apart, but a bridge capture along the perimeter merged them
+// into one cluster, and the resulting "average view" pointed the camera
+// at the back of the lot. Centroid-based prevents that: a pano 28m from
+// an existing cluster's centroid starts a new cluster.
 function clusterByPosition<T extends { panoLat: number; panoLng: number }>(
   items: T[],
   radiusM: number,
 ): T[][] {
-  const groups: T[][] = [];
+  type Bucket = { items: T[]; cLat: number; cLng: number };
+  const buckets: Bucket[] = [];
   for (const it of items) {
-    const existing = groups.find((g) =>
-      g.some((p) => haversineMeters(p.panoLat, p.panoLng, it.panoLat, it.panoLng) <= radiusM),
-    );
-    if (existing) existing.push(it);
-    else groups.push([it]);
+    let bestIdx = -1;
+    let bestDist = Infinity;
+    for (let i = 0; i < buckets.length; i++) {
+      const b = buckets[i];
+      const d = haversineMeters(b.cLat, b.cLng, it.panoLat, it.panoLng);
+      if (d <= radiusM && d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx === -1) {
+      buckets.push({ items: [it], cLat: it.panoLat, cLng: it.panoLng });
+    } else {
+      const b = buckets[bestIdx];
+      b.items.push(it);
+      const n = b.items.length;
+      b.cLat = (b.cLat * (n - 1) + it.panoLat) / n;
+      b.cLng = (b.cLng * (n - 1) + it.panoLng) / n;
+    }
   }
   // No final sort here — caller sorts based on the criterion they care
-  // about (size, latest date, etc.).
-  return groups;
+  // about (closest-to-aim, latest date, etc.).
+  return buckets.map((b) => b.items);
 }
 
 function maxDate<T extends { date?: string | null }>(items: T[]): string {
