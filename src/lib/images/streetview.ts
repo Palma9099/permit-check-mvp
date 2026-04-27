@@ -116,13 +116,35 @@ export async function buildStreetViewEngine(opts: {
     return { ...p, distToAim, bearingToAim };
   });
 
-  // 3. Keep only DATED Street View Car captures within 30m of aim.
-  //    User photo spheres (date=null) are dropped — they aren't part of
-  //    a historical sequence and Google doesn't include them in the
-  //    timeline-slider history anyway.
+  // 3. Keep only DATED Street View Car captures within 30m of aim AND on
+  //    the same SIDE of the parcel as the geocoded address.
+  //
+  //    "Same side" = same polygon-edge orientation. Geocoded addresses for
+  //    FL residential lots land on the curb of the road they're addressed
+  //    on; that curb is the front edge of the parcel. Panos on the same
+  //    edge orientation are front-facing (the camera sees the front
+  //    facade). Panos on a perpendicular edge — north-curb captures of a
+  //    south-facing house, etc. — get excluded from the primary front
+  //    comparison.
+  //
+  //    For 6704 SW 134 PL: geocode (25.7038, -80.4112) is nearest to the
+  //    polygon's east edge running N-S. South curb panos at (25.7037,
+  //    -80.4112) are nearest to that same east edge → KEEP. The 2025
+  //    north pano at (25.7039, -80.4115) is nearest to the polygon's
+  //    NORTH edge (running E-W) → EXCLUDE. Bridge panos along the north
+  //    perimeter → EXCLUDE.
+  const frontEdgeBearing = opts.aimPolygon
+    ? findNearestEdgeBearing(opts.aimPolygon, opts.searchLat, opts.searchLng)
+    : null;
   const usableDated = enriched
     .filter((p) => p.date != null)
-    .filter((p) => p.distToAim <= MAX_PANO_DIST_M);
+    .filter((p) => p.distToAim <= MAX_PANO_DIST_M)
+    .filter((p) => {
+      if (frontEdgeBearing == null || !opts.aimPolygon) return true;
+      const panoEdgeBearing = findNearestEdgeBearing(opts.aimPolygon, p.panoLat, p.panoLng);
+      if (panoEdgeBearing == null) return true;
+      return isSameEdgeOrientation(frontEdgeBearing, panoEdgeBearing);
+    });
 
   if (usableDated.length === 0) {
     // No dated panos near aim. Try a "current only" render from the closest
@@ -438,6 +460,41 @@ function bearingToBuilding(
   const midLng = (bestFrom[1] + bestTo[1]) / 2;
   const panoToMid = bearingFromTo(panoLat, panoLng, midLat, midLng);
   return angularDelta(perp1, panoToMid) <= angularDelta(perp2, panoToMid) ? perp1 : perp2;
+}
+
+// Find the bearing of the polygon edge nearest to a given point.
+// Used to determine "which side" of the parcel a pano (or the geocode)
+// is on — the front edge for a residential address is the edge nearest
+// the geocode point.
+function findNearestEdgeBearing(
+  polygon: ParcelRing,
+  lat: number,
+  lng: number,
+): number | null {
+  if (!polygon || polygon.length < 3) return null;
+  let bestDist = Infinity;
+  let bestBearing = 0;
+  for (let i = 0; i < polygon.length - 1; i++) {
+    const from = polygon[i];
+    const to = polygon[i + 1];
+    const d = distancePointToSegmentMeters(lat, lng, from[0], from[1], to[0], to[1]);
+    if (d < bestDist) {
+      bestDist = d;
+      bestBearing = bearingFromTo(from[0], from[1], to[0], to[1]);
+    }
+  }
+  return bestBearing;
+}
+
+// Two edge bearings represent the SAME side of a polygon if their
+// orientations (mod 180°) are within tolerance. An edge running N-S has
+// bearing ~0° or ~180° depending on direction; both represent the same
+// side, so we compare modulo 180°.
+function isSameEdgeOrientation(a: number, b: number, toleranceDeg = 35): boolean {
+  const aMod = ((a % 180) + 180) % 180;
+  const bMod = ((b % 180) + 180) % 180;
+  const delta = Math.abs(aMod - bMod);
+  return Math.min(delta, 180 - delta) <= toleranceDeg;
 }
 
 // Distance from a point to a line segment, in meters. Uses an
