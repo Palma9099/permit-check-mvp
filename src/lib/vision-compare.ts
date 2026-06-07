@@ -176,7 +176,12 @@ CRITICAL — THEN vs NOW REASONING:
     - Garage door swap (overhead → modern panel; or single → double opening)
     - Front-yard perimeter gate / fence appearing, disappearing, or
       changing material (chain-link → wrought iron, wood → CBS wall, etc.)
-    - Window frame style change (single-hung wood → modern impact frames)
+    - Window REPLACEMENT — and only replacement: a clear frame MATERIAL or
+      STYLE change (single-hung wood → aluminum/modern impact frames), a
+      changed opening size/shape, or windows added or removed. Do NOT treat a
+      difference in glass tint, reflection, or window/trim COLOR as a window
+      finding — that is cosmetic, needs no permit, and is usually just a
+      different sun angle / time of day between the two captures.
     - Exterior cladding change (stucco refinish, new wainscoting, stone
       veneer added)
     - Driveway material change (asphalt → pavers, plain concrete → stamped)
@@ -228,6 +233,16 @@ Rules:
     let you tell, say "uncertain from imagery."
   - Never invent a finding. Never describe THEN by assumption — only by
     what you actually see in the THEN frame.
+  - NEVER flag a difference that is only color, paint, tint, reflection,
+    shadow, or brightness between the THEN and NOW frames. THEN and NOW
+    Street View are shot at different times of day, seasons, and sun angles,
+    so apparent color/lighting shifts (window glass tint, trim color, facade
+    hue, roof brightness) are imagery artifacts, not real changes. A genuine
+    paint/color change that you are confident is real is still cosmetic and
+    (in unincorporated Miami-Dade) needs no permit — classify it "note" at
+    most, never "flag". Reserve "flag" for changes in MATERIAL, STRUCTURE,
+    FOOTPRINT, or STYLE (e.g., new fence material, replaced window frames,
+    added structure), not appearance.
   - Be concrete about what changed: "roof appears uniformly dark tile
     in NOW vs streaky lighter tile in THEN" not "roof looks different".
   - Keep each observation's text to 1-2 short sentences. Plain English.
