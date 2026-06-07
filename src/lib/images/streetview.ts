@@ -39,7 +39,7 @@
 
 import type { ParcelRing, StreetViewImage } from '../types';
 import {
-  searchGooglePanoramas,
+  searchGooglePanoramasMulti,
   buildHistoricalStaticUrl,
   type GooglePano,
 } from './google-historical';
@@ -105,8 +105,25 @@ export async function buildStreetViewEngine(opts: {
   const fov = opts.fov ?? DEFAULT_FOV;
   const size = opts.size ?? { w: 640, h: 480 };
 
-  // 1. Pull every pano Google has near the parcel.
-  const allPanos = await searchGooglePanoramas(opts.searchLat, opts.searchLng);
+  // 1. Pull every pano Google has near the parcel. Google's pano search is
+  //    sensitive to the query coordinate: for a set-back house the rooftop
+  //    geocode lands deep in the lot, and a search from there can return a
+  //    pano cluster with NO dated captures while the dated curb captures sit
+  //    a few meters away. So we query several points and union by panoId:
+  //      - the geocode (where the address resolved)
+  //      - the aim/centroid (building center)
+  //      - the midpoint of the parcel edge nearest the building (a road-facing
+  //        point, present when we have a real polygon)
+  //    Distances/bearings in the merged set are normalized to the aim point.
+  const searchPoints: Array<{ lat: number; lng: number }> = [
+    { lat: opts.searchLat, lng: opts.searchLng },
+    { lat: opts.aimLat, lng: opts.aimLng },
+  ];
+  if (opts.aimPolygon && opts.aimPolygon.length >= 3) {
+    const edgeMid = nearestEdgeMidpoint(opts.aimPolygon, opts.aimLat, opts.aimLng);
+    if (edgeMid) searchPoints.push(edgeMid);
+  }
+  const allPanos = await searchGooglePanoramasMulti(searchPoints, opts.aimLat, opts.aimLng);
   if (allPanos.length === 0) {
     return emptyResult('No Google Street View panos near this location.');
   }
@@ -451,6 +468,31 @@ function bearingToBuilding(
   const midLng = (bestFrom[1] + bestTo[1]) / 2;
   const panoToMid = bearingFromTo(panoLat, panoLng, midLat, midLng);
   return angularDelta(perp1, panoToMid) <= angularDelta(perp2, panoToMid) ? perp1 : perp2;
+}
+
+// Midpoint of the polygon edge nearest a given point. Used as an extra
+// pano-search query point: for a typical FL lot the edge nearest the building
+// centroid is the road-facing (or a side) edge, which sits much closer to
+// where the Street View car drove than the rooftop geocode does. Searching
+// from here surfaces dated curb captures that a rooftop-only search misses.
+function nearestEdgeMidpoint(
+  polygon: ParcelRing,
+  lat: number,
+  lng: number,
+): { lat: number; lng: number } | null {
+  if (!polygon || polygon.length < 3) return null;
+  let bestDist = Infinity;
+  let best: { lat: number; lng: number } | null = null;
+  for (let i = 0; i < polygon.length - 1; i++) {
+    const from = polygon[i];
+    const to = polygon[i + 1];
+    const d = distancePointToSegmentMeters(lat, lng, from[0], from[1], to[0], to[1]);
+    if (d < bestDist) {
+      bestDist = d;
+      best = { lat: (from[0] + to[0]) / 2, lng: (from[1] + to[1]) / 2 };
+    }
+  }
+  return best;
 }
 
 // Find the bearing of the polygon edge nearest to a given point.

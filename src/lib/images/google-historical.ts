@@ -106,14 +106,28 @@ export async function searchGooglePanoramas(
     }
     const { panos, dates } = parsed;
 
-    // Dates align IN REVERSE with the last N panos. Reverse both arrays so
-    // index 0 of revPanos lines up with index 0 of revDates.
-    const revPanos = [...panos].reverse();
-    const revDates = [...dates].reverse();
+    // Each date entry is [panoIndex, [year, month], ...]. The FIRST element is
+    // an explicit index into the panos array — use it to map dates to panos
+    // directly. The old code assumed the dated panos were always the trailing
+    // N entries and zipped them by reversed position; that silently mis-stapled
+    // dates (or dropped them) whenever the dated captures weren't contiguous at
+    // the end of the array, which is common. Index-based mapping is exact.
+    const dateByIndex = new Map<number, { year: number; month: number }>();
+    for (const d of dates) {
+      if (
+        Array.isArray(d) &&
+        typeof d[0] === 'number' &&
+        Array.isArray(d[1]) &&
+        typeof d[1][0] === 'number' &&
+        typeof d[1][1] === 'number'
+      ) {
+        dateByIndex.set(d[0], { year: d[1][0], month: d[1][1] });
+      }
+    }
 
     const result: GooglePano[] = [];
-    for (let i = 0; i < revPanos.length; i++) {
-      const p = revPanos[i];
+    for (let i = 0; i < panos.length; i++) {
+      const p = panos[i];
       const panoId = p?.[0]?.[1];
       const lat = p?.[2]?.[0]?.[2];
       const lng = p?.[2]?.[0]?.[3];
@@ -122,12 +136,10 @@ export async function searchGooglePanoramas(
 
       let date: string | null = null;
       let year: number | null = null;
-      const d = revDates[i];
-      if (Array.isArray(d) && Array.isArray(d[1]) && typeof d[1][0] === 'number' && typeof d[1][1] === 'number') {
-        const yy = d[1][0];
-        const mm = String(d[1][1]).padStart(2, '0');
-        date = `${yy}-${mm}`;
-        year = yy;
+      const dm = dateByIndex.get(i);
+      if (dm) {
+        date = `${dm.year}-${String(dm.month).padStart(2, '0')}`;
+        year = dm.year;
       }
 
       const distM = haversineMeters(lat, lng, parcelLat, parcelLng);
@@ -151,6 +163,48 @@ export async function searchGooglePanoramas(
   } finally {
     clearTimeout(t);
   }
+}
+
+// Search Google panos from SEVERAL candidate points and union the results by
+// panoId. Google's SingleImageSearch is sensitive to the query coordinate:
+// for a set-back house the rooftop geocode can land deep in the lot, and a
+// search from there returns a pano cluster with NO dated captures — while a
+// search from the parcel centroid or a road-facing point returns the full
+// historical timeline (2008/2011/2022 etc.). Querying multiple points and
+// merging by panoId guarantees we surface dated captures regardless of where
+// any single geocode lands. When the same pano comes back dated from one
+// point and undated from another, we keep the dated copy.
+export async function searchGooglePanoramasMulti(
+  points: Array<{ lat: number; lng: number }>,
+  refLat: number,
+  refLng: number,
+): Promise<GooglePano[]> {
+  // Dedupe near-identical query points (within ~2m) so we don't waste calls.
+  const uniquePoints: Array<{ lat: number; lng: number }> = [];
+  for (const pt of points) {
+    if (!uniquePoints.some((u) => haversineMeters(u.lat, u.lng, pt.lat, pt.lng) < 2)) {
+      uniquePoints.push(pt);
+    }
+  }
+  const lists = await Promise.all(
+    uniquePoints.map((pt) => searchGooglePanoramas(pt.lat, pt.lng).catch(() => [] as GooglePano[])),
+  );
+  const byId = new Map<string, GooglePano>();
+  for (const list of lists) {
+    for (const p of list) {
+      const existing = byId.get(p.panoId);
+      if (!existing || (!existing.date && p.date)) {
+        // Normalize dist/bearing to the canonical reference point so callers
+        // get consistent values no matter which query point surfaced the pano.
+        byId.set(p.panoId, {
+          ...p,
+          distM: haversineMeters(p.panoLat, p.panoLng, refLat, refLng),
+          bearingToSubject: bearingDeg(p.panoLat, p.panoLng, refLat, refLng),
+        });
+      }
+    }
+  }
+  return [...byId.values()];
 }
 
 // Cluster panos by which side (fronting street) they came from. Two panos

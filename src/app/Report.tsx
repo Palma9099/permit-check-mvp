@@ -322,9 +322,21 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               );
             })()}
             {r.thenVsNow.historicalStreetView && !r.thenVsNow.historicalStreetView.then && r.thenVsNow.historicalStreetView.failureReason && (
-              <p className="text-xs text-ink-muted italic mt-3">
-                Historical Street View unavailable: {r.thenVsNow.historicalStreetView.failureReason}
-              </p>
+              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="text-xs text-amber-800">
+                  <span className="font-semibold">No automatic historical Street View for this property.</span>{' '}
+                  {r.thenVsNow.historicalStreetView.failureReason}
+                </p>
+                {!r.thenVsNow.userUploadedThen?.dataUrl && (
+                  <p className="text-xs text-amber-800 mt-1.5">
+                    To still get an old-vs-new comparison, re-run the check and attach an older
+                    photo — an old MLS listing photo or a field photo — in the{' '}
+                    <span className="font-semibold">“Upload a historical photo”</span> slot. The AI
+                    will compare it against the current Street View and flag changes to the roof,
+                    windows, doors, fence, and driveway.
+                  </p>
+                )}
+              </div>
             )}
 
             {/* Current Street View (Google, heading-aware) */}
