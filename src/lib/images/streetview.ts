@@ -233,11 +233,11 @@ export async function buildStreetViewEngine(opts: {
 
     const earliestHeading = bearingToBuilding(
       earliest.panoLat, earliest.panoLng,
-      opts.aimPolygon ?? null, opts.aimLat, opts.aimLng,
+      opts.aimPolygon ?? null, opts.aimLat, opts.aimLng, earliest.cameraHeading,
     );
     const latestHeading = bearingToBuilding(
       latest.panoLat, latest.panoLng,
-      opts.aimPolygon ?? null, opts.aimLat, opts.aimLng,
+      opts.aimPolygon ?? null, opts.aimLat, opts.aimLng, latest.cameraHeading,
     );
     const sideLabel = idx === 0 ? 'Primary front' : `Side ${idx + 1}`;
 
@@ -270,7 +270,7 @@ export async function buildStreetViewEngine(opts: {
     // or a 2025 window swap), not just the oldest-vs-newest delta.
     const sideFrames: StreetViewHistoricalFrame[] = [];
     for (const p of cluster) {
-      const phead = bearingToBuilding(p.panoLat, p.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng);
+      const phead = bearingToBuilding(p.panoLat, p.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng, p.cameraHeading);
       const url = buildHistoricalStaticUrl(p.panoId, phead, size, fov, DEFAULT_PITCH);
       // Same pano + heading, narrow FOV + max size = a zoomed, high-detail
       // crop of the facade for the vision model to read window/door/paint.
@@ -333,8 +333,12 @@ export async function buildStreetViewEngine(opts: {
       const curYear = Number(meta.panoDate.slice(0, 4));
       const alreadyHave = front.frames.some((f) => f.captureDate.slice(0, 7) === meta.panoDate);
       if (curYear && curYear > latestYear && !alreadyHave) {
+        // The metadata pano has no camera heading of its own; reuse the front
+        // cluster's street direction (same road) so the 2025 frame aims at the
+        // facade even when the parcel polygon is unavailable.
         const head = bearingToBuilding(
           meta.panoLat, meta.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng,
+          anchor.cameraHeading,
         );
         const url = buildCurrentStaticUrl(meta.panoLat, meta.panoLng, head, size, fov, DEFAULT_PITCH);
         const detailUrl = buildCurrentStaticUrl(
@@ -508,8 +512,21 @@ function bearingToBuilding(
   polygon: ParcelRing | null,
   fallbackAimLat: number,
   fallbackAimLng: number,
+  cameraHeading?: number,
 ): number {
   if (!polygon || polygon.length < 3) {
+    // No parcel polygon (county GIS slow/down). Don't fall back to
+    // bearing-to-geocode — the rooftop geocode can sit anywhere relative to
+    // the curb and produces a badly-aimed frame. Instead derive the front
+    // heading from the STREET direction: the Street View car's travel heading
+    // runs along the road, so the house is perpendicular to it. Pick the
+    // perpendicular that points toward the geocode (the building side).
+    if (typeof cameraHeading === 'number' && Number.isFinite(cameraHeading)) {
+      const perp1 = (cameraHeading + 90) % 360;
+      const perp2 = (cameraHeading - 90 + 360) % 360;
+      const toAim = bearingFromTo(panoLat, panoLng, fallbackAimLat, fallbackAimLng);
+      return angularDelta(perp1, toAim) <= angularDelta(perp2, toAim) ? perp1 : perp2;
+    }
     return bearingFromTo(panoLat, panoLng, fallbackAimLat, fallbackAimLng);
   }
   // Find the polygon edge nearest to the pano.
