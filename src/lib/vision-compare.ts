@@ -604,20 +604,28 @@ export async function compareImagery(opts: {
   });
 
   try {
-    const res = await fetch(ANTHROPIC_API, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1800,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userContent }],
-      }),
+    const reqBody = JSON.stringify({
+      model: MODEL,
+      max_tokens: 1800,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userContent }],
     });
+    // Retry transient overload/rate-limit/5xx a couple times so a momentary
+    // blip doesn't drop the whole report to the static-checklist fallback.
+    let res!: Response;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      res = await fetch(ANTHROPIC_API, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: reqBody,
+      });
+      if (res.ok || ![429, 500, 502, 503, 504, 529].includes(res.status) || attempt === 3) break;
+      await new Promise((r) => setTimeout(r, attempt * 1500));
+    }
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');

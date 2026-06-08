@@ -282,6 +282,34 @@ export function buildHistoricalStaticUrl(
   return u.toString();
 }
 
+// Render the CURRENT (newest) Street View pano at a location via the
+// documented Static API. Unlike buildHistoricalStaticUrl (which renders a
+// specific historical pano_id), this uses `location=` so Google serves the
+// most-recent imagery — which the undocumented SingleImageSearch endpoint
+// sometimes omits (e.g. a 2025 drive the time-slider shows but the historical
+// list doesn't return). Use this to append the newest year to a timeline.
+export function buildCurrentStaticUrl(
+  lat: number,
+  lng: number,
+  heading: number,
+  size: { w: number; h: number } = { w: 640, h: 480 },
+  fov = 90,
+  pitch = 5,
+): string | null {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) return null;
+  const u = new URL('https://maps.googleapis.com/maps/api/streetview');
+  u.searchParams.set('size', `${size.w}x${size.h}`);
+  u.searchParams.set('location', `${lat},${lng}`);
+  u.searchParams.set('heading', heading.toFixed(1));
+  u.searchParams.set('pitch', String(pitch));
+  u.searchParams.set('fov', String(fov));
+  u.searchParams.set('source', 'outdoor');
+  u.searchParams.set('return_error_code', 'true');
+  u.searchParams.set('key', key);
+  return u.toString();
+}
+
 // ---- helpers ----
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {

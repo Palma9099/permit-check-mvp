@@ -41,6 +41,7 @@ import type { ParcelRing, StreetViewImage } from '../types';
 import {
   searchGooglePanoramasMulti,
   buildHistoricalStaticUrl,
+  buildCurrentStaticUrl,
   type GooglePano,
 } from './google-historical';
 
@@ -312,6 +313,55 @@ export async function buildStreetViewEngine(opts: {
             }
           : null,
     });
+  }
+
+  // 5b. Append the CURRENT (newest) FRONT capture. SingleImageSearch sometimes
+  //     omits the very latest drive — 6704's Jan-2025 capture shows in Google's
+  //     time-slider but the historical list caps at 2022. The documented
+  //     metadata/static API DOES serve the newest pano by location, so query it
+  //     at the front cluster and append it to the FRONT timeline when it's newer
+  //     than our latest historical frame. The front is the most important view
+  //     and must carry the newest year.
+  if (sides.length > 0 && clusters.length > 0) {
+    const front = sides[0];
+    const frontCluster = clusters[0];
+    const anchor = frontCluster[frontCluster.length - 1]; // latest front pano position
+    const latestYear =
+      front.frames.length > 0 ? front.frames[front.frames.length - 1].captureYear : 0;
+    const meta = await getStreetViewMeta(anchor.panoLat, anchor.panoLng, 25);
+    if (meta.ok && meta.panoDate && meta.panoLat != null && meta.panoLng != null) {
+      const curYear = Number(meta.panoDate.slice(0, 4));
+      const alreadyHave = front.frames.some((f) => f.captureDate.slice(0, 7) === meta.panoDate);
+      if (curYear && curYear > latestYear && !alreadyHave) {
+        const head = bearingToBuilding(
+          meta.panoLat, meta.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng,
+        );
+        const url = buildCurrentStaticUrl(meta.panoLat, meta.panoLng, head, size, fov, DEFAULT_PITCH);
+        const detailUrl = buildCurrentStaticUrl(
+          meta.panoLat, meta.panoLng, head, DETAIL_SIZE, DETAIL_FOV, DETAIL_PITCH,
+        );
+        if (url) {
+          const frame: StreetViewHistoricalFrame = {
+            captureDate: `${meta.panoDate}-01T00:00:00Z`,
+            captureYear: curYear,
+            imageUrl: url,
+            heading: Math.round(head),
+            label: `Primary front · ${meta.panoDate} (current)`,
+            detailUrl: detailUrl ?? undefined,
+          };
+          front.frames.push(frame);
+          front.now = frame;
+          allFrames.push(frame);
+          const newCur = {
+            heading: Math.round(head),
+            label: `Street View — front of subject (${head.toFixed(0)}°, ${meta.panoDate})`,
+            imageUrl: url,
+          };
+          if (currentFrames.length > 0) currentFrames[0] = newCur;
+          else currentFrames.unshift(newCur);
+        }
+      }
+    }
   }
 
   // 6. Determine failureReason for the historical pair. A successful pair
