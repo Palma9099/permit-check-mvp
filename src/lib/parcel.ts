@@ -65,7 +65,11 @@ async function queryEsriByPoint(
     u.searchParams.set('f', 'json');
     u.searchParams.set('resultRecordCount', '1');
     const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 8000);
+    // Miami-Dade's ArcGIS endpoint can take 8-12s under load. An 8s cap was
+    // timing out by a hair and dropping us to the synthetic-box fallback (which
+    // also misaims the Street View front heading). 15s captures the slow-but-
+    // valid response while still bounding the request.
+    const timeout = setTimeout(() => ctrl.abort(), 15000);
     const res = await fetch(u.toString(), { signal: ctrl.signal, cache: 'no-store' });
     clearTimeout(timeout);
     if (!res.ok) {
