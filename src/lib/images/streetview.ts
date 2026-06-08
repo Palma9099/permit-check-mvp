@@ -85,7 +85,7 @@ export interface StreetViewEngineResult {
 
 const DEFAULT_FOV = 110;            // wide enough that aim imprecision still fits the building
 const DEFAULT_PITCH = 5;            // tilt up 5° to clear privacy fences
-const DETAIL_FOV = 62;              // tight crop on the facade — front door, windows, upper driveway
+const DETAIL_FOV = 48;              // tight crop on the facade — zoomed in so window frames/grids resolve
 const DETAIL_PITCH = 2;            // near-level so the driveway + door both stay in frame
 const DETAIL_SIZE = { w: 640, h: 640 }; // max free Static API size → most pixels on the facade
 const MAX_PANO_DIST_M = 30;         // panos beyond this aren't really fronting the parcel

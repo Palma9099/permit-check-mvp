@@ -258,6 +258,23 @@ BE COMPLETE — DON'T DEFAULT TO "UNCHANGED":
   visible improvement is the worst outcome — when in doubt, surface it (as a
   "note" if only cosmetic, a "flag" if material/structural with no permit).
 
+SENSITIVITY — lean toward catching real changes (especially windows/doors):
+  Be sensitive, not conservative. For WINDOWS, DOORS, GARAGE DOORS, and GATES:
+    - If you see ANY year-to-year difference in frame COLOR, GRID/MUNTIN
+      pattern, frame THICKNESS/profile, pane layout, or opening shape, treat it
+      as a likely REPLACEMENT and FLAG it — name what differs and the years
+      (e.g. "front windows: white frames with internal grids in 2008/2011,
+      dark frameless sliders by 2025 → replaced").
+    - Do NOT answer "match/unchanged" for these elements unless you can clearly
+      see they are IDENTICAL across the years. If the resolution or angle won't
+      let you confirm they are identical, answer "uncertain" — never assert
+      "unchanged" for something you cannot actually verify.
+    - Lean on the FRONT FACADE ZOOM frames (the tight high-res crops); compare
+      each year's zoom directly, window-by-window. These are your best evidence.
+  This heightened sensitivity is for facade HARDWARE only. It does NOT change
+  how you treat WALL/STUCCO paint color (still a "note") or pure glare/
+  reflection where the frame itself is clearly identical.
+
 Rules:
   - Only describe what is genuinely visible. If the image quality doesn't
     let you tell, say "uncertain from imagery."
