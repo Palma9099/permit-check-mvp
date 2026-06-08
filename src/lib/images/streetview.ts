@@ -325,45 +325,54 @@ export async function buildStreetViewEngine(opts: {
   if (sides.length > 0 && clusters.length > 0) {
     const front = sides[0];
     const frontCluster = clusters[0];
-    const anchor = frontCluster[frontCluster.length - 1]; // latest front pano position
-    const latestYear =
-      front.frames.length > 0 ? front.frames[front.frames.length - 1].captureYear : 0;
+    const anchor = frontCluster[frontCluster.length - 1]; // latest front-curb pano
+    const latestFrame =
+      front.frames.length > 0 ? front.frames[front.frames.length - 1] : null;
+    const latestYear = latestFrame?.captureYear ?? 0;
+    // CRITICAL for corner lots: render the current frame at the FRONT-CURB
+    // anchor and reuse the front cluster's ALREADY-CORRECT heading. Do NOT
+    // recompute from the metadata pano position — Google can snap the metadata
+    // pano to the side street, and recomputing then aims the camera at the
+    // fence (the 178° bug). location=anchor serves the newest imagery at the
+    // front curb; the established front heading keeps it on the facade.
+    const frontHeading =
+      latestFrame?.heading ??
+      bearingToBuilding(
+        anchor.panoLat, anchor.panoLng, opts.aimPolygon ?? null,
+        opts.aimLat, opts.aimLng, anchor.cameraHeading,
+      );
     const meta = await getStreetViewMeta(anchor.panoLat, anchor.panoLng, 25);
-    if (meta.ok && meta.panoDate && meta.panoLat != null && meta.panoLng != null) {
-      const curYear = Number(meta.panoDate.slice(0, 4));
-      const alreadyHave = front.frames.some((f) => f.captureDate.slice(0, 7) === meta.panoDate);
-      if (curYear && curYear > latestYear && !alreadyHave) {
-        // The metadata pano has no camera heading of its own; reuse the front
-        // cluster's street direction (same road) so the 2025 frame aims at the
-        // facade even when the parcel polygon is unavailable.
-        const head = bearingToBuilding(
-          meta.panoLat, meta.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng,
-          anchor.cameraHeading,
-        );
-        const url = buildCurrentStaticUrl(meta.panoLat, meta.panoLng, head, size, fov, DEFAULT_PITCH);
-        const detailUrl = buildCurrentStaticUrl(
-          meta.panoLat, meta.panoLng, head, DETAIL_SIZE, DETAIL_FOV, DETAIL_PITCH,
-        );
-        if (url) {
-          const frame: StreetViewHistoricalFrame = {
-            captureDate: `${meta.panoDate}-01T00:00:00Z`,
-            captureYear: curYear,
-            imageUrl: url,
-            heading: Math.round(head),
-            label: `Primary front · ${meta.panoDate} (current)`,
-            detailUrl: detailUrl ?? undefined,
-          };
-          front.frames.push(frame);
-          front.now = frame;
-          allFrames.push(frame);
-          const newCur = {
-            heading: Math.round(head),
-            label: `Street View — front of subject (${head.toFixed(0)}°, ${meta.panoDate})`,
-            imageUrl: url,
-          };
-          if (currentFrames.length > 0) currentFrames[0] = newCur;
-          else currentFrames.unshift(newCur);
-        }
+    const curYear = meta.ok && meta.panoDate ? Number(meta.panoDate.slice(0, 4)) : 0;
+    console.error(
+      `[sv-aim] front years=${frontCluster.map((p) => p.date).join(',')} ` +
+      `cams=${frontCluster.map((p) => Math.round(p.cameraHeading)).join(',')} ` +
+      `frontHeading=${Math.round(frontHeading)} latestYear=${latestYear} ` +
+      `metaDate=${meta.panoDate ?? 'none'} curYear=${curYear}`,
+    );
+    if (curYear && curYear > latestYear && meta.panoDate) {
+      const url = buildCurrentStaticUrl(anchor.panoLat, anchor.panoLng, frontHeading, size, fov, DEFAULT_PITCH);
+      const detailUrl = buildCurrentStaticUrl(
+        anchor.panoLat, anchor.panoLng, frontHeading, DETAIL_SIZE, DETAIL_FOV, DETAIL_PITCH,
+      );
+      if (url) {
+        const frame: StreetViewHistoricalFrame = {
+          captureDate: `${meta.panoDate}-01T00:00:00Z`,
+          captureYear: curYear,
+          imageUrl: url,
+          heading: Math.round(frontHeading),
+          label: `Primary front · ${meta.panoDate} (current)`,
+          detailUrl: detailUrl ?? undefined,
+        };
+        front.frames.push(frame);
+        front.now = frame;
+        allFrames.push(frame);
+        const newCur = {
+          heading: Math.round(frontHeading),
+          label: `Street View — front of subject (${frontHeading.toFixed(0)}°, ${meta.panoDate})`,
+          imageUrl: url,
+        };
+        if (currentFrames.length > 0) currentFrames[0] = newCur;
+        else currentFrames.unshift(newCur);
       }
     }
   }
