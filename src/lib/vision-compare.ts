@@ -176,12 +176,22 @@ CRITICAL — THEN vs NOW REASONING:
     - Garage door swap (overhead → modern panel; or single → double opening)
     - Front-yard perimeter gate / fence appearing, disappearing, or
       changing material (chain-link → wrought iron, wood → CBS wall, etc.)
-    - Window REPLACEMENT — and only replacement: a clear frame MATERIAL or
-      STYLE change (single-hung wood → aluminum/modern impact frames), a
-      changed opening size/shape, or windows added or removed. Do NOT treat a
-      difference in glass tint, reflection, or window/trim COLOR as a window
-      finding — that is cosmetic, needs no permit, and is usually just a
-      different sun angle / time of day between the two captures.
+    - Window REPLACEMENT — FLAG it. Windows are swapped as whole units, so ANY
+      of the following is a replacement (NOT "cosmetic", NOT "lighting"):
+        • the FRAME COLOR changes (e.g. white → dark bronze/black, or vice versa)
+        • the GRID / MUNTIN pattern changes (divided-lite panes → one clean
+          sheet of glass, or vice versa)
+        • the frame PROFILE or material changes (thin → thick, wood → aluminum)
+        • the operation style changes (single-hung → horizontal slider/casement)
+        • the opening size/shape changes, or windows are added/removed
+      CRITICAL: you cannot repaint a window frame AND change its grid pattern —
+      so if a window's frame color looks different AND its grid/pane layout
+      differs between years, it is unambiguously a NEW window → "flag" (note
+      "no window permit on file"). A white frame with internal grids in an
+      early year becoming a dark frameless slider in a later year is a textbook
+      replacement — never call that "unchanged". The ONLY window difference to
+      ignore is pure glass reflection/tint that shifts with sun angle while the
+      frame color, profile, AND grid pattern are all identical.
     - Exterior cladding change (stucco refinish, new wainscoting, stone
       veneer added)
     - Driveway material change (asphalt → pavers, plain concrete → stamped)
@@ -262,6 +272,12 @@ Rules:
     reportable change — surface it as a "note" (worth disclosing to a buyer;
     paint alone needs no permit in unincorporated Miami-Dade). NEVER silently
     drop a real change just because it is cosmetic.
+  - The "cosmetic color = note, not flag" logic applies ONLY to the WALL/STUCCO
+    facade. A color change on a WINDOW FRAME, DOOR, GARAGE DOOR, or FENCE is
+    almost never a repaint — those components are REPLACED, not brush-painted —
+    so a frame/door/fence that changes color across years is a replacement
+    signal and should be FLAGGED (especially if its style, grid, or profile
+    also changed), not written off as cosmetic.
   - Severity: "flag" = a change in MATERIAL, STRUCTURE, FOOTPRINT, or STYLE
     with no matching permit (new/replaced fence, replaced window frames or
     doors, enclosed garage, added structure, new patio/cover). "note" = a real
