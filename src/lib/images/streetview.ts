@@ -57,6 +57,10 @@ export interface StreetViewSidePair {
   approxBearingFromCenter: number;      // shared heading for this side
   then: StreetViewHistoricalFrame | null;
   now: StreetViewHistoricalFrame | null;
+  // Every dated capture for this side, earliest → latest (2008, 2011, 2022,
+  // 2025…). The vision model steps through the full timeline so it catches
+  // changes that appear in any year, not just the oldest-vs-newest delta.
+  frames: StreetViewHistoricalFrame[];
 }
 
 export interface StreetViewEngineResult {
@@ -252,9 +256,30 @@ export async function buildStreetViewEngine(opts: {
       });
     }
 
+    // Build the full per-side timeline FIRST — every dated capture in this
+    // cluster, earliest → latest — so the vision model can step through year
+    // by year and catch a change that appears in any frame (e.g. a 2022 repaint
+    // or a 2025 window swap), not just the oldest-vs-newest delta.
+    const sideFrames: StreetViewHistoricalFrame[] = [];
+    for (const p of cluster) {
+      const phead = bearingToBuilding(p.panoLat, p.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng);
+      const url = buildHistoricalStaticUrl(p.panoId, phead, size, fov, DEFAULT_PITCH);
+      if (url && p.date && p.year) {
+        sideFrames.push({
+          captureDate: `${p.date}-01T00:00:00Z`,
+          captureYear: p.year,
+          imageUrl: url,
+          heading: Math.round(phead),
+          label: `${sideLabel} · ${p.date}`,
+        });
+      }
+    }
+    allFrames.push(...sideFrames);
+
     sides.push({
       sideLabel,
       approxBearingFromCenter: latestHeading,
+      frames: sideFrames,
       then:
         thenUrl && earliest.date && earliest.year
           ? {
@@ -276,21 +301,6 @@ export async function buildStreetViewEngine(opts: {
             }
           : null,
     });
-
-    // Track every dated pano in the cluster for completeness.
-    for (const p of cluster) {
-      const phead = bearingToBuilding(p.panoLat, p.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng);
-      const url = buildHistoricalStaticUrl(p.panoId, phead, size, fov, DEFAULT_PITCH);
-      if (url && p.date && p.year) {
-        allFrames.push({
-          captureDate: `${p.date}-01T00:00:00Z`,
-          captureYear: p.year,
-          imageUrl: url,
-          heading: Math.round(phead),
-          label: `${sideLabel} · ${p.date}`,
-        });
-      }
-    }
   }
 
   // 6. Determine failureReason for the historical pair. A successful pair

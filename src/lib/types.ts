@@ -111,6 +111,8 @@ export interface HistoricalStreetViewSide {
   approxBearingFromCenter: number;
   then: HistoricalStreetViewFrameType | null;
   now: HistoricalStreetViewFrameType | null;
+  // Full per-side timeline (every dated capture, earliest → latest).
+  frames?: HistoricalStreetViewFrameType[];
 }
 
 export interface HistoricalStreetViewPair {

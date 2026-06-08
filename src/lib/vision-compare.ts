@@ -228,21 +228,46 @@ NOW-ONLY DEGRADED MODE:
   available" in your summary and focus on features that look post-
   construction versus the original vintage.
 
+STEP THROUGH THE FULL TIMELINE — DON'T JUST DIFF OLDEST VS NEWEST:
+  For each side you may receive MULTIPLE dated Street View frames (e.g. 2008,
+  2011, 2022, 2025), all from the same camera position. Examine them IN ORDER
+  and pinpoint the YEAR each visible change first appears. An improvement can
+  show up only in an intermediate or the most-recent frame, so a finding is
+  still valid even if the oldest two frames match. When you cite a change, name
+  the years it spans (e.g. "front windows are single-hung in 2008 and 2011 but
+  replaced with modern impact frames by 2022; facade repainted tan→white by
+  2025").
+
+BE COMPLETE — DON'T DEFAULT TO "UNCHANGED":
+  Actively inspect the front facade in EVERY frame for: exterior paint, front
+  door, garage door, windows (frame/material/grid — a replacement, not just
+  color), perimeter gate/fence, cladding, and added structures. Do NOT report
+  "match/unchanged" for windows, doors, or facade unless you have genuinely
+  looked across the frames and they ARE the same. If you cannot tell, say
+  "uncertain"; if they differ, report it at the right severity. Missing a real,
+  visible improvement is the worst outcome — when in doubt, surface it (as a
+  "note" if only cosmetic, a "flag" if material/structural with no permit).
+
 Rules:
   - Only describe what is genuinely visible. If the image quality doesn't
     let you tell, say "uncertain from imagery."
   - Never invent a finding. Never describe THEN by assumption — only by
     what you actually see in the THEN frame.
-  - NEVER flag a difference that is only color, paint, tint, reflection,
-    shadow, or brightness between the THEN and NOW frames. THEN and NOW
-    Street View are shot at different times of day, seasons, and sun angles,
-    so apparent color/lighting shifts (window glass tint, trim color, facade
-    hue, roof brightness) are imagery artifacts, not real changes. A genuine
-    paint/color change that you are confident is real is still cosmetic and
-    (in unincorporated Miami-Dade) needs no permit — classify it "note" at
-    most, never "flag". Reserve "flag" for changes in MATERIAL, STRUCTURE,
-    FOOTPRINT, or STYLE (e.g., new fence material, replaced window frames,
-    added structure), not appearance.
+  - Tell a real change apart from a lighting artifact — but do NOT use this to
+    ignore real changes. THEN/NOW frames are shot at different times of day,
+    seasons, and sun angles, so do not FLAG a difference that is ONLY
+    brightness, shadow, glare, or reflection while the underlying material is
+    the same. HOWEVER, a genuine exterior repaint (the facade is clearly a
+    different color across years, not merely lit differently) IS a real,
+    reportable change — surface it as a "note" (worth disclosing to a buyer;
+    paint alone needs no permit in unincorporated Miami-Dade). NEVER silently
+    drop a real change just because it is cosmetic.
+  - Severity: "flag" = a change in MATERIAL, STRUCTURE, FOOTPRINT, or STYLE
+    with no matching permit (new/replaced fence, replaced window frames or
+    doors, enclosed garage, added structure, new patio/cover). "note" = a real
+    but cosmetic change (exterior paint color, new landscaping). "match" =
+    genuinely unchanged or permit-explained. "uncertain" = you truly cannot
+    tell from the imagery.
   - Be concrete about what changed: "roof appears uniformly dark tile
     in NOW vs streaky lighter tile in THEN" not "roof looks different".
   - Keep each observation's text to 1-2 short sentences. Plain English.
@@ -265,7 +290,9 @@ Return ONLY valid JSON matching this schema — no preamble, no code fences:
   ]
 }
 
-Keep observations between 3 and 6. Skip areas with nothing notable to say.`;
+Keep observations between 3 and 8. Skip areas with nothing notable, but do
+not skip a facade element (paint, windows, doors, gate) just to stay short —
+if it visibly changed across the timeline, include it.`;
 
 function parseResult(text: string): { summary: string; observations: VisionObservation[] } | null {
   const cleaned = text
@@ -306,6 +333,9 @@ export async function compareImagery(opts: {
     sideLabel: string;
     then: HistoricalStreetViewFrameType | null;
     now: HistoricalStreetViewFrameType | null;
+    // Full chronological timeline for this side (every dated capture). When
+    // present, the model is shown EVERY year, not just then/now.
+    frames?: HistoricalStreetViewFrameType[];
   }>;
   // Realtor-supplied historical THEN photo (data URL). When present, this
   // becomes the canonical THEN reference for facade-level comparison —
@@ -353,12 +383,26 @@ export async function compareImagery(opts: {
   // Fetch all images in parallel. Some may fail (historical NAIP can 404 for
   // out-of-coverage parcels, Mapillary may have no historical pano for the
   // street) — that's fine, we degrade gracefully.
-  const sideThenPromises = sides.map((s) =>
-    s.then?.imageUrl ? fetchImageBase64(s.then.imageUrl) : Promise.resolve(null),
-  );
-  const sideNowPromises = sides.map((s) =>
-    s.now?.imageUrl ? fetchImageBase64(s.now.imageUrl) : Promise.resolve(null),
-  );
+  // Build the full chronological timeline per side. Prefer the `frames` list
+  // (every dated capture: 2008, 2011, 2022, 2025…); fall back to [then, now]
+  // for older callers. De-dupe by year-month and cap at 5 frames/side to bound
+  // token cost — the model sees the earliest, the latest, and the years in
+  // between so it can pinpoint WHEN a change appeared.
+  const sideTimelines = sides.map((s) => {
+    const list =
+      s.frames && s.frames.length > 0
+        ? s.frames
+        : ([s.then, s.now].filter(Boolean) as HistoricalStreetViewFrameType[]);
+    const seen = new Set<string>();
+    const uniq = list.filter((f) => {
+      if (!f.imageUrl) return false;
+      const key = f.captureDate.slice(0, 7);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return uniq.slice(0, 5);
+  });
 
   const fixed = await Promise.all([
     opts.thenAerial?.imageUrl ? fetchImageBase64(opts.thenAerial.imageUrl) : Promise.resolve(null),
@@ -367,8 +411,11 @@ export async function compareImagery(opts: {
     opts.contextSatelliteUrl ? fetchImageBase64(opts.contextSatelliteUrl) : Promise.resolve(null),
   ]);
   const [thenAerialB64, nowAerialB64, closeB64, contextB64] = fixed;
-  const sideThenB64 = await Promise.all(sideThenPromises);
-  const sideNowB64 = await Promise.all(sideNowPromises);
+  const sideFrameB64 = await Promise.all(
+    sideTimelines.map((frames) =>
+      Promise.all(frames.map((f) => fetchImageBase64(f.imageUrl as string))),
+    ),
+  );
   const streetViewB64 = await Promise.all(
     streetViewList.map((s) => fetchImageBase64(s.imageUrl as string)),
   );
@@ -479,32 +526,29 @@ export async function compareImagery(opts: {
   // For corner lots we get multiple sides — emit a labeled THEN/NOW pair
   // for each so the AI can flag facade changes per street independently.
   sides.forEach((side, idx) => {
-    const tB64 = sideThenB64[idx];
-    const nB64 = sideNowB64[idx];
-    const tFrame = side.then;
-    const nFrame = side.now;
-    if (tB64 && tFrame) {
+    const frames = sideTimelines[idx];
+    const b64s = sideFrameB64[idx];
+    if (!frames || frames.length === 0) return;
+    const years = frames.map((f) => f.captureYear).join(' → ');
+    frames.forEach((frame, fi) => {
+      const b64 = b64s[fi];
+      if (!b64) return;
       imageCounter++;
+      const role =
+        fi === 0
+          ? 'EARLIEST in this timeline'
+          : fi === frames.length - 1
+            ? 'LATEST / most recent'
+            : 'intermediate year';
       userContent.push({
         type: 'text',
-        text: `IMAGE ${imageCounter} — THEN STREET VIEW (${side.sideLabel}), captured ${tFrame.captureDate.slice(0, 10)} (${tFrame.captureYear}). Historical ground-level view of the ${side.sideLabel.toLowerCase()} of the subject. Use this as the THEN reference for facade-level comparison on this side: paint color, front door, perimeter gate, garage door, windows, fence material. Compare against the matching NOW frame. Refer to it as "the ${tFrame.captureYear} Street View frame" — do NOT name a specific imagery provider in your finding text.`,
+        text: `IMAGE ${imageCounter} — STREET VIEW (${side.sideLabel}, ${frame.captureYear} — ${role}). All ${side.sideLabel} frames share the same camera position and heading, so any difference between years is a REAL change on the property, not an angle/provider artifact. This side's full timeline is ${years} — step through it CHRONOLOGICALLY and note the YEAR each visible change first appears: exterior/facade paint, front door, garage door, windows (frame style, material, or grid pattern — i.e. a replacement, not merely a color difference), perimeter gate/fence material & height, cladding, added structures. Refer to frames by year (e.g. "the ${frame.captureYear} frame") — never name an imagery provider in your findings.`,
       });
       userContent.push({
         type: 'image',
-        source: { type: 'base64', media_type: 'image/jpeg', data: tB64 },
+        source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
       });
-    }
-    if (nB64 && nFrame) {
-      imageCounter++;
-      userContent.push({
-        type: 'text',
-        text: `IMAGE ${imageCounter} — NOW STREET VIEW (${side.sideLabel}), captured ${nFrame.captureDate.slice(0, 10)} (${nFrame.captureYear}). Latest ground-level view of the same side. Compare paint, doors, gates, garage, windows, fence vs the THEN frame for this side. Source-matched with THEN — same provider, same heading, same field of view — so any change you call out should be real, not a provider artifact. Refer to it as "the ${nFrame.captureYear} Street View frame" — do NOT name a specific imagery provider in your finding text.`,
-      });
-      userContent.push({
-        type: 'image',
-        source: { type: 'base64', media_type: 'image/jpeg', data: nB64 },
-      });
-    }
+    });
   });
 
   // ---- NOW Street View (current Google, heading-aware) ----
