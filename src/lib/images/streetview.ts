@@ -343,7 +343,7 @@ export async function buildStreetViewEngine(opts: {
       );
     const meta = await getStreetViewMeta(anchor.panoLat, anchor.panoLng, 25);
     const curYear = meta.ok && meta.panoDate ? Number(meta.panoDate.slice(0, 4)) : 0;
-    console.error(
+    console.log(
       `[sv-aim] front years=${frontCluster.map((p) => p.date).join(',')} ` +
       `cams=${frontCluster.map((p) => Math.round(p.cameraHeading)).join(',')} ` +
       `frontHeading=${Math.round(frontHeading)} latestYear=${latestYear} ` +

@@ -17,6 +17,7 @@
 // Any fetch failure falls through silently to the next source. Never throw —
 // the main report should always render.
 
+import { unstable_cache } from 'next/cache';
 import type { ParcelRing } from './types';
 
 export interface ParcelPolygonResult {
@@ -35,26 +36,33 @@ interface EsriQueryOpts {
   sourceLabel: string;
 }
 
-async function queryEsriByPoint(
-  lat: number,
-  lng: number,
-  opts: EsriQueryOpts,
-): Promise<ParcelPolygonResult | null> {
-  // Use a small envelope (~5m) instead of a strict point intersect. A strict
-  // point hits "no features" whenever the geocoded pin lands on a property
-  // line, the right-of-way, or just outside the polygon by a few feet — which
-  // is common for residential rooftop geocoding. The envelope tolerates that
-  // and still returns the single parcel containing the address.
-  const DELTA = 0.00005; // ~5m at FL latitudes
-  const envelope = {
-    xmin: lng - DELTA,
-    ymin: lat - DELTA,
-    xmax: lng + DELTA,
-    ymax: lat + DELTA,
-    spatialReference: { wkid: 4326 },
-  };
-  try {
-    const u = new URL(opts.baseUrl + '/query');
+// The real ArcGIS query, wrapped in unstable_cache so a parcel polygon is
+// pulled from the (rate-limited) county GIS AT MOST ONCE per 30 days and then
+// served from cache on every repeat lookup. unstable_cache caches the RETURN
+// VALUE, so it works even though the route is `force-dynamic` (which forces
+// raw fetch() to no-store and would ignore a Data-Cache hint).
+//
+// The inner fn THROWS on any failure (HTTP error, timeout, no rings) so a
+// transient error is NEVER cached — only a real polygon is stored; failures
+// simply retry on the next call. This is the durable fix for the throttling
+// that kept dropping us to the synthetic box (which misaims the Street View
+// front heading on corner lots).
+const cachedEsriQuery = unstable_cache(
+  async (
+    lat: number,
+    lng: number,
+    baseUrl: string,
+    sourceLabel: string,
+  ): Promise<ParcelPolygonResult> => {
+    // ~5m envelope (not a strict point) so a rooftop geocode on the lot line
+    // still returns the containing parcel.
+    const DELTA = 0.00005;
+    const envelope = {
+      xmin: lng - DELTA, ymin: lat - DELTA,
+      xmax: lng + DELTA, ymax: lat + DELTA,
+      spatialReference: { wkid: 4326 },
+    };
+    const u = new URL(baseUrl + '/query');
     u.searchParams.set('geometry', JSON.stringify(envelope));
     u.searchParams.set('geometryType', 'esriGeometryEnvelope');
     u.searchParams.set('inSR', '4326');
@@ -64,33 +72,38 @@ async function queryEsriByPoint(
     u.searchParams.set('outFields', '');
     u.searchParams.set('f', 'json');
     u.searchParams.set('resultRecordCount', '1');
-    const ctrl = new AbortController();
-    // Miami-Dade's ArcGIS endpoint can take 8-12s under load. An 8s cap was
-    // timing out by a hair and dropping us to the synthetic-box fallback (which
-    // also misaims the Street View front heading). 15s captures the slow-but-
-    // valid response while still bounding the request.
-    const timeout = setTimeout(() => ctrl.abort(), 15000);
-    const res = await fetch(u.toString(), { signal: ctrl.signal, cache: 'no-store' });
-    clearTimeout(timeout);
-    if (!res.ok) {
-      console.error(`[parcel] ${opts.sourceLabel} HTTP ${res.status}`);
-      return null;
-    }
+    // 15s timeout via race (MDC ArcGIS can take 8-12s under load).
+    const fetchPromise = fetch(u.toString());
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${sourceLabel} timeout`)), 15000),
+    );
+    const res = await Promise.race([fetchPromise, timeoutPromise]);
+    if (!res.ok) throw new Error(`${sourceLabel} HTTP ${res.status}`);
     const data: any = await res.json();
-    if (data?.error) {
-      console.error(`[parcel] ${opts.sourceLabel} error: ${JSON.stringify(data.error).slice(0, 200)}`);
-      return null;
-    }
+    if (data?.error) throw new Error(`${sourceLabel} arcgis-error`);
     const rings: any[] | undefined = data?.features?.[0]?.geometry?.rings;
-    if (!Array.isArray(rings) || rings.length === 0) return null;
+    if (!Array.isArray(rings) || rings.length === 0) throw new Error(`${sourceLabel} no-rings`);
     const ring = rings[0];
-    if (!Array.isArray(ring) || ring.length < 3) return null;
-    // ESRI returns rings as [[x,y], ...] = [[lng,lat], ...]
+    if (!Array.isArray(ring) || ring.length < 3) throw new Error(`${sourceLabel} bad-ring`);
+    // ESRI returns rings as [[lng,lat], ...]
     const latLngRing: ParcelRing = ring.map((pt: any[]) => [Number(pt[1]), Number(pt[0])]);
-    if (latLngRing.some(([la, ln]) => !Number.isFinite(la) || !Number.isFinite(ln))) return null;
-    return { polygon: latLngRing, source: opts.sourceLabel, isFallback: false };
+    if (latLngRing.some(([la, ln]) => !Number.isFinite(la) || !Number.isFinite(ln)))
+      throw new Error(`${sourceLabel} nan-ring`);
+    return { polygon: latLngRing, source: sourceLabel, isFallback: false };
+  },
+  ['parcel-polygon-v1'],
+  { revalidate: 2592000 }, // 30 days
+);
+
+async function queryEsriByPoint(
+  lat: number,
+  lng: number,
+  opts: EsriQueryOpts,
+): Promise<ParcelPolygonResult | null> {
+  try {
+    return await cachedEsriQuery(lat, lng, opts.baseUrl, opts.sourceLabel);
   } catch (err: any) {
-    console.error(`[parcel] ${opts.sourceLabel} threw: ${String(err?.message ?? err).slice(0, 200)}`);
+    console.error(`[parcel] ${String(err?.message ?? err).slice(0, 160)}`);
     return null;
   }
 }
