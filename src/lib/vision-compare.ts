@@ -416,6 +416,18 @@ export async function compareImagery(opts: {
       Promise.all(frames.map((f) => fetchImageBase64(f.imageUrl as string))),
     ),
   );
+  // Zoomed high-res facade crops — fetched for the FRONT side only (idx 0),
+  // the most important view. These let the model resolve window frames, the
+  // front door, and paint that the wide context shot can't show.
+  const sideDetailB64 = await Promise.all(
+    sideTimelines.map((frames, sideIdx) =>
+      Promise.all(
+        frames.map((f) =>
+          sideIdx === 0 && f.detailUrl ? fetchImageBase64(f.detailUrl) : Promise.resolve(null),
+        ),
+      ),
+    ),
+  );
   const streetViewB64 = await Promise.all(
     streetViewList.map((s) => fetchImageBase64(s.imageUrl as string)),
   );
@@ -528,26 +540,42 @@ export async function compareImagery(opts: {
   sides.forEach((side, idx) => {
     const frames = sideTimelines[idx];
     const b64s = sideFrameB64[idx];
+    const detailB64s = sideDetailB64[idx];
     if (!frames || frames.length === 0) return;
+    const isFront = idx === 0;
+    const sideName = isFront ? 'FRONT (primary view)' : side.sideLabel;
     const years = frames.map((f) => f.captureYear).join(' → ');
     frames.forEach((frame, fi) => {
-      const b64 = b64s[fi];
-      if (!b64) return;
-      imageCounter++;
       const role =
         fi === 0
           ? 'EARLIEST in this timeline'
           : fi === frames.length - 1
             ? 'LATEST / most recent'
             : 'intermediate year';
-      userContent.push({
-        type: 'text',
-        text: `IMAGE ${imageCounter} — STREET VIEW (${side.sideLabel}, ${frame.captureYear} — ${role}). All ${side.sideLabel} frames share the same camera position and heading, so any difference between years is a REAL change on the property, not an angle/provider artifact. This side's full timeline is ${years} — step through it CHRONOLOGICALLY and note the YEAR each visible change first appears: exterior/facade paint, front door, garage door, windows (frame style, material, or grid pattern — i.e. a replacement, not merely a color difference), perimeter gate/fence material & height, cladding, added structures. Refer to frames by year (e.g. "the ${frame.captureYear} frame") — never name an imagery provider in your findings.`,
-      });
-      userContent.push({
-        type: 'image',
-        source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
-      });
+      const b64 = b64s[fi];
+      if (b64) {
+        imageCounter++;
+        userContent.push({
+          type: 'text',
+          text: `IMAGE ${imageCounter} — ${sideName} STREET VIEW, ${frame.captureYear} (${role}). ${isFront ? 'THIS IS THE MOST IMPORTANT VIEW — the front door, front windows, and driveway are here; weight findings on the front far above any side view. ' : ''}All ${isFront ? 'front' : side.sideLabel} frames share one camera position and heading, so any year-to-year difference is a REAL change, not an angle/provider artifact. Full timeline for this side: ${years} — step through it CHRONOLOGICALLY and note the YEAR each change first appears: exterior/facade paint, front door, garage door, windows (frame style/material/grid — a replacement, not merely color), perimeter gate/fence, cladding, added structures. Refer to frames by year; never name an imagery provider.`,
+        });
+        userContent.push({
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
+        });
+      }
+      const dB64 = detailB64s?.[fi];
+      if (dB64) {
+        imageCounter++;
+        userContent.push({
+          type: 'text',
+          text: `IMAGE ${imageCounter} — FRONT FACADE ZOOM, ${frame.captureYear}. Tight, high-resolution crop of the front door, windows, and driveway for ${frame.captureYear}. USE THIS to judge fine detail the wide shot loses: window frame style/material/grid (replacement vs. same), front-door and garage-door style, and exterior paint. Compare this zoom directly against the other years' FRONT FACADE ZOOM frames — that side-by-side is your best evidence for a window/door upgrade or repaint.`,
+        });
+        userContent.push({
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/jpeg', data: dB64 },
+        });
+      }
     });
   });
 

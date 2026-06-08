@@ -104,6 +104,8 @@ export interface HistoricalStreetViewFrameType {
   imageUrl: string;
   heading: number;
   label: string;
+  // Tight, high-res facade crop (front door / windows / driveway detail).
+  detailUrl?: string;
 }
 
 export interface HistoricalStreetViewSide {

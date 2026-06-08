@@ -50,6 +50,10 @@ export interface StreetViewHistoricalFrame {
   imageUrl: string;
   heading: number;           // compass heading (0-359)
   label: string;             // human-readable for the report
+  // Tight, high-detail crop of the front facade (narrow FOV, max size) so the
+  // vision model can resolve window frames, the front door, and paint — detail
+  // the wide context frame loses. Same pano/heading, just zoomed in.
+  detailUrl?: string;
 }
 
 export interface StreetViewSidePair {
@@ -80,6 +84,9 @@ export interface StreetViewEngineResult {
 
 const DEFAULT_FOV = 110;            // wide enough that aim imprecision still fits the building
 const DEFAULT_PITCH = 5;            // tilt up 5° to clear privacy fences
+const DETAIL_FOV = 62;              // tight crop on the facade — front door, windows, upper driveway
+const DETAIL_PITCH = 2;            // near-level so the driveway + door both stay in frame
+const DETAIL_SIZE = { w: 640, h: 640 }; // max free Static API size → most pixels on the facade
 const MAX_PANO_DIST_M = 30;         // panos beyond this aren't really fronting the parcel
 const CLUSTER_RADIUS_M = 5;         // panos within 5m of cluster centroid = same cluster.
                                     // Tight enough that bridge panos can't drift the centroid
@@ -264,6 +271,9 @@ export async function buildStreetViewEngine(opts: {
     for (const p of cluster) {
       const phead = bearingToBuilding(p.panoLat, p.panoLng, opts.aimPolygon ?? null, opts.aimLat, opts.aimLng);
       const url = buildHistoricalStaticUrl(p.panoId, phead, size, fov, DEFAULT_PITCH);
+      // Same pano + heading, narrow FOV + max size = a zoomed, high-detail
+      // crop of the facade for the vision model to read window/door/paint.
+      const detailUrl = buildHistoricalStaticUrl(p.panoId, phead, DETAIL_SIZE, DETAIL_FOV, DETAIL_PITCH);
       if (url && p.date && p.year) {
         sideFrames.push({
           captureDate: `${p.date}-01T00:00:00Z`,
@@ -271,6 +281,7 @@ export async function buildStreetViewEngine(opts: {
           imageUrl: url,
           heading: Math.round(phead),
           label: `${sideLabel} · ${p.date}`,
+          detailUrl: detailUrl ?? undefined,
         });
       }
     }
