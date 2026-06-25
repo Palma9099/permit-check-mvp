@@ -1,0 +1,20 @@
+{
+  "name": "permit-check-worker",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Long-running county permit + violation scraping worker for permit-check-mvp. Polls the scan_jobs queue (Supabase), drives a headless browser through county portals, and emails results via Resend.",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "calibrate": "tsx src/calibrate.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "playwright": "^1.48.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0"
+  }
+}
