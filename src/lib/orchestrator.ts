@@ -402,7 +402,7 @@ export async function runDiagnostic(input: {
   const adapterResult = adapter
     ? await adapter.run({
         address: geo.formattedAddress || rawAddress,
-        zip: null,
+        zip: geo.matchedZip ?? geo.inputZip,
         lat: geo.lat,
         lng: geo.lng,
       })
@@ -559,6 +559,14 @@ export async function runDiagnostic(input: {
   }
   bottomLine.push('This is a records + imagery triage, not a confirmed violation. Verify with the AHJ before acting.');
 
+  // If the address match itself is uncertain, lead with that — every finding
+  // below is keyed to this parcel, so a wrong match makes the whole report wrong.
+  if (geo.confidence === 'low') {
+    bottomLine.unshift(
+      `ADDRESS MATCH UNCERTAIN — you searched "${rawAddress || geo.formattedAddress}" but the closest record found was "${adapterResult.propertyBasics.siteAddress ?? geo.formattedAddress}". ${geo.confidenceReason ?? ''} Confirm this is the right property before relying on anything below.`.trim(),
+    );
+  }
+
   const thenVsNow: ThenVsNow = {
     coordinates: { lat: geo.lat, lng: geo.lng },
     satelliteImageUrl: closeSatUrl,
@@ -612,7 +620,7 @@ export async function runDiagnostic(input: {
     generatedAt: new Date().toISOString(),
     query: {
       address: rawAddress || geo.formattedAddress,
-      zip: null,
+      zip: geo.inputZip ?? geo.matchedZip,
     },
     property: {
       folio: adapterResult.propertyBasics.prettyFolio ?? adapterResult.propertyBasics.folio,

@@ -155,8 +155,8 @@ export const miamiDadeAdapter: CountyAdapter = {
   slug: 'fl-miami-dade',
   name: 'Miami-Dade County',
   tier: 'A',
-  async run({ address }): Promise<AdapterResult> {
-    const byAddr = await paByAddress(address).catch(() => ({ folio: null, candidates: [] as Array<{ folio: string; address: string }> }));
+  async run({ address, zip }): Promise<AdapterResult> {
+    const byAddr = await paByAddress(address, zip).catch(() => ({ folio: null, candidates: [] as Array<{ folio: string; address: string }> }));
     const folio = byAddr.folio;
     if (!folio) {
       return emptyResult(

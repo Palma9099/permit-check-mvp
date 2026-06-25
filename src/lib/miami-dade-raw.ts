@@ -35,7 +35,10 @@ export function compactFolio(folio: string): string {
   return folio.replace(/\D+/g, '').padStart(13, '0').slice(-13);
 }
 
-export async function paByAddress(address: string): Promise<{
+export async function paByAddress(
+  address: string,
+  zip?: string | null,
+): Promise<{
   folio: string | null;
   candidates: Array<{ folio: string; address: string }>;
 }> {
@@ -63,7 +66,20 @@ export async function paByAddress(address: string): Promise<{
     folio: compactFolio(String(r.Strap ?? r.Folio ?? r.FOLIO ?? '')),
     address: cleanString(r.SiteAddress ?? r.Address ?? ''),
   })).filter((c) => c.folio.length === 13);
-  return { folio: cands[0]?.folio ?? null, candidates: cands };
+
+  // The Property Appraiser address search matches street-number + name only, so
+  // it can return the same street in the wrong city. When we know the ZIP, keep
+  // only candidates whose site address carries it — preventing a confident
+  // lookup on a same-numbered parcel in a different municipality. If none match
+  // the ZIP, fall back to the full list rather than returning nothing.
+  const z = zip ? String(zip).replace(/\D+/g, '').slice(0, 5) : '';
+  let ordered = cands;
+  if (z.length === 5) {
+    const inZip = cands.filter((c) => c.address.includes(z));
+    if (inZip.length > 0) ordered = inZip;
+  }
+
+  return { folio: ordered[0]?.folio ?? null, candidates: ordered };
 }
 
 export async function paByFolio(folio: string): Promise<any | null> {
