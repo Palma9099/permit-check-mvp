@@ -561,9 +561,20 @@ export async function runDiagnostic(input: {
 
   // If the address match itself is uncertain, lead with that — every finding
   // below is keyed to this parcel, so a wrong match makes the whole report wrong.
-  if (geo.confidence === 'low') {
+  // Two independent triggers:
+  //   (a) the geocoder flagged the match low-confidence, OR
+  //   (b) the parcel we actually resolved sits in a different ZIP than the user
+  //       typed. (b) catches the case where the geocode was confident but the
+  //       county address search fell back to a same-street parcel elsewhere.
+  const requestedZip = geo.inputZip;
+  const resolvedZip = (adapterResult.propertyBasics.siteAddress ?? '').match(/\b(\d{5})(?:-\d{4})?\b/)?.[1] ?? null;
+  const zipMismatch = !!(requestedZip && resolvedZip && requestedZip !== resolvedZip);
+  if (geo.confidence === 'low' || zipMismatch) {
+    const reason = zipMismatch
+      ? `You searched ZIP ${requestedZip}, but the closest county record is in ${resolvedZip}.`
+      : (geo.confidenceReason ?? '');
     bottomLine.unshift(
-      `ADDRESS MATCH UNCERTAIN — you searched "${rawAddress || geo.formattedAddress}" but the closest record found was "${adapterResult.propertyBasics.siteAddress ?? geo.formattedAddress}". ${geo.confidenceReason ?? ''} Confirm this is the right property before relying on anything below.`.trim(),
+      `ADDRESS MATCH UNCERTAIN — you searched "${rawAddress || geo.formattedAddress}" but the closest record found was "${adapterResult.propertyBasics.siteAddress ?? geo.formattedAddress}". ${reason} Confirm this is the right property before relying on anything below.`.trim(),
     );
   }
 

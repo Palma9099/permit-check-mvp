@@ -85,8 +85,22 @@ function ObservationCard({ obs }: { obs: VisionObservation }) {
 export default function Report({ report }: { report: DiagnosticReport }) {
   const r = report;
   const vc = r.thenVsNow?.visualComparison;
+  // The geocoder prepends this line when the address match is uncertain. Pull it
+  // out of the bottom-line list and show it as a prominent banner instead.
+  const uncertainLine = r.bottomLine.find((l) => l.startsWith('ADDRESS MATCH UNCERTAIN'));
+  const bottomLineRest = r.bottomLine.filter((l) => l !== uncertainLine);
   return (
     <article className="bg-card shadow-card rounded-lg border border-black/5 overflow-hidden">
+      {/* Low-confidence address-match banner */}
+      {uncertainLine && (
+        <div className="flex items-start gap-3 bg-amber-50 border-b-2 border-amber-400 px-6 sm:px-10 py-4">
+          <span aria-hidden className="text-amber-600 text-xl leading-none mt-0.5">⚠</span>
+          <p className="text-sm text-amber-900">
+            <span className="font-semibold">Address match uncertain. </span>
+            {uncertainLine.replace(/^ADDRESS MATCH UNCERTAIN[—-]?\s*/, '')}
+          </p>
+        </div>
+      )}
       {/* Cover */}
       <div className="px-6 sm:px-10 py-8 bg-gradient-to-br from-[#1f3864] to-[#102447] text-white">
         <div className="text-xs uppercase tracking-[0.18em] text-white/70 mb-2">
@@ -111,7 +125,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
             Bottom line
           </div>
           <ul className="space-y-1.5 text-sm text-white/95">
-            {r.bottomLine.map((line, i) => (
+            {bottomLineRest.map((line, i) => (
               <li key={i}>· {line}</li>
             ))}
           </ul>
