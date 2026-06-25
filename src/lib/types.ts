@@ -275,4 +275,11 @@ export interface DiagnosticReport {
 
   // Hint used by the cover callout
   bottomLine: string[];
+
+  // Other parcels the county address search matched. Surfaced as a
+  // "did you mean?" list when the chosen match is uncertain.
+  addressCandidates?: { folio: string; address: string }[];
+
+  // ISO timestamp the live sources were pulled (for the freshness stamp).
+  sourcesAsOf?: string;
 }

@@ -220,6 +220,7 @@ export const miamiDadeAdapter: CountyAdapter = {
       codeCasesClosedPast5: codeEnf.closedPast5,
       sourcesTried: SOURCE_LINES,
       notes: NOTE_LINES,
+      candidates: byAddr.candidates,
     };
   },
 };

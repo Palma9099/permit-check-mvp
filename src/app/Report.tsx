@@ -95,10 +95,28 @@ export default function Report({ report }: { report: DiagnosticReport }) {
       {uncertainLine && (
         <div className="flex items-start gap-3 bg-amber-50 border-b-2 border-amber-400 px-6 sm:px-10 py-4">
           <span aria-hidden className="text-amber-600 text-xl leading-none mt-0.5">⚠</span>
-          <p className="text-sm text-amber-900">
-            <span className="font-semibold">Address match uncertain. </span>
-            {uncertainLine.replace(/^ADDRESS MATCH UNCERTAIN[—-]?\s*/, '')}
-          </p>
+          <div className="text-sm text-amber-900">
+            <p>
+              <span className="font-semibold">Address match uncertain. </span>
+              {uncertainLine.replace(/^ADDRESS MATCH UNCERTAIN[—-]?\s*/, '')}
+            </p>
+            {r.addressCandidates && r.addressCandidates.length > 0 && (
+              <div className="mt-2">
+                <span className="font-semibold">Other parcels matched this address:</span>
+                <ul className="mt-1 space-y-0.5">
+                  {r.addressCandidates.map((c) => (
+                    <li key={c.folio}>
+                      · {c.address || 'Address unavailable'}{' '}
+                      <span className="text-amber-700">(folio {c.folio})</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-amber-700">
+                  If one of these is the right property, re-run the check using its folio.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {/* Cover */}
@@ -129,6 +147,15 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               <li key={i}>· {line}</li>
             ))}
           </ul>
+        </div>
+
+        <div className="mt-3 text-[11px] text-white/55">
+          Live sources pulled{' '}
+          {new Date(r.sourcesAsOf ?? r.generatedAt).toLocaleString('en-US', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })}
+          . County records and imagery can lag real-world changes.
         </div>
       </div>
 
@@ -666,6 +693,32 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               <li key={i}>{n}</li>
             ))}
           </ul>
+        </section>
+
+        {/* Conversion CTA → Palma lead form */}
+        <section>
+          <div className="rounded-lg bg-gradient-to-br from-[#1f3864] to-[#102447] text-white px-6 py-6 sm:px-8 sm:py-7">
+            <h3 className="font-serif text-xl sm:text-2xl font-semibold leading-snug">
+              Found unpermitted work or an expired permit?
+            </h3>
+            <p className="mt-2 text-sm text-white/85 max-w-2xl">
+              Palma connects you with licensed Florida engineers and contractors to run
+              after-the-fact permits, clear violations, and get the property back into legal
+              standing — from first call to final sign-off.
+            </p>
+            <a
+              href={`https://palma.llc/?ref=permit-check${
+                r.property.siteAddress || r.query.address
+                  ? `&address=${encodeURIComponent(r.property.siteAddress ?? r.query.address)}`
+                  : ''
+              }#contact`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block mt-4 px-5 py-2.5 rounded-md bg-white text-[#102447] text-sm font-semibold hover:bg-white/90"
+            >
+              Get a fix-it quote from Palma →
+            </a>
+          </div>
         </section>
 
         <section>

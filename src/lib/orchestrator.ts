@@ -76,11 +76,19 @@ function buildFlags(
         return Math.abs(py - y) <= 2;
       });
       if (matching.length === 0) {
-        strong.push({
-          severity: 'strong',
-          title: `${y} additions with no matching permit on file`,
-          detail: `The Property Appraiser's extra-features record dates the following to ${y}, ${y - yearBuilt} year(s) after the original ${yearBuilt} construction: ${itemList}. No permits issued in ${y - 2}–${y + 2} appear in the ${countyName} public permit database for this parcel.`,
-        });
+        // Reduce false positives: a single dated feature with no permit is only
+        // MEDIUM confidence — it can reflect a paper/microfilm permit that was
+        // never digitized, a permit filed under another folio, or an item that
+        // didn't require a permit at all. Reserve STRONG for years where TWO or
+        // more improvements are dated together with no permit (harder to explain
+        // away). Always attach the caveat so the reader doesn't over-read it.
+        const sev: Flag['severity'] = items.length >= 2 ? 'strong' : 'medium';
+        const flag: Flag = {
+          severity: sev,
+          title: `${y} addition${items.length >= 2 ? 's' : ''} with no matching permit on file`,
+          detail: `The Property Appraiser's extra-features record dates the following to ${y}, ${y - yearBuilt} year(s) after the original ${yearBuilt} construction: ${itemList}. No permits issued in ${y - 2}–${y + 2} appear in the ${countyName} public permit database for this parcel. This is not proof of a violation: the permit may exist on paper/microfilm and never have been digitized, may be filed under a different folio, or the item may not have required a permit. Confirm with a certified records pull before treating it as unpermitted.`,
+        };
+        (sev === 'strong' ? strong : medium).push(flag);
       }
     }
   }
@@ -680,6 +688,15 @@ export async function runDiagnostic(input: {
     county: countyInfo,
     thenVsNow,
     bottomLine,
+    // Surface alternate parcels (excluding the one we used) only when the match
+    // is uncertain — so the user can re-run by folio if we picked wrong.
+    addressCandidates:
+      geo.confidence === 'low' || zipMismatch
+        ? (adapterResult.candidates ?? [])
+            .filter((c) => c.folio !== adapterResult.propertyBasics.folio)
+            .slice(0, 5)
+        : [],
+    sourcesAsOf: new Date().toISOString(),
   };
 
   // Append every successful diagnostic to the Palma Ledger. Fire-and-log:

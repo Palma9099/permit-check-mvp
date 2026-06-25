@@ -44,6 +44,7 @@ export interface AdapterResult {
   codeCasesClosedPast5: CodeCase[];
   sourcesTried: string[];             // human-readable lines for "Data Sources"
   notes: string[];                    // human-readable caveats for "Data Limitations"
+  candidates?: { folio: string; address: string }[]; // other parcels the address search matched (for "did you mean")
 }
 
 export interface CountyAdapter {
@@ -96,5 +97,6 @@ export function emptyResult(sourcesTried: string[] = [], notes: string[] = []): 
     codeCasesClosedPast5: [],
     sourcesTried,
     notes,
+    candidates: [],
   };
 }

@@ -9,11 +9,28 @@ import type { CountyAdapter } from './types';
 import type { CountyInfo } from '../types';
 import { miamiDadeAdapter } from './miami-dade-adapter';
 import { buildFallbackAdapter } from './fallback';
+import { buildEnhancedLinksAdapter } from './enhanced-links-adapter';
 import { FL_COUNTY_DIRECTORY, getCountyDirectoryEntry } from './portals';
 
 const TIER_A_ADAPTERS: Record<string, CountyAdapter> = {
   'miami-dade': miamiDadeAdapter,
-  // Future: 'broward': browardAdapter, 'palm-beach': palmBeachAdapter, etc.
+  // Future: verified live adapters for 'broward' / 'palm-beach' drop in here.
+};
+
+// Priority counties that get richer, county-specific records guidance (and the
+// full imagery comparison) while we stand up verified live data pulls. These
+// remain Tier B for DATA — we never fabricate permit/appraiser findings here.
+const ENHANCED_B_GUIDANCE: Record<string, string[]> = {
+  'broward': [
+    'Property Appraiser (BCPA, bcpa.net): confirm owner, year built, and any recorded improvements/extra features by address.',
+    'Permits: most Broward work is permitted by the CITY — check the municipality’s portal first; use Broward County ePermits (broward.org/Building) for unincorporated areas.',
+    'Code cases: broward.org/CodeEnforcement (and the city code office for incorporated addresses).',
+  ],
+  'palm-beach': [
+    'Property Appraiser (PBCPAO, pbcpao.gov): confirm owner, year built, sub-area sketch, and improvement years by address.',
+    'Permits: search PBC ePZB (discover.pbcgov.org/pzb/building) for unincorporated areas; incorporated cities use their own permit portals.',
+    'Code cases: discover.pbcgov.org/pzb (Code Enforcement).',
+  ],
 };
 
 export function getCountyAdapter(countyKey: string | null): CountyAdapter | null {
@@ -22,6 +39,8 @@ export function getCountyAdapter(countyKey: string | null): CountyAdapter | null
   if (tierA) return tierA;
   const dir = getCountyDirectoryEntry(countyKey);
   if (!dir) return null;
+  const guidance = ENHANCED_B_GUIDANCE[countyKey];
+  if (guidance) return buildEnhancedLinksAdapter(dir, guidance);
   return buildFallbackAdapter(dir);
 }
 
