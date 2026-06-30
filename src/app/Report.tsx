@@ -698,10 +698,10 @@ export default function Report({ report }: { report: DiagnosticReport }) {
         {/* Conversion CTA → Palma lead form */}
         <section>
           <div className="rounded-lg bg-gradient-to-br from-[#1f3864] to-[#102447] text-white px-6 py-6 sm:px-8 sm:py-7">
-            <h3 className="font-serif text-xl sm:text-2xl font-semibold leading-snug">
+            <h3 className="font-serif text-xl sm:text-2xl font-semibold leading-snug !text-white">
               Found unpermitted work or an expired permit?
             </h3>
-            <p className="mt-2 text-sm text-white/85 max-w-2xl">
+            <p className="mt-2 text-sm !text-white/90 max-w-2xl">
               Palma connects you with licensed Florida engineers and contractors to run
               after-the-fact permits, clear violations, and get the property back into legal
               standing — from first call to final sign-off.
