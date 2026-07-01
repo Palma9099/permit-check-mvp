@@ -2,6 +2,7 @@
 // adapter can reuse them without pulling in the legacy assembler.
 
 import type { CodeCase, Permit } from './types';
+import { fetchWithTimeout } from './net';
 
 const PA_PROXY =
   'https://apps.miamidadepa.gov/PAPublicServiceProxy/PaServicesProxy.ashx';
@@ -9,13 +10,19 @@ const ARCGIS_BASE =
   'https://services.arcgis.com/8Pc9XBTAsYuxx9Ny/ArcGIS/rest/services';
 
 async function fetchJson(url: string, init?: RequestInit): Promise<any> {
-  const res = await fetch(url, {
+  // 12s timeout + one retry: MDC's PA proxy and ArcGIS endpoints can stall
+  // under load, and a bare fetch here would hang the whole report to the
+  // serverless maxDuration. Fail fast so callers' .catch() fallbacks kick in.
+  const res = await fetchWithTimeout(url, {
     ...init,
     cache: 'no-store',
+    timeoutMs: 12000,
+    retries: 1,
     headers: {
       accept: 'application/json',
       ...(init?.headers ?? {}),
     },
+    label: 'miami-dade',
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   return res.json();

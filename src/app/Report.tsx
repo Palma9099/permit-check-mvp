@@ -2,6 +2,27 @@
 
 import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 
+// Translate internal/developer failure strings (e.g. "ANTHROPIC_API_KEY not
+// set", "HTTP 502: ...", "json parse failed", "timeout after 12000ms") into
+// clean, reassuring language for the reader. The raw reason still goes to the
+// browser console for debugging via console.debug at the call site. Anything
+// we don't specifically recognize collapses to a generic, non-alarming line so
+// a stack-trace-looking string can never reach an end user.
+function friendlyFailure(raw: string | null | undefined, kind: 'aerial' | 'streetview'): string {
+  const label = kind === 'aerial' ? 'historical aerial imagery' : 'historical Street View';
+  const s = (raw ?? '').toLowerCase();
+  if (!s) return `No dated ${label} was available for this property.`;
+  if (s.includes('api_key') || s.includes('api key') || s.includes('not set') || s.includes('not configured'))
+    return `Automated ${label} comparison wasn’t available for this run.`;
+  if (s.includes('timeout') || s.includes('network') || s.includes('fetch failed') || s.includes('econn'))
+    return `The ${label} source didn’t respond in time — this can be temporary; try again shortly.`;
+  if (s.includes('no imagery') || s.includes('no-rings') || s.includes('coverage') || s.includes('sparse') || s.includes('no usable'))
+    return `No dated ${label} coverage exists for this location.`;
+  if (/http\s*\d{3}/.test(s) || s.includes('parse') || s.includes('error'))
+    return `The ${label} source was temporarily unavailable.`;
+  return `No dated ${label} was available for this property.`;
+}
+
 function fmtMoney(n: number | null): string {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
   return '$' + n.toLocaleString('en-US');
@@ -238,7 +259,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
             )}
             {r.thenVsNow.historicalAerials && !r.thenVsNow.historicalAerials.then && r.thenVsNow.historicalAerials.failureReason && (
               <p className="text-xs text-ink-muted italic mt-3">
-                Historical aerial unavailable: {r.thenVsNow.historicalAerials.failureReason}
+                {friendlyFailure(r.thenVsNow.historicalAerials.failureReason, 'aerial')}
               </p>
             )}
 
@@ -366,7 +387,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
                 <p className="text-xs text-amber-800">
                   <span className="font-semibold">No automatic historical Street View for this property.</span>{' '}
-                  {r.thenVsNow.historicalStreetView.failureReason}
+                  {friendlyFailure(r.thenVsNow.historicalStreetView.failureReason, 'streetview')}
                 </p>
                 {!r.thenVsNow.userUploadedThen?.dataUrl && (
                   <p className="text-xs text-amber-800 mt-1.5">

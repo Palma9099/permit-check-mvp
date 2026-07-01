@@ -211,13 +211,26 @@ export default function HomePage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || `HTTP ${res.status}`);
+        // The API returns { error } with a user-friendly message. Prefer that;
+        // never surface a raw JSON blob or bare HTTP status to the reader.
+        const data = await res.json().catch(() => null);
+        const msg =
+          data?.error ||
+          "Something went wrong running this check. Please try again in a moment, or call 305-393-0690 and we'll run it for you.";
+        throw new Error(msg);
       }
       const data: DiagnosticReport = await res.json();
       setReport(data);
     } catch (err: any) {
-      setError(err?.message ?? 'Unknown error');
+      // Network-level failures (fetch rejects before a response) get a friendly
+      // fallback too, rather than a browser error like "Failed to fetch".
+      const raw = String(err?.message ?? '');
+      const isNetwork = /failed to fetch|networkerror|load failed/i.test(raw);
+      setError(
+        isNetwork
+          ? "We couldn't reach the server. Check your connection and try again, or call 305-393-0690."
+          : raw || 'Unknown error',
+      );
     } finally {
       setLoading(false);
     }

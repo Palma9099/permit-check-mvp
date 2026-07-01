@@ -60,8 +60,30 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json(report);
   } catch (err: any) {
+    // Log the real error server-side for debugging; never leak stack traces or
+    // internal messages to the client.
+    const raw = String(err?.message ?? err);
+    console.error('[api/check] runDiagnostic failed:', raw);
+
+    // Distinguish "we couldn't locate this property" (a user-actionable 422)
+    // from an actual server fault (500). Geocode returning nothing is by far
+    // the most common cause and shouldn't read like the app broke.
+    const looksLikeNotFound =
+      /geocode|could not (?:locate|find|determine)|no results|not found|address/i.test(raw);
+    if (looksLikeNotFound) {
+      return NextResponse.json(
+        {
+          error:
+            "We couldn't locate that property. Double-check the street address and ZIP, or enter the county folio number directly.",
+        },
+        { status: 422 },
+      );
+    }
     return NextResponse.json(
-      { error: err?.message ?? 'Unknown error' },
+      {
+        error:
+          "Something went wrong pulling the records for this property. This is usually temporary — please try again in a moment, or call 305-393-0690 and we'll run it for you.",
+      },
       { status: 500 },
     );
   }

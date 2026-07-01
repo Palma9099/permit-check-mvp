@@ -16,6 +16,7 @@
 // the user typed and flag the result low-confidence when they disagree.
 
 import { normalizeCountyKey } from './counties/portals';
+import { fetchWithTimeout } from './net';
 
 export interface GeocodeResult {
   lat: number;
@@ -114,7 +115,7 @@ async function geocodeGoogle(
 
   for (const url of tries) {
     try {
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetchWithTimeout(url, { cache: 'no-store', timeoutMs: 10000, retries: 1, label: 'geocode-google' });
       if (!res.ok) continue;
       const data: any = await res.json();
       if (data.status !== 'OK' || !Array.isArray(data.results) || data.results.length === 0) {
@@ -235,7 +236,7 @@ async function geocodeCensus(
     `?address=${encodeURIComponent(address)}` +
     '&benchmark=Public_AR_Current&format=json';
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const res = await fetchWithTimeout(url, { cache: 'no-store', timeoutMs: 10000, retries: 1, label: 'geocode-census' });
     if (!res.ok) return null;
     const data: any = await res.json();
     const match = data?.result?.addressMatches?.[0];
@@ -282,7 +283,7 @@ async function geocodeCensus(
 export async function reverseCounty(lat: number, lng: number): Promise<string | null> {
   const url = `https://geo.fcc.gov/api/census/area?lat=${lat}&lon=${lng}&format=json`;
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const res = await fetchWithTimeout(url, { cache: 'no-store', timeoutMs: 8000, retries: 1, label: 'reverse-county' });
     if (!res.ok) return null;
     const data: any = await res.json();
     const row = Array.isArray(data?.results) ? data.results[0] : null;
