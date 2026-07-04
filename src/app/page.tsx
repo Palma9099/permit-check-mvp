@@ -52,6 +52,37 @@ export default function HomePage() {
   const [showSuggest, setShowSuggest] = useState(false);
   const suppressNextSuggest = useRef(false);
 
+  // Prefill + auto-run from ?address= / ?folio= query params. This is how the
+  // palma.llc homepage and location pages hand a typed address off to the tool
+  // (window.open(".../?address=..."). Without this the field lands blank.
+  const autoRanRef = useRef(false);
+  const [pendingAutoRun, setPendingAutoRun] = useState(false);
+  useEffect(() => {
+    if (autoRanRef.current) return;
+    autoRanRef.current = true;
+    let params: URLSearchParams;
+    try {
+      params = new URLSearchParams(window.location.search);
+    } catch {
+      return;
+    }
+    const a = (params.get('address') || '').trim();
+    const f = (params.get('folio') || '').trim();
+    if (!a && !f) return;
+    suppressNextSuggest.current = true; // don't pop the autocomplete on prefill
+    if (f) setFolio(f);
+    if (a) setAddress(a);
+    setPendingAutoRun(true);
+  }, []);
+  useEffect(() => {
+    if (!pendingAutoRun) return;
+    if (!address.trim() && !folio.trim()) return;
+    setPendingAutoRun(false);
+    // Fire the same check the button triggers (no event needed).
+    onSubmit({ preventDefault() {} } as unknown as React.FormEvent);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingAutoRun, address, folio]);
+
   useEffect(() => {
     if (suppressNextSuggest.current) {
       suppressNextSuggest.current = false;

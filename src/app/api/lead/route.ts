@@ -51,7 +51,11 @@ export async function POST(req: NextRequest) {
   }
 
   const key = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM || 'Palma Property Intelligence <reports@palma.llc>';
+  // Default sender must be on a domain VERIFIED in Resend. The verified domain
+  // for this account is `send.palma.llc` (subdomain), not the bare palma.llc —
+  // sending from an unverified domain makes Resend reject the message. Override
+  // with RESEND_FROM if the verified domain ever changes.
+  const from = process.env.RESEND_FROM || 'Palma Building Solutions <notifications@send.palma.llc>';
   if (!key) {
     // Not configured — don't pretend it worked. Client shows the phone fallback.
     return NextResponse.json(
