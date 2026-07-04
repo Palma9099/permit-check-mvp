@@ -76,7 +76,7 @@ const STATEWIDE_GUIDANCE: Record<string, string[]> = {
   'monroe': [
     'Permits: Monroe County (monroecounty-fl.gov) covers the unincorporated Keys; Key West, Marathon, Islamorada, Layton, and Key Colony Beach each permit their own areas.',
     'Code cases: Monroe County Code Compliance; the city code office for incorporated Keys municipalities.',
-    'Note: much of the Keys sits in a FEMA Special Flood Hazard Area and the countywide HVHZ wind zone — elevation and wind-load compliance are common permit triggers here.',
+    'Note: much of the Keys sits in a FEMA Special Flood Hazard Area, and Monroe carries some of Florida\'s highest design wind speeds within the wind-borne debris region (though it is not the code-defined HVHZ, which is only Miami-Dade and Broward) — flood elevation, the cumulative 50% substantial-improvement rule, and wind-load/opening-protection compliance are common permit triggers here.',
   ],
 };
 
