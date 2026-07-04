@@ -1,6 +1,7 @@
 'use client';
 
 import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
+import LeadCapture from './LeadCapture';
 
 // Translate internal/developer failure strings (e.g. "ANTHROPIC_API_KEY not
 // set", "HTTP 502: ...", "json parse failed", "timeout after 12000ms") into
@@ -716,30 +717,19 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </ul>
         </section>
 
-        {/* Conversion CTA → Palma lead form */}
+        {/* Conversion — in-tool lead capture (emails office@palma.llc) */}
         <section>
-          <div className="rounded-lg bg-gradient-to-br from-[#1f3864] to-[#102447] text-white px-6 py-6 sm:px-8 sm:py-7">
-            <h3 className="font-serif text-xl sm:text-2xl font-semibold leading-snug !text-white">
-              Found unpermitted work or an expired permit?
-            </h3>
-            <p className="mt-2 text-sm !text-white/90 max-w-2xl">
-              Palma connects you with licensed Florida engineers and contractors to run
-              after-the-fact permits, clear violations, and get the property back into legal
-              standing — from first call to final sign-off.
-            </p>
-            <a
-              href={`https://palma.llc/?ref=permit-check${
-                r.property.siteAddress || r.query.address
-                  ? `&address=${encodeURIComponent(r.property.siteAddress ?? r.query.address)}`
-                  : ''
-              }#contact`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block mt-4 px-5 py-2.5 rounded-md bg-white text-[#102447] text-sm font-semibold hover:bg-white/90"
-            >
-              Get a fix-it quote from Palma →
-            </a>
-          </div>
+          <LeadCapture
+            address={r.property.siteAddress ?? r.query.address ?? ''}
+            summary={[
+              r.property.siteAddress || r.query.address,
+              `${r.flags.strong.length} strong / ${r.flags.medium.length} medium flag(s)`,
+              `${r.codeEnforcement.openCount} open code case(s)`,
+              `${r.permitHistory.totalSubjectPermits} permit(s) on file`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          />
         </section>
 
         <section>

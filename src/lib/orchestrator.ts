@@ -21,6 +21,7 @@ import type {
 } from './types';
 import { geocode, reverseCounty } from './geocode';
 import { getCountyAdapter, toCountyInfo } from './counties';
+import { fetchMunicipalPermits } from './counties/municipal-permits';
 import { FL_COUNTY_DIRECTORY } from './counties/portals';
 import { fetchParcelPolygon, polygonCentroid } from './parcel';
 import {
@@ -420,6 +421,26 @@ export async function runDiagnostic(input: {
           `No county adapter available for "${countyInfo.name}". Imagery-only diagnostic.`,
         ],
       );
+
+  // 2b. Municipal permit layer. For counties without a countywide permit feed
+  //     (Broward, Palm Beach), pull real permits + code cases from any city that
+  //     publishes them as queryable ArcGIS data (e.g. Fort Lauderdale). Merges
+  //     into the adapter result so the report shows live records instead of just
+  //     portal links. No-op for counties/cities without open permit data.
+  try {
+    const municipal = await fetchMunicipalPermits({ countyKey, lat: geo.lat, lng: geo.lng });
+    if (municipal.found) {
+      if (municipal.permits.length) adapterResult.permits = municipal.permits;
+      if (municipal.codeCasesOpen.length || municipal.codeCasesClosedPast5.length) {
+        adapterResult.codeCasesOpen = municipal.codeCasesOpen;
+        adapterResult.codeCasesClosedPast5 = municipal.codeCasesClosedPast5;
+      }
+      adapterResult.sourcesTried = [...adapterResult.sourcesTried, ...municipal.sources];
+      adapterResult.notes = [...adapterResult.notes, ...municipal.notes];
+    }
+  } catch (err: any) {
+    console.error('[orchestrator] municipal permits failed:', String(err?.message ?? err).slice(0, 160));
+  }
 
   // 3. Parcel polygon.
   const polygon = await fetchParcelPolygon(geo.lat, geo.lng, countyKey);
