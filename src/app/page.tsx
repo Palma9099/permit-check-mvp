@@ -46,6 +46,13 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<DiagnosticReport | null>(null);
 
+  // Post-report layout: once a report resolves we collapse the tall entry form
+  // to a compact sticky context bar so the report gets the prime real estate.
+  // `editing` re-expands the form; `deepOpen` lets a CTA open the deep-scan
+  // disclosure programmatically.
+  const [editing, setEditing] = useState(false);
+  const [deepOpen, setDeepOpen] = useState(false);
+
   // Address autocomplete (Google Places via /api/autocomplete). Degrades to a
   // plain text field when the API key isn't set (route returns no suggestions).
   const [suggestions, setSuggestions] = useState<{ description: string; placeId: string }[]>([]);
@@ -252,6 +259,7 @@ export default function HomePage() {
       }
       const data: DiagnosticReport = await res.json();
       setReport(data);
+      setEditing(false); // collapse the entry form; the report takes over
     } catch (err: any) {
       // Network-level failures (fetch rejects before a response) get a friendly
       // fallback too, rather than a browser error like "Failed to fetch".
@@ -301,23 +309,79 @@ export default function HomePage() {
     }
   }
 
-  return (
-    <main className="max-w-4xl mx-auto px-4 py-10 sm:py-14">
-      <header className="mb-10">
-        <div className="text-xs uppercase tracking-[0.18em] text-ink-muted mb-2">
-          Palma Property Intelligence
-        </div>
-        <h1 className="font-serif text-4xl sm:text-5xl font-semibold leading-tight">
-          Permit History & Unpermitted Improvement Check
-        </h1>
-        <p className="mt-3 text-ink-soft text-base sm:text-lg max-w-2xl">
-          Plain-English records review for any Florida property. Enter an address,
-          we route to the right county portal, pull what's publicly available, and
-          compare it to current satellite + Street View imagery — parcel-bounded
-          so the findings stay on the subject property, not the neighbors.
-        </p>
-      </header>
+  // A CTA-friendly way to reach the deep scan: re-open the (possibly collapsed)
+  // form, expand the disclosure, and scroll it into view so the email field is
+  // usable.
+  function openDeepScan() {
+    setEditing(true);
+    setDeepOpen(true);
+    requestAnimationFrame(() =>
+      document.getElementById('deep-scan')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    );
+  }
 
+  const showForm = !report || editing;
+
+  return (
+    <main className="max-w-4xl mx-auto px-4 py-10 sm:py-14 pb-28 sm:pb-14">
+      {!report && (
+        <header className="mb-10">
+          <div className="text-xs uppercase tracking-[0.18em] text-ink-muted mb-2">
+            Palma Property Intelligence
+          </div>
+          <h1 className="font-serif text-4xl sm:text-5xl font-semibold leading-tight">
+            Permit History & Unpermitted Improvement Check
+          </h1>
+          <p className="mt-3 text-ink-soft text-base sm:text-lg max-w-2xl">
+            Plain-English records review for any Florida property. Enter an address,
+            we route to the right county portal, pull what's publicly available, and
+            compare it to current satellite + Street View imagery — parcel-bounded
+            so the findings stay on the subject property, not the neighbors.
+          </p>
+        </header>
+      )}
+
+      {/* Persistent context + conversion bar. Sticks to the top once a report
+          exists so the address and the PDF / deep-scan actions never scroll away. */}
+      {report && (
+        <div className="sticky top-0 z-40 -mx-4 mb-6 border-b border-black/10 bg-card/90 backdrop-blur px-4 py-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-ink-muted">
+                Subject property
+              </div>
+              <div className="truncate text-sm font-semibold text-ink">
+                {report.property.siteAddress ?? report.query.address ?? address ?? folio}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEditing((v) => !v)}
+              className="shrink-0 px-3 py-1.5 rounded-md border border-black/10 bg-white text-xs font-semibold text-ink hover:bg-black/5 transition"
+            >
+              {editing ? 'Close' : 'New search'}
+            </button>
+            {/* Desktop conversion CTAs — on mobile these live in the fixed bottom bar */}
+            <button
+              type="button"
+              onClick={openDeepScan}
+              className="hidden sm:inline-block shrink-0 px-3 py-1.5 rounded-md border border-ink text-xs font-semibold text-ink hover:bg-ink hover:text-white transition"
+            >
+              Deep scan
+            </button>
+            <button
+              type="button"
+              onClick={downloadPdf}
+              disabled={downloading}
+              className="hidden sm:inline-block shrink-0 px-3 py-1.5 rounded-md bg-ink text-white text-xs font-semibold hover:bg-black transition disabled:opacity-50"
+            >
+              {downloading ? 'Building PDF…' : 'Download PDF'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showForm && (
       <section className="bg-card shadow-card rounded-lg p-6 sm:p-8 border border-black/5">
         <form onSubmit={onSubmit} className="grid grid-cols-1 sm:grid-cols-5 gap-3">
           <div className="sm:col-span-3 relative">
@@ -435,8 +499,8 @@ export default function HomePage() {
         </form>
 
         {/* Deep scan — long-running, emailed full permit + violation history */}
-        <div className="mt-4 border-t border-black/10 pt-4">
-          <details>
+        <div id="deep-scan" className="mt-4 border-t border-black/10 pt-4 scroll-mt-24">
+          <details open={deepOpen} onToggle={(e) => setDeepOpen((e.target as HTMLDetailsElement).open)}>
             <summary className="cursor-pointer text-sm font-semibold text-ink">
               Need the full permit &amp; violation history? Run a deep scan →
             </summary>
@@ -491,6 +555,7 @@ export default function HomePage() {
           </details>
         </div>
       </section>
+      )}
 
       {error && (
         <div className="mt-6 p-4 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm">
@@ -508,17 +573,30 @@ export default function HomePage() {
       )}
 
       {report && (
-        <div className="mt-10">
-          <div className="flex justify-end mb-3">
-            <button
-              onClick={downloadPdf}
-              disabled={downloading}
-              className="px-4 py-2 rounded-md border border-black/10 bg-white text-sm font-semibold hover:bg-black/5 transition disabled:opacity-50"
-            >
-              {downloading ? 'Building PDF…' : 'Download PDF report'}
-            </button>
-          </div>
+        <div className="mt-8">
           <Report report={report} />
+        </div>
+      )}
+
+      {/* Mobile persistent conversion bar — bottom-docked so PDF + deep scan stay
+          reachable at any scroll depth without occluding the report. */}
+      {report && (
+        <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex gap-2 border-t border-black/10 bg-card/95 backdrop-blur px-4 py-3">
+          <button
+            type="button"
+            onClick={openDeepScan}
+            className="flex-1 px-3 py-2.5 rounded-md border border-ink text-sm font-semibold text-ink"
+          >
+            Deep scan
+          </button>
+          <button
+            type="button"
+            onClick={downloadPdf}
+            disabled={downloading}
+            className="flex-1 px-3 py-2.5 rounded-md bg-ink text-white text-sm font-semibold disabled:opacity-50"
+          >
+            {downloading ? 'Building PDF…' : 'Download PDF'}
+          </button>
         </div>
       )}
 
