@@ -66,7 +66,7 @@ export default function LeadCapture({
   if (status === 'ok') {
     return (
       <div className="rounded-lg bg-gradient-to-br from-[#1f3864] to-[#102447] text-white px-6 py-7 sm:px-8">
-        <h3 className="font-serif text-xl sm:text-2xl font-semibold !text-white">Thanks - we've got it.</h3>
+        <h3 className="font-serif text-xl sm:text-2xl font-semibold !text-white">Thanks — we've got it.</h3>
         <p className="mt-2 text-sm !text-white/90 max-w-2xl">
           A Palma specialist will review your results and reach out shortly. Need us sooner? Call{' '}
           <a href="tel:+13053930690" className="underline font-semibold !text-white">305-393-0690</a>.
@@ -84,7 +84,7 @@ export default function LeadCapture({
         Send us your info and a Palma specialist will walk through what these records show,
         explain the options to confirm or resolve anything open, and point you to licensed
         Florida pros if you need them. No obligation, and nothing here is an official
-        determination - we'll help you get the facts.
+        determination — we'll help you get the facts.
       </p>
 
       <form onSubmit={submit} className="mt-4 grid gap-3 max-w-2xl" noValidate>

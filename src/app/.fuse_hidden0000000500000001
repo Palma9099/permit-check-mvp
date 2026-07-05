@@ -110,7 +110,7 @@ export default function HomePage() {
         setSuggestions(list);
         setShowSuggest(list.length > 0);
       } catch {
-        /* ignore - field stays a plain input */
+        /* ignore — field stays a plain input */
       }
     }, 250);
     return () => clearTimeout(t);
@@ -334,7 +334,7 @@ export default function HomePage() {
           </h1>
           <p className="mt-3 text-ink-soft text-base sm:text-lg max-w-2xl">
             A fast, plain-English look at what public county records and historical
-            satellite imagery show for any Florida property - so you can spot
+            satellite imagery show for any Florida property — so you can spot
             possible unpermitted additions or aging systems worth asking about
             before you make an offer. This is a records-level review for context,
             not an official compliance determination.
@@ -362,7 +362,7 @@ export default function HomePage() {
             >
               {editing ? 'Close' : 'New search'}
             </button>
-            {/* Desktop conversion CTAs - on mobile these live in the fixed bottom bar */}
+            {/* Desktop conversion CTAs — on mobile these live in the fixed bottom bar */}
             <button
               type="button"
               onClick={openDeepScan}
@@ -430,7 +430,7 @@ export default function HomePage() {
               className="w-full px-3 py-2 border border-black/10 rounded-md bg-white text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
           </div>
-          {/* Optional historical photo upload - for properties where Google
+          {/* Optional historical photo upload — for properties where Google
               Street View has no front-facing dated capture (privacy fences,
               gated communities, single-side cul-de-sacs). The realtor drops
               in any old listing photo and the AI uses it as the THEN frame
@@ -499,7 +499,7 @@ export default function HomePage() {
           </div>
         </form>
 
-        {/* Deep scan - long-running, emailed full permit + violation history */}
+        {/* Deep scan — long-running, emailed full permit + violation history */}
         <div id="deep-scan" className="mt-4 border-t border-black/10 pt-4 scroll-mt-24">
           <details open={deepOpen} onToggle={(e) => setDeepOpen((e.target as HTMLDetailsElement).open)}>
             <summary className="cursor-pointer text-sm font-semibold text-ink">
@@ -541,13 +541,13 @@ export default function HomePage() {
               )}
               {deepPhase === 'handoff' && (
                 <p className="mt-3 text-sm text-green-700">
-                  This one&apos;s taking longer than usual - we&apos;ll email the full results to{' '}
+                  This one&apos;s taking longer than usual — we&apos;ll email the full results to{' '}
                   {deepEmail} when it&apos;s done. You can close this page.
                 </p>
               )}
               {deepPhase === 'failed' && (
                 <p className="mt-3 text-sm text-amber-700">
-                  The automated scan hit a snag - we&apos;ve emailed you the county portal links to
+                  The automated scan hit a snag — we&apos;ve emailed you the county portal links to
                   check directly.
                 </p>
               )}
@@ -558,7 +558,7 @@ export default function HomePage() {
       </section>
       )}
 
-      {/* Why a buyer runs this - shown on the entry screen, hidden once a report
+      {/* Why a buyer runs this — shown on the entry screen, hidden once a report
           loads. Conservative framing: a records gap is a question to ask, not a
           verdict. */}
       {!report && (
@@ -577,7 +577,7 @@ export default function HomePage() {
             <h3 className="font-semibold text-ink text-sm mb-1">Look past a fresh coat of paint</h3>
             <p className="text-sm text-ink-soft leading-relaxed">
               Cosmetic updates can hide a home&apos;s age. We surface long-cycle
-              systems - roof, AC, water heater - that have no matching permit on
+              systems — roof, AC, water heater — that have no matching permit on
               record and may be worth a closer look with your inspector.
             </p>
           </div>
@@ -585,7 +585,7 @@ export default function HomePage() {
             <div className="text-2xl mb-2" aria-hidden>🗒️</div>
             <h3 className="font-semibold text-ink text-sm mb-1">Bring facts to the table</h3>
             <p className="text-sm text-ink-soft leading-relaxed">
-              A records gap isn&apos;t a verdict - it&apos;s a starting point for you,
+              A records gap isn&apos;t a verdict — it&apos;s a starting point for you,
               your agent, and your inspector. Always confirm anything open directly
               with the county before acting on it.
             </p>
@@ -604,7 +604,7 @@ export default function HomePage() {
         <div className="mt-8 text-ink-muted text-sm">
           Geocoding the address, resolving the county, pulling whatever permit
           data the portal exposes, and comparing satellite + Street View against
-          the parcel boundary. Typically 5-15 seconds.
+          the parcel boundary. Typically 5–15 seconds.
         </div>
       )}
 
@@ -614,7 +614,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Mobile persistent conversion bar - bottom-docked so PDF + deep scan stay
+      {/* Mobile persistent conversion bar — bottom-docked so PDF + deep scan stay
           reachable at any scroll depth without occluding the report. */}
       {report && (
         <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 flex gap-2 border-t border-black/10 bg-card/95 backdrop-blur px-4 py-3">
@@ -652,12 +652,12 @@ function DeepResultView({ r }: { r: DeepScanResult }) {
   return (
     <div className="mt-4 border border-black/10 rounded-md p-4 bg-white">
       <div className="text-sm font-semibold text-ink mb-1">
-        Deep scan complete{r.matchedAddress ? ` - ${r.matchedAddress}` : ''}
+        Deep scan complete{r.matchedAddress ? ` — ${r.matchedAddress}` : ''}
         {r.county ? ` · ${r.county}` : ''}
       </div>
       {!r.ok && (
         <p className="text-xs text-amber-700 mb-2">
-          We couldn&apos;t fully read the portal automatically - use the links below to confirm.
+          We couldn&apos;t fully read the portal automatically — use the links below to confirm.
         </p>
       )}
 
@@ -678,10 +678,10 @@ function DeepResultView({ r }: { r: DeepScanResult }) {
             <tbody>
               {r.permits.map((p, i) => (
                 <tr key={i} className="border-t border-black/5">
-                  <td className="py-1 pr-3">{p.permitNumber ?? '-'}</td>
-                  <td className="py-1 pr-3">{p.type ?? '-'}</td>
-                  <td className="py-1 pr-3">{p.status ?? '-'}</td>
-                  <td className="py-1 pr-3">{p.issuedDate ?? '-'}</td>
+                  <td className="py-1 pr-3">{p.permitNumber ?? '—'}</td>
+                  <td className="py-1 pr-3">{p.type ?? '—'}</td>
+                  <td className="py-1 pr-3">{p.status ?? '—'}</td>
+                  <td className="py-1 pr-3">{p.issuedDate ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -708,10 +708,10 @@ function DeepResultView({ r }: { r: DeepScanResult }) {
             <tbody>
               {r.violations.map((c, i) => (
                 <tr key={i} className="border-t border-black/5">
-                  <td className="py-1 pr-3">{c.caseNumber ?? '-'}</td>
-                  <td className="py-1 pr-3">{c.status ?? '-'}</td>
-                  <td className="py-1 pr-3">{c.openedDate ?? '-'}</td>
-                  <td className="py-1 pr-3">{c.description ?? '-'}</td>
+                  <td className="py-1 pr-3">{c.caseNumber ?? '—'}</td>
+                  <td className="py-1 pr-3">{c.status ?? '—'}</td>
+                  <td className="py-1 pr-3">{c.openedDate ?? '—'}</td>
+                  <td className="py-1 pr-3">{c.description ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
