@@ -1,4 +1,4 @@
-// Statewide orchestrator - replaces the old Miami-Dade-only runDiagnostic.
+// Statewide orchestrator — replaces the old Miami-Dade-only runDiagnostic.
 //
 // Pipeline:
 //   1. Geocode the address → lat/lng + county key.
@@ -35,7 +35,7 @@ import { compareImagery } from './vision-compare';
 import { recordToLedger } from './ledger';
 
 // ---------------------------------------------------------------------------
-// Flag / confidence / next-steps / checklist builders - shared across
+// Flag / confidence / next-steps / checklist builders — shared across
 // counties (the logic doesn't depend on which county the data came from).
 // ---------------------------------------------------------------------------
 
@@ -79,7 +79,7 @@ function buildFlags(
       });
       if (matching.length === 0) {
         // Reduce false positives: a single dated feature with no permit is only
-        // MEDIUM confidence - it can reflect a paper/microfilm permit that was
+        // MEDIUM confidence — it can reflect a paper/microfilm permit that was
         // never digitized, a permit filed under another folio, or an item that
         // didn't require a permit at all. Reserve STRONG for years where TWO or
         // more improvements are dated together with no permit (harder to explain
@@ -88,7 +88,7 @@ function buildFlags(
         const flag: Flag = {
           severity: sev,
           title: `${y} addition${items.length >= 2 ? 's' : ''} with no matching permit on file`,
-          detail: `The Property Appraiser's extra-features record dates the following to ${y}, ${y - yearBuilt} year(s) after the original ${yearBuilt} construction: ${itemList}. No permits issued in ${y - 2}-${y + 2} appear in the ${countyName} public permit database for this parcel. This is not proof of a violation: the permit may exist on paper/microfilm and never have been digitized, may be filed under a different folio, or the item may not have required a permit. Confirm with a certified records pull before treating it as unpermitted.`,
+          detail: `The Property Appraiser's extra-features record dates the following to ${y}, ${y - yearBuilt} year(s) after the original ${yearBuilt} construction: ${itemList}. No permits issued in ${y - 2}–${y + 2} appear in the ${countyName} public permit database for this parcel. This is not proof of a violation: the permit may exist on paper/microfilm and never have been digitized, may be filed under a different folio, or the item may not have required a permit. Confirm with a certified records pull before treating it as unpermitted.`,
         };
         (sev === 'strong' ? strong : medium).push(flag);
       }
@@ -98,7 +98,7 @@ function buildFlags(
   if (permits.length === 0 && neighborTotal >= 5) {
     strong.push({
       severity: 'strong',
-      title: 'Zero permits on file - neighbors have many',
+      title: 'Zero permits on file — neighbors have many',
       detail: `This parcel has no records in the county's digital permit archive. Adjacent parcels on the same block show ${neighborTotal} permits combined. Most likely explanations: work was unpermitted, records never migrated from paper/microfilm into the current portal, or records filed under a different folio. Certified records pull required.`,
     });
   }
@@ -122,7 +122,7 @@ function buildFlags(
   for (const c of codeEnf.closedPast5) {
     weak.push({
       severity: 'weak',
-      title: `Closed code case ${c.caseNumber} - ${c.problemDescription || 'detail unspecified'}`,
+      title: `Closed code case ${c.caseNumber} — ${c.problemDescription || 'detail unspecified'}`,
       detail: `Opened ${c.caseDate ?? 'unknown date'}; status ${c.status || 'Closed'}; last action ${c.lastAction || 'not noted'}; lien ${c.lien || 'none'}. Not a construction case if the problem description is cosmetic; useful as evidence that an inspector has been to the address without writing up anything else.`,
     });
   }
@@ -130,7 +130,7 @@ function buildFlags(
     medium.push({
       severity: 'medium',
       title: `OPEN code case ${c.caseNumber}`,
-      detail: `Opened ${c.caseDate ?? 'unknown'}. Problem: ${c.problemDescription || 'not specified'}. Status: ${c.status || 'open'}. Last action: ${c.lastAction || 'none'}. This is an active county case - resolve before closing.`,
+      detail: `Opened ${c.caseDate ?? 'unknown'}. Problem: ${c.problemDescription || 'not specified'}. Status: ${c.status || 'open'}. Last action: ${c.lastAction || 'none'}. This is an active county case — resolve before closing.`,
     });
   }
 
@@ -152,7 +152,7 @@ function buildConfidence(
       topic: 'Property basics (owner, address, year built, size)',
       grade: dataGrade,
       note: tierBNote
-        ? `${countyName} is on the links-only tier - we did not retrieve property appraiser data directly. Use the portal link to verify.`
+        ? `${countyName} is on the links-only tier — we did not retrieve property appraiser data directly. Use the portal link to verify.`
         : adapterFound
           ? 'Pulled live from the county Property Appraiser endpoint.'
           : 'Property Appraiser endpoint did not resolve this address. Results limited.',
@@ -189,7 +189,7 @@ function buildConfidence(
           ? `${neighborCount} permits found on parcels in the same block.`
           : tierBNote
             ? 'Not retrieved for this county tier.'
-            : 'No neighbor permits found - unusual for a populated block. May indicate a rural or platted-but-undeveloped area.',
+            : 'No neighbor permits found — unusual for a populated block. May indicate a rural or platted-but-undeveloped area.',
     },
     {
       topic: 'Site walk / visual verification',
@@ -216,7 +216,7 @@ function buildNextSteps(
     );
   } else if (permits.length === 0) {
     s.push(
-      `Pull a certified records package from the ${countyName} Building Department by ADDRESS (not just folio). This is the single most important step - paper archives sometimes hide permits the online portal missed.`,
+      `Pull a certified records package from the ${countyName} Building Department by ADDRESS (not just folio). This is the single most important step — paper archives sometimes hide permits the online portal missed.`,
     );
   } else if (flags.strong.length > 0) {
     s.push(
@@ -229,7 +229,7 @@ function buildNextSteps(
     );
   } else if (s.length < 2) {
     s.push(
-      'Walk the property - look at the roof, the rear yard, the windows, and any fence. Anything visibly newer than the house is worth a question.',
+      'Walk the property — look at the roof, the rear yard, the windows, and any fence. Anything visibly newer than the house is worth a question.',
     );
   }
   s.push(
@@ -264,10 +264,10 @@ function buildVisualChecklist(
     whatPermitRecordSays: hasReroof
       ? 'A re-roof permit is on file. Note the issue year and compare.'
       : yearBuilt
-        ? `No re-roof permit on file. House is ${roofAge} years old, so if the roof dates to ${yearBuilt} it is well past the 15-25 year shingle / 25-40 year tile service life typical in Florida.`
+        ? `No re-roof permit on file. House is ${roofAge} years old, so if the roof dates to ${yearBuilt} it is well past the 15–25 year shingle / 25–40 year tile service life typical in Florida.`
         : 'No re-roof permit on file and year-built is unknown.',
     whatToLookFor:
-      'On the satellite image (inside the red outline), compare the roof tone and pattern to the neighbors. Bright, uniform, clean lines = newer; streaky, algae-stained, patched = original. On Street View, scrub the timeline - a sudden roof-color change between two years is a dated reroof.',
+      'On the satellite image (inside the red outline), compare the roof tone and pattern to the neighbors. Bright, uniform, clean lines = newer; streaky, algae-stained, patched = original. On Street View, scrub the timeline — a sudden roof-color change between two years is a dated reroof.',
     ifMismatchMeans:
       'A visibly newer roof with no re-roof permit on file is a likely unpermitted re-roof. Florida counties require a permit for anything beyond spot repair; no permit means no wind-mitigation certificate and potential insurance issues for the buyer.',
   });
@@ -280,7 +280,7 @@ function buildVisualChecklist(
       whatToLookFor:
         'On Street View and in the satellite view, confirm the fence exists along the property line. Note height and material (wood, chain-link, PVC, CBS wall).',
       ifMismatchMeans:
-        'A 6ft+ fence in most Florida jurisdictions requires a permit. If visible, this is a likely unpermitted fence - typically minor to resolve after-the-fact.',
+        'A 6ft+ fence in most Florida jurisdictions requires a permit. If visible, this is a likely unpermitted fence — typically minor to resolve after-the-fact.',
     });
   }
 
@@ -290,7 +290,7 @@ function buildVisualChecklist(
       item: 'Patio / concrete slab',
       whatPermitRecordSays: `Property Appraiser records a ${patioFeature.description} (${patioFeature.units ?? '?'} sq ft)${patioFeature.actualYearBuilt ? ` dated to ${patioFeature.actualYearBuilt}` : ''}. No patio / slab permit on file.`,
       whatToLookFor:
-        'Inside the red polygon on the satellite image, look at the rear yard - concrete slabs show as bright rectangles against grass. Note size and whether a roof cover sits on top (screen enclosure, tile cover, flat roof).',
+        'Inside the red polygon on the satellite image, look at the rear yard — concrete slabs show as bright rectangles against grass. Note size and whether a roof cover sits on top (screen enclosure, tile cover, flat roof).',
       ifMismatchMeans:
         'An unpermitted slab is usually fine structurally; an unpermitted COVERED patio (roof over slab) is a real flag because it needs wind-load engineering in HVHZ.',
     });
@@ -316,7 +316,7 @@ function buildVisualChecklist(
       whatToLookFor:
         'Inside the red polygon, the pool should be visible as a bright blue rectangle / kidney shape. Note whether it has a screen enclosure (visible as a gray mesh overlay). Pools OUTSIDE the polygon are neighbors\' and are not your concern.',
       ifMismatchMeans:
-        'An unpermitted pool added after the house was built is a serious flag - pools require structural, electrical, and barrier permits. Legalizing after-the-fact is expensive.',
+        'An unpermitted pool added after the house was built is a serious flag — pools require structural, electrical, and barrier permits. Legalizing after-the-fact is expensive.',
     });
   }
 
@@ -326,7 +326,7 @@ function buildVisualChecklist(
       whatPermitRecordSays:
         'No window or door replacement permit on file. Impact windows have been the Florida standard since post-Andrew; absence of any permit on a 20+ year old house suggests either originals or unpermitted replacement.',
       whatToLookFor:
-        'On Street View, compare window frames to the vintage of the house - new impact windows have thicker aluminum or vinyl frames and often a visible NOA sticker. Compare door hardware and door color across timeline.',
+        'On Street View, compare window frames to the vintage of the house — new impact windows have thicker aluminum or vinyl frames and often a visible NOA sticker. Compare door hardware and door color across timeline.',
       ifMismatchMeans:
         'Unpermitted window replacement is extremely common in Florida and a real flag for buyer insurance. No NOA approval paperwork means no wind-mitigation credit.',
     });
@@ -336,7 +336,7 @@ function buildVisualChecklist(
     list.push({
       item: 'HVAC (A/C condenser + air handler)',
       whatPermitRecordSays:
-        'No mechanical / A/C permit on file. Average condenser lifespan in Florida is 10-15 years.',
+        'No mechanical / A/C permit on file. Average condenser lifespan in Florida is 10–15 years.',
       whatToLookFor:
         'On Street View, look at the side of the house for the outdoor condenser unit. Shiny coil fins and visible model-year sticker = newer; rusted, weathered = original.',
       ifMismatchMeans:
@@ -351,7 +351,7 @@ function buildVisualChecklist(
       whatToLookFor:
         'On the satellite image (inside the red polygon only), trace the house footprint and compare to neighbors. Look for: a visible joint where old roof meets new roof; a rectangular extension off the original footprint; a garage door that has been infilled.',
       ifMismatchMeans:
-        'A visible addition / enclosed garage / rear extension with no permit is the most expensive unpermitted work to resolve - often requires full engineering and 3x original cost to legalize.',
+        'A visible addition / enclosed garage / rear extension with no permit is the most expensive unpermitted work to resolve — often requires full engineering and 3x original cost to legalize.',
     });
   }
 
@@ -394,7 +394,7 @@ export async function runDiagnostic(input: {
   }
 
   // 1. Resolve a point. A folio-only search goes straight to the FL DOR roll by
-  //    parcel id - geocoding a bare folio string just lands on the state
+  //    parcel id — geocoding a bare folio string just lands on the state
   //    centroid (Polk County), which used to make the folio field look broken.
   //    Address searches geocode as usual.
   const folioInput = (input.folio ?? '').trim();
@@ -477,7 +477,7 @@ export async function runDiagnostic(input: {
   // 3. Parcel polygon.
   const polygon = await fetchParcelPolygon(geo.lat, geo.lng, countyKey);
 
-  // 3b. Aim point - the canonical "where the camera should look" coord.
+  // 3b. Aim point — the canonical "where the camera should look" coord.
   //     Polygon centroid is much closer to the actual building than the
   //     parcel-line geocode for typical FL residential lots (rectangular,
   //     house in the middle 60-70%). Falls back to the geocode when no
@@ -527,7 +527,7 @@ export async function runDiagnostic(input: {
     failureReason: svEngine.failureReason,
   };
 
-  // 6. Vision comparison - THEN (historical NAIP + historical Street View)
+  // 6. Vision comparison — THEN (historical NAIP + historical Street View)
   //    vs NOW (current Google sat + current Street View).
   const features = adapterResult.extraFeatures;
   const permits = adapterResult.permits;
@@ -604,13 +604,13 @@ export async function runDiagnostic(input: {
       bottomLine.push(sizeStr ? `${head}, ${sizeStr}.` : `${head}.`);
     } else {
       bottomLine.push(
-        `Property details (year built, size, lot) were not returned for this parcel from the state certified roll - confirm with the county Property Appraiser.`,
+        `Property details (year built, size, lot) were not returned for this parcel from the state certified roll — confirm with the county Property Appraiser.`,
       );
     }
   }
   if (countyInfo.tier === 'B') {
     bottomLine.push(
-      `${countyInfo.name} is on the links-only tier - diagnostic leans on the AI visual comparison (satellite + Street View, parcel-bounded) plus the portal links. Use them to verify.`,
+      `${countyInfo.name} is on the links-only tier — diagnostic leans on the AI visual comparison (satellite + Street View, parcel-bounded) plus the portal links. Use them to verify.`,
     );
   } else {
     bottomLine.push(
@@ -621,7 +621,7 @@ export async function runDiagnostic(input: {
   }
   if (postBuildSummary.length > 0) {
     bottomLine.push(
-      `The Property Appraiser's own extra-features record lists ${sentenceize(postBuildSummary)} - none of which are matched by a permit on file.`,
+      `The Property Appraiser's own extra-features record lists ${sentenceize(postBuildSummary)} — none of which are matched by a permit on file.`,
     );
   }
   if (codeEnf.open.length > 0) {
@@ -633,7 +633,7 @@ export async function runDiagnostic(input: {
   }
   bottomLine.push('This is a records + imagery triage, not a confirmed violation. Verify with the AHJ before acting.');
 
-  // If the address match itself is uncertain, lead with that - every finding
+  // If the address match itself is uncertain, lead with that — every finding
   // below is keyed to this parcel, so a wrong match makes the whole report wrong.
   // Two independent triggers:
   //   (a) the geocoder flagged the match low-confidence, OR
@@ -648,7 +648,7 @@ export async function runDiagnostic(input: {
       ? `You searched ZIP ${requestedZip}, but the closest county record is in ${resolvedZip}.`
       : (geo.confidenceReason ?? '');
     bottomLine.unshift(
-      `ADDRESS MATCH UNCERTAIN - you searched "${rawAddress || geo.formattedAddress}" but the closest record found was "${adapterResult.propertyBasics.siteAddress ?? geo.formattedAddress}". ${reason} Confirm this is the right property before relying on anything below.`.trim(),
+      `ADDRESS MATCH UNCERTAIN — you searched "${rawAddress || geo.formattedAddress}" but the closest record found was "${adapterResult.propertyBasics.siteAddress ?? geo.formattedAddress}". ${reason} Confirm this is the right property before relying on anything below.`.trim(),
     );
   }
 
@@ -682,13 +682,13 @@ export async function runDiagnostic(input: {
   }
   if (historicalAerials.then && historicalAerials.now) {
     dataSources.push(
-      `Microsoft Planetary Computer (USDA NAIP) for historical aerial imagery - compared ${historicalAerials.then.captureYear} vs ${historicalAerials.now.captureYear}`,
+      `Microsoft Planetary Computer (USDA NAIP) for historical aerial imagery — compared ${historicalAerials.then.captureYear} vs ${historicalAerials.now.captureYear}`,
     );
   }
   if (historicalStreetView.then && historicalStreetView.now) {
     const src = historicalStreetView.source ?? 'Historical Street View';
     dataSources.push(
-      `${src} - compared ${historicalStreetView.then.captureYear} vs ${historicalStreetView.now.captureYear}`,
+      `${src} — compared ${historicalStreetView.then.captureYear} vs ${historicalStreetView.now.captureYear}`,
     );
   }
 
@@ -755,7 +755,7 @@ export async function runDiagnostic(input: {
     thenVsNow,
     bottomLine,
     // Surface alternate parcels (excluding the one we used) only when the match
-    // is uncertain - so the user can re-run by folio if we picked wrong.
+    // is uncertain — so the user can re-run by folio if we picked wrong.
     addressCandidates:
       geo.confidence === 'low' || zipMismatch
         ? (adapterResult.candidates ?? [])

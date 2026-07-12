@@ -2,7 +2,7 @@
 //
 // Source: the "Florida Statewide Cadastral" FeatureServer published by the
 // Florida Geographic Information Office (FGIO). Layer 0 is the FDOR Cadastral
-// (the NAL - Name/Address/Legal - file that EVERY county property appraiser
+// (the NAL — Name/Address/Legal — file that EVERY county property appraiser
 // submits to the state Department of Revenue each assessment year). Because
 // it's a single statewide layer keyed on geometry, one point-in-polygon query
 // returns real appraiser-grade data for ANY of Florida's 67 counties:
@@ -12,7 +12,7 @@
 //
 // This is what lets the top-10 counties (+ Monroe) become Tier A for PROPERTY
 // data without a bespoke scraper per county. It is an annual certified roll,
-// not a live daily feed - we stamp the assessment year and say so. Permits and
+// not a live daily feed — we stamp the assessment year and say so. Permits and
 // code-enforcement cases are NOT in this file; those remain county/city portal
 // links (handled by the adapter) until a given county exposes a usable API.
 //
@@ -175,7 +175,7 @@ function isRealParcel(attrs: any): boolean {
 
 // A parcel carries actual building data (year built or living area). Road /
 // right-of-way / vacant parcels pass isRealParcel but have all-zero building
-// attributes - which is what used to render as "?-built, ? heated sq ft".
+// attributes — which is what used to render as "?-built, ? heated sq ft".
 function hasBuilding(attrs: any): boolean {
   return !!(posNum(attrs?.ACT_YR_BLT) || posNum(attrs?.EFF_YR_BLT) || posNum(attrs?.TOT_LVG_AR));
 }
@@ -251,7 +251,7 @@ function mapAttrs(a: any): StatewideParcel {
  * Resolve the parcel that contains (or is nearest to) a lat/lng from the FL DOR
  * statewide cadastral. Tries a point-in-polygon hit first; if that lands on a
  * road/water sliver (blank parcel) it retries with a small envelope and picks
- * the first real parcel. Returns null on total miss or network failure - the
+ * the first real parcel. Returns null on total miss or network failure — the
  * adapter turns that into a graceful "not found", never an exception.
  */
 export async function parcelByPoint(lat: number, lng: number): Promise<StatewideParcel | null> {
@@ -284,7 +284,7 @@ export async function parcelByPoint(lat: number, lng: number): Promise<Statewide
 // Resolve a parcel directly from a folio / parcel-id string (no address). The
 // FDOR roll stores each county's own parcel id in PARCEL_ID; we try the raw and
 // punctuation-stripped forms and return the polygon centroid so the rest of the
-// pipeline (which is lat/lng based) can proceed. Returns null on no match - the
+// pipeline (which is lat/lng based) can proceed. Returns null on no match — the
 // caller turns that into a clean "couldn't locate that folio" message.
 export interface FolioResolution {
   lat: number;

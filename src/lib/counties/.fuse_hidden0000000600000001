@@ -1,6 +1,6 @@
 // Municipal permit layer.
 //
-// Neither Broward nor Palm Beach publishes a COUNTYWIDE building-permit feed -
+// Neither Broward nor Palm Beach publishes a COUNTYWIDE building-permit feed —
 // permits are issued city by city. Some cities do expose their permit and
 // code-enforcement records as queryable ArcGIS layers, though. This module
 // queries those city layers by location and returns real permits + code cases
@@ -12,9 +12,9 @@
 // Design: each city is a self-contained fetcher (own endpoint + field mapping)
 // dispatched by county, so adding a city is a localized change and one city's
 // schema quirks never affect another. Validated live:
-//   • Fort Lauderdale (Broward) - ArcGIS: permits + code-enforcement cases.
-//   • Tampa (Hillsborough) - ArcGIS: active residential/commercial permits.
-//   • Orlando (Orange) - Socrata: permit-applications history.
+//   • Fort Lauderdale (Broward) — ArcGIS: permits + code-enforcement cases.
+//   • Tampa (Hillsborough) — ArcGIS: active residential/commercial permits.
+//   • Orlando (Orange) — Socrata: permit-applications history.
 //
 // Honest scope, surfaced in the report notes: results are matched by geolocation
 // (permits at/immediately around the mapped point), so the reader should confirm
@@ -38,7 +38,7 @@ function empty(): MunicipalResult {
 }
 
 // Query an ArcGIS FeatureServer/MapServer layer by a small envelope around a
-// point. Returns attribute rows (never throws - failures yield []).
+// point. Returns attribute rows (never throws — failures yield []).
 async function queryByPoint(
   layerQueryUrl: string,
   lat: number,
@@ -135,7 +135,7 @@ async function querySocrataCircle(
 }
 
 // ---------------------------------------------------------------------------
-// City of Fort Lauderdale - GeneralPurpose/gisdata MapServer
+// City of Fort Lauderdale — GeneralPurpose/gisdata MapServer
 //   layer 27: Building Permits or Land Use Permits
 //   layer 30: Code Compliance Cases
 // ---------------------------------------------------------------------------
@@ -170,7 +170,7 @@ async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult
     const status = s(r.CASESTATUS);
     const initMs = typeof r.INITDATE === 'number' ? r.INITDATE : 0;
     const cc: CodeCase = {
-      caseNumber: s(r.CASENUM) || '-',
+      caseNumber: s(r.CASENUM) || '—',
       caseDate: fromEpoch(r.INITDATE),
       status: status || 'Unknown',
       problemDescription: s(r.CASETYPE) || 'Code compliance case',
@@ -194,7 +194,7 @@ async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult
     codeCasesOpen: open,
     codeCasesClosedPast5: closedPast5,
     sources: [
-      'City of Fort Lauderdale GIS (ArcGIS): Building/Land-Use Permits and Code Compliance Cases - queried live by location.',
+      'City of Fort Lauderdale GIS (ArcGIS): Building/Land-Use Permits and Code Compliance Cases — queried live by location.',
     ],
     notes: [
       'Fort Lauderdale permit and code records are matched by map location (records at or immediately around this point), so confirm each record’s address matches the subject property before relying on it. Broward has no countywide permit feed; only city-published data is pulled.',
@@ -203,7 +203,7 @@ async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult
 }
 
 // ---------------------------------------------------------------------------
-// City of Tampa (Hillsborough) - ConstructionInspections FeatureServer
+// City of Tampa (Hillsborough) — ConstructionInspections FeatureServer
 //   layer 0: Commercial · layer 1: Townhouses · layer 2: Residential
 // The city's live "Active Residential/Commercial Permits" feed (updated daily).
 // These are active/in-progress construction records, and each carries a
@@ -245,7 +245,7 @@ async function tampa(lat: number, lng: number): Promise<MunicipalResult> {
     codeCasesOpen: [],
     codeCasesClosedPast5: [],
     sources: [
-      'City of Tampa GIS (ArcGIS): active residential/commercial construction permits - queried live by location, updated daily.',
+      'City of Tampa GIS (ArcGIS): active residential/commercial construction permits — queried live by location, updated daily.',
     ],
     notes: [
       'Tampa records come from the city’s live active-permit feed (in-progress construction), matched by map location, so confirm each record’s address before relying on it. This feed shows active work, not the full historical permit archive; Hillsborough County has no countywide public permit API, so only City of Tampa data is pulled here.',
@@ -254,7 +254,7 @@ async function tampa(lat: number, lng: number): Promise<MunicipalResult> {
 }
 
 // ---------------------------------------------------------------------------
-// City of Orlando (Orange) - Socrata "Permit Applications" (ryhf-m453)
+// City of Orlando (Orange) — Socrata "Permit Applications" (ryhf-m453)
 // Full permit-application history, updated daily, geocoded per address.
 // ---------------------------------------------------------------------------
 const ORLANDO_PERMITS = 'https://data.cityoforlando.net/resource/ryhf-m453.json';
@@ -283,7 +283,7 @@ async function orlando(lat: number, lng: number): Promise<MunicipalResult> {
     codeCasesOpen: [],
     codeCasesClosedPast5: [],
     sources: [
-      'City of Orlando Open Data (Socrata): Permit Applications dataset - queried live by location, updated daily.',
+      'City of Orlando Open Data (Socrata): Permit Applications dataset — queried live by location, updated daily.',
     ],
     notes: [
       'Orlando records come from the city’s permit-applications dataset, matched by map location, so confirm each record’s address before relying on it. Orange County and other cities in the metro permit separately and are not included here.',
@@ -294,7 +294,7 @@ async function orlando(lat: number, lng: number): Promise<MunicipalResult> {
 // ---------------------------------------------------------------------------
 // Dispatch: run the city fetchers that apply to this county. Extend by adding a
 // city fetcher above and a branch here. Only runs where a validated open
-// permit layer exists - everything else keeps its portal links.
+// permit layer exists — everything else keeps its portal links.
 // ---------------------------------------------------------------------------
 export async function fetchMunicipalPermits(input: {
   countyKey: string | null;
