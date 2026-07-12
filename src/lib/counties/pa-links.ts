@@ -38,7 +38,33 @@ export const PA_SEARCH_URL: Record<string, string> = {
   hillsborough: 'https://gis.hcpafl.org/propertysearch/',
 };
 
-// Return the best PA link we have for this county, in priority order.
+// qPublic / Schneider Geospatial hosts the property search for most of
+// Florida's smaller counties. Every one of these was confirmed in a real
+// browser to load a working owner/address search form at
+// Application.aspx?App=<slug>&PageType=Search (node fetch can't verify these -
+// the domain is behind Cloudflare bot protection). Key = bare county key.
+const QPUBLIC_APP: Record<string, string> = {
+  alachua: 'AlachuaCountyFL', clay: 'ClayCountyFL', okaloosa: 'OkaloosaCountyFL',
+  suwannee: 'SuwanneeCountyFL', dixie: 'DixieCountyFL', gilchrist: 'GilchristCountyFL',
+  glades: 'GladesCountyFL', holmes: 'HolmesCountyFL', jackson: 'JacksonCountyFL',
+  levy: 'LevyCountyFL', taylor: 'TaylorCountyFL', washington: 'WashingtonCountyFL',
+  hamilton: 'HamiltonCountyFL', hardee: 'HardeeCountyFL', hendry: 'HendryCountyFL',
+  lafayette: 'LafayetteCountyFL', union: 'UnionCountyFL', madison: 'MadisonCountyFL',
+  jefferson: 'JeffersonCountyFL', liberty: 'LibertyCountyFL', franklin: 'FranklinCountyFL',
+  gulf: 'GulfCountyFL', calhoun: 'CalhounCountyFL', bradford: 'BradfordCountyFL',
+  columbia: 'ColumbiaCountyFL', okeechobee: 'OkeechobeeCountyFL', gadsden: 'GadsdenCountyFL',
+  desoto: 'DeSotoCountyFL', sumter: 'SumterCountyFL', flagler: 'FlaglerCountyFL',
+  walton: 'WaltonCountyFL', bay: 'BayCountyFL', 'santa-rosa': 'SantaRosaCountyFL',
+  'indian-river': 'IndianRiverCountyFL',
+};
+
+function qpublicSearchUrl(key: string): string | null {
+  const app = QPUBLIC_APP[key];
+  return app ? `https://qpublic.schneidercorp.com/Application.aspx?App=${app}&PageType=Search` : null;
+}
+
+// Return the best PA link we have for this county, in priority order:
+//   parcel deep link -> curated search page -> qPublic search -> homepage.
 export function bestPropertyAppraiserLink(
   countyKey: string | null,
   paRecordUrl: string | null | undefined,
@@ -47,5 +73,7 @@ export function bestPropertyAppraiserLink(
   if (paRecordUrl) return paRecordUrl;
   const key = (countyKey ?? '').replace(/^fl-/, '');
   if (key && PA_SEARCH_URL[key]) return PA_SEARCH_URL[key];
+  const qp = key ? qpublicSearchUrl(key) : null;
+  if (qp) return qp;
   return directoryHomepage;
 }
