@@ -36,3 +36,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env*.local
+
+# FUSE mount artifacts (created when files are overwritten on the mounted FS)
+.fuse_hidden*
+**/.fuse_hidden*

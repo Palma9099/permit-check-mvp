@@ -62,7 +62,7 @@ const DOR_USE_EXACT: Record<number, string> = {
   9: 'Residential common element',
 };
 
-function dorUseDescription(raw: string | null | undefined): string | null {
+export function dorUseDescription(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const n = Number(String(raw).replace(/\D+/g, ''));
   if (!Number.isFinite(n)) return null;

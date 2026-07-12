@@ -22,6 +22,7 @@ import type { CountyAdapter, AdapterResult, PropertyBasics } from './types';
 import { emptyResult } from './types';
 import type { CountyDirectoryEntry } from './portals';
 import { parcelByPoint } from './statewide-cadastral';
+import { fetchCountyProperty } from './county-property';
 
 export function buildStatewideAdapter(
   dir: CountyDirectoryEntry,
@@ -37,7 +38,12 @@ export function buildStatewideAdapter(
     name: dir.name,
     tier: 'A',
     async run({ lat, lng }): Promise<AdapterResult> {
-      const parcel = await parcelByPoint(lat, lng);
+      // Try the county's own fast hosted parcel layer first; fall back to the
+      // slow/flaky FDOR statewide layer only when a county has no fast source.
+      let parcel = await fetchCountyProperty(dir.slug, lat, lng);
+      if (!parcel || !parcel.parcelId) {
+        parcel = await parcelByPoint(lat, lng);
+      }
 
       const permitNote =
         `${dir.name}: permits and code-enforcement cases are not auto-pulled for this county yet — confirm them through the county portals below. Property, ownership, and sales figures above are from the state certified roll and are reliable as of that assessment year.`;
