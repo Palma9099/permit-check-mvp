@@ -130,6 +130,57 @@ function browardMap(a: any): StatewideParcel {
 }
 
 // ---------------------------------------------------------------------------
+// Hillsborough - HCPA "HCPA Parcels All" hosted layer (refreshed nightly).
+// ---------------------------------------------------------------------------
+const HILLSBOROUGH_LAYER =
+  'https://services.arcgis.com/apTfC6SUmnNfnxuF/arcgis/rest/services/HCPA_Parcels_All/FeatureServer/0';
+
+function fromEpoch(ms: unknown): string | null {
+  const n = typeof ms === 'number' ? ms : typeof ms === 'string' ? Number(ms) : NaN;
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return new Date(n).toISOString().slice(0, 10);
+}
+
+function hillsHasBuilding(a: any): boolean {
+  return !!(posNum(a?.ACT) || posNum(a?.HEAT_AR) || posNum(a?.tBLDGS));
+}
+
+function hillsMap(a: any): StatewideParcel {
+  const site = s(a?.SITE_ADDR);
+  const siteAddress = site && site !== '0'
+    ? titleCase([site, s(a?.SITE_CITY)].filter(Boolean).join(', ')) + (s(a?.SITE_ZIP) ? ` ${s(a?.SITE_ZIP)}` : '')
+    : null;
+  // HCPA DOR_C is a 4-digit code whose leading digits are the FL DOR class.
+  const dorClass = posNum(a?.DOR_C) ? Math.floor(Number(a.DOR_C) / 100) : null;
+  const acres = posNum(a?.ACREAGE);
+  const sale =
+    posNum(a?.S_AMT) || fromEpoch(a?.S_DATE)
+      ? [{ date: fromEpoch(a?.S_DATE), price: posNum(a?.S_AMT), qualificationDescription: null }]
+      : [];
+  return {
+    coNo: 39,
+    countyKey: 'hillsborough',
+    parcelId: s(a?.FOLIO) || s(a?.PIN) || null,
+    owner: s(a?.OWNER) || null,
+    siteAddress,
+    mailingAddress: null,
+    mailingMatchesSite: null,
+    yearBuilt: posNum(a?.ACT),
+    effectiveYearBuilt: posNum(a?.EFF),
+    livingArea: posNum(a?.HEAT_AR),
+    landSqft: acres ? Math.round(acres * 43560) : null,
+    dorUseDescription: dorClass != null ? dorUseDescription(String(dorClass)) : null,
+    legal: [s(a?.LEGAL1), s(a?.LEGAL2)].filter(Boolean).join(' ') || null,
+    justValue: posNum(a?.JUST),
+    assessedValue: posNum(a?.ASD_VAL),
+    taxableValue: posNum(a?.TAX_VAL),
+    homesteadStatusText: 'Homestead status not evaluated from this source; confirm with the HCPA record.',
+    sales: sale,
+    assessmentYear: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch. Returns null for counties without a fast per-county source, so the
 // statewide adapter cleanly falls back to the FDOR layer.
 // ---------------------------------------------------------------------------
@@ -144,6 +195,9 @@ export async function fetchCountyProperty(
   try {
     if (key === 'broward') {
       return await resolveParcel(BROWARD_LAYER, lat, lng, browardHasBuilding, browardMap, 'bcpa-property');
+    }
+    if (key === 'hillsborough') {
+      return await resolveParcel(HILLSBOROUGH_LAYER, lat, lng, hillsHasBuilding, hillsMap, 'hcpa-property');
     }
     return null;
   } catch {
