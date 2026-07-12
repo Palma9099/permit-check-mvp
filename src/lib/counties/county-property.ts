@@ -181,6 +181,49 @@ function hillsMap(a: any): StatewideParcel {
 }
 
 // ---------------------------------------------------------------------------
+// Palm Beach - PBC "Parcels and Property Details" hosted layer (authoritative).
+// PROPERTY_USE is already a human-readable label (e.g. "SINGLE FAMILY").
+// ---------------------------------------------------------------------------
+const PALMBEACH_LAYER =
+  'https://services1.arcgis.com/ZWOoUZbtaYePLlPw/arcgis/rest/services/Parcels_and_Property_Details_WebMercator/FeatureServer/0';
+
+function pbHasBuilding(a: any): boolean {
+  return !!(posNum(a?.YRBLT) || posNum(a?.YEAR_ADDED) || posNum(a?.AREA));
+}
+
+function pbMap(a: any): StatewideParcel {
+  const site = s(a?.SITE_ADDR_STR);
+  const siteAddress = site
+    ? titleCase([site, s(a?.CITYNAME)].filter(Boolean).join(', '))
+    : null;
+  const acres = posNum(a?.ACRES);
+  const use = s(a?.PROPERTY_USE);
+  return {
+    coNo: 60,
+    countyKey: 'palm-beach',
+    parcelId: s(a?.PARCEL_NUMBER) || null,
+    owner: s(a?.OWNER_NAME1) || null,
+    siteAddress,
+    mailingAddress: null,
+    mailingMatchesSite: null,
+    yearBuilt: posNum(a?.YRBLT) ?? posNum(a?.YEAR_ADDED),
+    effectiveYearBuilt: posNum(a?.YEAR_ADDED),
+    livingArea: posNum(a?.AREA),
+    landSqft: acres ? Math.round(acres * 43560) : null,
+    dorUseDescription: use ? titleCase(use) : null,
+    legal: s(a?.SUBDIV_NAME) || null,
+    justValue: posNum(a?.MKT_CAPPED) ?? posNum(a?.LAND_MARKET),
+    assessedValue: null,
+    taxableValue: posNum(a?.TOTAL_TAXABLE),
+    homesteadStatusText: 'Homestead status not evaluated from this source; confirm with the PAPA record.',
+    sales: fromEpoch(a?.SALE_DATE)
+      ? [{ date: fromEpoch(a?.SALE_DATE), price: null, qualificationDescription: null }]
+      : [],
+    assessmentYear: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch. Returns null for counties without a fast per-county source, so the
 // statewide adapter cleanly falls back to the FDOR layer.
 // ---------------------------------------------------------------------------
@@ -198,6 +241,9 @@ export async function fetchCountyProperty(
     }
     if (key === 'hillsborough') {
       return await resolveParcel(HILLSBOROUGH_LAYER, lat, lng, hillsHasBuilding, hillsMap, 'hcpa-property');
+    }
+    if (key === 'palm-beach') {
+      return await resolveParcel(PALMBEACH_LAYER, lat, lng, pbHasBuilding, pbMap, 'papa-property');
     }
     return null;
   } catch {
