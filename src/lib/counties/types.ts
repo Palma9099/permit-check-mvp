@@ -1,6 +1,6 @@
 // Interface every county adapter implements. Tier A adapters pull live data;
 // Tier B adapters only return portal links so the realtor has somewhere to
-// click. Every adapter must succeed (never throw) — missing data is expressed
+// click. Every adapter must succeed (never throw) - missing data is expressed
 // via nulls / empty arrays, never exceptions.
 
 import type {
@@ -29,6 +29,10 @@ export interface PropertyBasics {
   homesteadBaseYear: number | null;
   homesteadPercent: number | null;
   homesteadStatusText: string;
+  // Direct, click-through URL to this exact parcel's record on the county
+  // Property Appraiser site, when the county's PA supports a stable deep link.
+  // Null when we only have a search page (handled downstream in pa-links).
+  paRecordUrl?: string | null;
 }
 
 export interface AdapterResult {
@@ -53,7 +57,7 @@ export interface CountyAdapter {
   tier: 'A' | 'B';
   /**
    * Run the full live lookup for this address.
-   * Should NEVER throw — on unknown/not-found, return `found: false` with
+   * Should NEVER throw - on unknown/not-found, return `found: false` with
    * sane empty values and a note explaining why.
    */
   run(input: {
@@ -86,6 +90,7 @@ export function emptyResult(sourcesTried: string[] = [], notes: string[] = []): 
       homesteadBaseYear: null,
       homesteadPercent: null,
       homesteadStatusText: '',
+      paRecordUrl: null,
     },
     sales: [],
     extraFeatures: [],

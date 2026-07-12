@@ -13,7 +13,7 @@
 //     and code portals for manual confirmation and never fabricates permit
 //     findings. Because we don't have an itemized extra-features list here
 //     either, the orchestrator's "addition with no permit" flag simply won't
-//     fire for these counties — by design, so we can't produce a false positive.
+//     fire for these counties - by design, so we can't produce a false positive.
 //
 // Miami-Dade keeps its richer bespoke adapter (itemized features + live permits
 // + code cases); this factory covers the rest of the top-tier counties.
@@ -46,12 +46,12 @@ export function buildStatewideAdapter(
       }
 
       const permitNote =
-        `${dir.name}: permits and code-enforcement cases are not auto-pulled for this county yet — confirm them through the county portals below. Property, ownership, and sales figures above are from the state certified roll and are reliable as of that assessment year.`;
+        `${dir.name}: permits and code-enforcement cases are not auto-pulled for this county yet - confirm them through the county portals below. Property, ownership, and sales figures above are from the state certified roll and are reliable as of that assessment year.`;
 
       if (!parcel || !parcel.parcelId) {
         return emptyResult(
           [
-            `FL DOR statewide certified tax roll (NAL) — queried by parcel location; no parcel resolved at this point.`,
+            `FL DOR statewide certified tax roll (NAL) - queried by parcel location; no parcel resolved at this point.`,
             ...portalLines,
           ],
           [
@@ -82,10 +82,11 @@ export function buildStatewideAdapter(
         homesteadBaseYear: null,
         homesteadPercent: null,
         homesteadStatusText: parcel.homesteadStatusText,
+        paRecordUrl: parcel.paRecordUrl ?? null,
       };
 
       const sources = [
-        `FL DOR statewide certified tax roll (NAL)${asOf}: owner, situs address, year built, living area, land size, just/assessed/taxable value, homestead, and two most recent qualified sales — pulled live by parcel location.`,
+        `FL DOR statewide certified tax roll (NAL)${asOf}: owner, situs address, year built, living area, land size, just/assessed/taxable value, homestead, and two most recent qualified sales - pulled live by parcel location.`,
         ...portalLines,
       ];
 

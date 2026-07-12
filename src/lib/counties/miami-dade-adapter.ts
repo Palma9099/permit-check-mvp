@@ -1,4 +1,4 @@
-// Miami-Dade adapter — wraps the existing Miami-Dade Property Appraiser +
+// Miami-Dade adapter - wraps the existing Miami-Dade Property Appraiser +
 // ArcGIS Open Data pipeline into the CountyAdapter interface. The heavy
 // lifting still lives in lib/miami-dade.ts; this file is the thin shim that
 // exposes it in the common shape the new dispatcher expects.
@@ -57,7 +57,7 @@ function parseHomestead(pa: any): {
 
   let text = '';
   if (base && base > 1900) {
-    text = `Homestead on file — HxBaseYear ${base}. `;
+    text = `Homestead on file - HxBaseYear ${base}. `;
   } else {
     text = 'No homestead on file. ';
   }
@@ -209,6 +209,8 @@ export const miamiDadeAdapter: CountyAdapter = {
         homesteadBaseYear: homestead.baseYear,
         homesteadPercent: homestead.percent,
         homesteadStatusText: homestead.statusText,
+        // Verified deep link straight to this parcel on the MDCPA property app.
+        paRecordUrl: `https://apps.miamidadepa.gov/PropertySearch/#/?folio=${folio.replace(/\D+/g, '')}`,
       },
       sales: formatSales(pa),
       extraFeatures: features,

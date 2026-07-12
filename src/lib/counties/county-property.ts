@@ -223,6 +223,8 @@ function pbMap(a: any): StatewideParcel {
       ? [{ date: fromEpoch(a?.SALE_DATE), price: null, qualificationDescription: null }]
       : [],
     assessmentYear: null,
+    // PBC PAPA serves a stable server-rendered detail page keyed on parcel number.
+    paRecordUrl: s(a?.PARCEL_NUMBER) ? `https://pbcpao.gov/Property/Details?parcelId=${s(a?.PARCEL_NUMBER)}` : null,
   };
 }
 
@@ -271,6 +273,8 @@ function leeMap(a: any): StatewideParcel {
     homesteadStatusText: 'Homestead status not evaluated from this source; confirm with the LeePA record.',
     sales,
     assessmentYear: null,
+    // LeePA serves a stable server-rendered parcel page keyed on FOLIOID.
+    paRecordUrl: a?.FOLIOID != null ? `https://www.leepa.org/Display/DisplayParcel.aspx?FolioID=${a.FOLIOID}` : null,
   };
 }
 

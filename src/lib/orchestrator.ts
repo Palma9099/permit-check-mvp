@@ -22,6 +22,7 @@ import type {
 import { geocode, reverseCounty, type GeocodeResult } from './geocode';
 import { parcelByFolio } from './counties/statewide-cadastral';
 import { getCountyAdapter, toCountyInfo } from './counties';
+import { bestPropertyAppraiserLink } from './counties/pa-links';
 import { fetchMunicipalPermits } from './counties/municipal-permits';
 import { FL_COUNTY_DIRECTORY } from './counties/portals';
 import { fetchParcelPolygon, polygonCentroid } from './parcel';
@@ -473,6 +474,17 @@ export async function runDiagnostic(input: {
   } catch (err: any) {
     console.error('[orchestrator] municipal permits failed:', String(err?.message ?? err).slice(0, 160));
   }
+
+  // 2c. Upgrade the county's Property Appraiser link to the deepest one we can:
+  //     a direct parcel-record deep link when the adapter built one, else the
+  //     county's property-SEARCH page, else the directory homepage. This makes
+  //     the "Property Appraiser" button drop the user straight into the county's
+  //     property lookup even for counties we don't pull live data for.
+  countyInfo.portals.propertyAppraiser = bestPropertyAppraiserLink(
+    countyKey,
+    adapterResult.propertyBasics.paRecordUrl,
+    countyInfo.portals.propertyAppraiser,
+  );
 
   // 3. Parcel polygon.
   const polygon = await fetchParcelPolygon(geo.lat, geo.lng, countyKey);

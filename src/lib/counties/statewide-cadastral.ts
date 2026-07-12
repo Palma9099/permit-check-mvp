@@ -131,6 +131,9 @@ export interface StatewideParcel {
   homesteadStatusText: string;
   sales: Sale[];
   assessmentYear: number | null;
+  // Deep link straight to this parcel on the county PA site, when the county
+  // fetcher can build a stable one from its raw fields. Optional / null.
+  paRecordUrl?: string | null;
 }
 
 const OUT_FIELDS = [
@@ -158,7 +161,7 @@ async function queryFeatures(geometry: string, geometryType: string): Promise<an
   const res = await fetchWithTimeout(url, {
     // The statewide roll answers in ~2-8s when healthy but hangs intermittently.
     // Fail fast (single ~9s attempt) so a stuck dependency can't blow the 60s
-    // request budget — a miss degrades to the graceful "confirm with the PA"
+    // request budget - a miss degrades to the graceful "confirm with the PA"
     // line, which is far better than a 504 on the whole check.
     cache: 'no-store',
     timeoutMs: 9000,
