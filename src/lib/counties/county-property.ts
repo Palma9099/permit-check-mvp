@@ -13,6 +13,9 @@
 //
 // Validated live:
 //   • Broward - BCPA "PARCEL_POLY_BCPA_TAXROLL" hosted layer (~3s, 500k+ parcels).
+//   • Hillsborough - HCPA "HCPA_Parcels_All".
+//   • Palm Beach - PBC "Parcels_and_Property_Details_WebMercator".
+//   • Lee - LeePA "Lee_County_Parcels" (~0.4s, full attributes incl. year built).
 
 import type { StatewideParcel } from './statewide-cadastral';
 import { dorUseDescription } from './statewide-cadastral';
@@ -224,6 +227,54 @@ function pbMap(a: any): StatewideParcel {
 }
 
 // ---------------------------------------------------------------------------
+// Lee - LeePA parcels joined with property attributes (hosted by Lee County GIS,
+// synced nightly). Rich: year built, heated area, owner, situs, sales, lot sqft.
+// LANDUSEDES is already a human-readable label (e.g. "SINGLE FAMILY RESIDENTIAL").
+// ---------------------------------------------------------------------------
+const LEE_LAYER =
+  'https://services2.arcgis.com/LvWGAAhHwbCJ2GMP/arcgis/rest/services/Lee_County_Parcels/FeatureServer/0';
+
+function leeHasBuilding(a: any): boolean {
+  return !!(posNum(a?.MINBUILTY) || posNum(a?.MAXBUILTY) || posNum(a?.HEATEDAREA) || posNum(a?.TOTALAREA) || posNum(a?.BLDGCOUNT));
+}
+
+function leeMap(a: any): StatewideParcel {
+  const site = s(a?.SITEADDR);
+  const siteAddress = site
+    ? titleCase([site, s(a?.SITECITY)].filter(Boolean).join(', ')) + (s(a?.SITEZIP) ? ` ${s(a?.SITEZIP)}` : '')
+    : null;
+  const use = s(a?.LANDUSEDES);
+  const sales: { date: string | null; price: number | null; qualificationDescription: string | null }[] = [];
+  if (posNum(a?.S_1AMOUNT) || fromEpoch(a?.S_1DATE)) {
+    sales.push({ date: fromEpoch(a?.S_1DATE), price: posNum(a?.S_1AMOUNT), qualificationDescription: null });
+  }
+  if (posNum(a?.S_2AMOUNT) || fromEpoch(a?.S_2DATE)) {
+    sales.push({ date: fromEpoch(a?.S_2DATE), price: posNum(a?.S_2AMOUNT), qualificationDescription: null });
+  }
+  return {
+    coNo: 46,
+    countyKey: 'lee',
+    parcelId: s(a?.STRAP) || (a?.FOLIOID != null ? String(a.FOLIOID) : null),
+    owner: s(a?.O_NAME) || null,
+    siteAddress,
+    mailingAddress: null,
+    mailingMatchesSite: null,
+    yearBuilt: posNum(a?.MINBUILTY) ?? posNum(a?.MAXBUILTY),
+    effectiveYearBuilt: null,
+    livingArea: posNum(a?.HEATEDAREA) ?? posNum(a?.TOTALAREA),
+    landSqft: posNum(a?.STATEDAREA_SQFT),
+    dorUseDescription: use ? titleCase(use) : dorUseDescription(a?.DORCODE),
+    legal: s(a?.LEGAL) || null,
+    justValue: posNum(a?.JUST),
+    assessedValue: posNum(a?.ASSESSED),
+    taxableValue: posNum(a?.TAXABLE),
+    homesteadStatusText: 'Homestead status not evaluated from this source; confirm with the LeePA record.',
+    sales,
+    assessmentYear: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch. Returns null for counties without a fast per-county source, so the
 // statewide adapter cleanly falls back to the FDOR layer.
 // ---------------------------------------------------------------------------
@@ -244,6 +295,9 @@ export async function fetchCountyProperty(
     }
     if (key === 'palm-beach') {
       return await resolveParcel(PALMBEACH_LAYER, lat, lng, pbHasBuilding, pbMap, 'papa-property');
+    }
+    if (key === 'lee') {
+      return await resolveParcel(LEE_LAYER, lat, lng, leeHasBuilding, leeMap, 'leepa-property');
     }
     return null;
   } catch {
