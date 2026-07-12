@@ -156,9 +156,13 @@ async function queryFeatures(geometry: string, geometryType: string): Promise<an
   });
   const url = `${CADASTRAL_LAYER}?${params.toString()}`;
   const res = await fetchWithTimeout(url, {
+    // The statewide roll answers in ~2-8s when healthy but hangs intermittently.
+    // Fail fast (single ~9s attempt) so a stuck dependency can't blow the 60s
+    // request budget — a miss degrades to the graceful "confirm with the PA"
+    // line, which is far better than a 504 on the whole check.
     cache: 'no-store',
-    timeoutMs: 15000, // the statewide roll can be slow (~8s cold); give it room
-    retries: 2,
+    timeoutMs: 9000,
+    retries: 0,
     label: 'fdor-cadastral',
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -309,7 +313,7 @@ export async function parcelByFolio(folio: string): Promise<FolioResolution | nu
   });
   try {
     const res = await fetchWithTimeout(`${CADASTRAL_LAYER}?${params.toString()}`, {
-      cache: 'no-store', timeoutMs: 15000, retries: 2, label: 'fdor-folio',
+      cache: 'no-store', timeoutMs: 10000, retries: 1, label: 'fdor-folio',
     });
     if (!res.ok) return null;
     const data: any = await res.json();
