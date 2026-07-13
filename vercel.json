@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
     "src/app/api/check/route.ts": { "maxDuration": 60 },
-    "src/app/api/check/pdf/route.ts": { "maxDuration": 60 }
-  }
+    "src/app/api/check/pdf/route.ts": { "maxDuration": 60 },
+    "src/app/api/canary/route.ts": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/canary", "schedule": "0 11 * * *" }
+  ]
 }
