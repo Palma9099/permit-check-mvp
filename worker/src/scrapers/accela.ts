@@ -17,7 +17,7 @@
 import type { ScrapeResult, ScrapedPermit, ScrapedViolation } from '../types.js';
 import type { ScraperCtx } from './types.js';
 import type { AccelaJurisdiction } from './jurisdictions.js';
-import { readTables, pickTable, colIndex, cell, fillFirst, clickFirst } from './util.js';
+import { readTables, pickTable, colIndex, cell, fillFirst, clickFirst, debugDump } from './util.js';
 
 const ACA_BASE = 'https://aca-prod.accela.com';
 
@@ -74,6 +74,7 @@ async function searchModule(
   if (num) await fillFirst(page, STREET_NO_SEL, num); // best-effort; some agencies need only the name
   if (!filledName) {
     log(`accela/${moduleName}: could not locate the street-name field (needs calibration or the form is in an iframe)`);
+    await debugDump(page, `${agency}-${moduleName}-form`, log);
     return { read: false, headers: [], rows: [] };
   }
   log(`accela/${moduleName}: searching "${num ?? ''} ${name}"`);
@@ -86,6 +87,7 @@ async function searchModule(
   const table = pickTable(await readTables(page), keywords);
   if (!table) {
     log(`accela/${moduleName}: no results grid matched [${keywords.join(', ')}]`);
+    await debugDump(page, `${agency}-${moduleName}-results`, log);
     return { read: false, headers: [], rows: [] };
   }
   return { read: true, headers: table.headers, rows: table.rows };

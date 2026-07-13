@@ -94,3 +94,36 @@ export function cell(row: string[], idx: number): string | null {
   const v = row[idx]?.trim();
   return v ? v : null;
 }
+
+// Calibration aid. When CALIBRATE=1, dump what a human needs to fix a selector:
+// every fillable input's id/name/placeholder, every table's headers + row count,
+// and a full-page screenshot. No-op otherwise; never throws. See the calibration
+// runbook (docs/accela-calibration-runbook.md).
+export async function debugDump(page: Page, label: string, log: (m: string) => void): Promise<void> {
+  if (process.env.CALIBRATE !== '1') return;
+  try {
+    const inputs = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('input,select,textarea'))
+        .map((el) => ({
+          id: (el as HTMLInputElement).id || '',
+          name: (el as HTMLInputElement).name || '',
+          type: (el as HTMLInputElement).type || el.tagName.toLowerCase(),
+          ph: (el as HTMLInputElement).placeholder || '',
+        }))
+        .filter((x) => x.id || x.name)
+        .slice(0, 60),
+    );
+    log(`[debug ${label}] ${inputs.length} field(s):`);
+    for (const f of inputs) log(`   input id="${f.id}" name="${f.name}" type=${f.type}${f.ph ? ` ph="${f.ph}"` : ''}`);
+
+    const tables = await readTables(page);
+    log(`[debug ${label}] ${tables.length} table(s):`);
+    tables.forEach((t, i) => log(`   [${i}] rows=${t.rows.length} headers: ${t.headers.join(' | ')}`));
+
+    const file = `calib-${label.replace(/[^a-z0-9]+/gi, '_')}-${Date.now()}.png`;
+    await page.screenshot({ path: file, fullPage: true }).catch(() => {});
+    log(`[debug ${label}] screenshot: ${file}`);
+  } catch (e: any) {
+    log(`[debug ${label}] dump failed: ${e?.message ?? e}`);
+  }
+}
