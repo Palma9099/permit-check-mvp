@@ -90,7 +90,26 @@ npx playwright install chromium   # only needed outside the Docker image
 npm start
 ```
 
-## Supported counties
-Miami-Dade, Broward, Palm Beach (others get a graceful "not yet automated +
-statewide lookup link" email). Add a county by dropping a new entry in
-`COUNTY_CONFIGS`.
+## Architecture: scrape by platform, not by city
+Most Florida jurisdictions run one of a few permitting products. The worker is
+organized around that:
+
+- `src/scrapers/jurisdictions.ts` — the registry. Each county (later: city) maps
+  to a **platform** (`accela` | `generic`) + its config. Accela entries just carry
+  an **agency code** (the path segment in `aca-prod.accela.com/<AGENCY>/`), so
+  adding an Accela jurisdiction is one line.
+- `src/scrapers/accela.ts` — the Accela Citizen Access flow (search street no/name
+  → read the results GridView → map columns). Covers Broward + Palm Beach today;
+  every other Accela agency is a registry entry away.
+- `src/scrapers/generic.ts` — the original best-effort form engine, used for
+  non-Accela portals (currently Miami-Dade EPS). Configs live in `counties.ts`.
+- `src/scrapers/index.ts` — dispatch: resolve jurisdiction → run its platform flow.
+
+Both flows **degrade safely** — an uncalibrated selector yields a "use the link"
+email, never wrong data.
+
+## Supported jurisdictions
+Broward + Palm Beach (Accela), Miami-Dade (generic/EPS; permits also covered
+instantly by the app API). Others get a graceful "not yet automated + statewide
+lookup link" email. **Add an Accela agency:** confirm its code by opening
+`aca-prod.accela.com/<AGENCY>/`, add an entry to `JURISDICTIONS`, then calibrate.

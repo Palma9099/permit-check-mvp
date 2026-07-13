@@ -6,15 +6,16 @@ import type { Browser } from 'playwright';
 import type { ScanJob, ScrapeResult } from '../types.js';
 import type { ScraperCtx } from './types.js';
 import { runPortalScrape } from './generic.js';
-import { COUNTY_CONFIGS } from './counties.js';
+import { runAccelaScrape } from './accela.js';
+import { JURISDICTIONS } from './jurisdictions.js';
 
 const HARD_TIMEOUT = Number(process.env.SCRAPE_TIMEOUT_MS ?? 240000);
 
 export async function runScrapeForJob(browser: Browser, job: ScanJob): Promise<ScrapeResult> {
   const county = (job.county ?? '').toLowerCase();
-  const cfg = COUNTY_CONFIGS[county];
+  const jur = JURISDICTIONS[county];
 
-  if (!cfg) {
+  if (!jur) {
     return {
       ok: false,
       county: county || 'unknown',
@@ -24,7 +25,7 @@ export async function runScrapeForJob(browser: Browser, job: ScanJob): Promise<S
       violations: [],
       notes: [
         county
-          ? `Automated deep scraping for ${county} isn't wired up yet — only Miami-Dade, Broward, and Palm Beach are. Use the county's property-appraiser and building-department search to confirm records.`
+          ? `Automated deep scraping for ${county} isn't wired up yet - only Miami-Dade, Broward, and Palm Beach are. Use the county's property-appraiser and building-department search to confirm records.`
           : 'We could not determine the county for this property. Confirm the address/ZIP and try again.',
       ],
       portalLinks: [
@@ -54,8 +55,12 @@ export async function runScrapeForJob(browser: Browser, job: ScanJob): Promise<S
   };
 
   try {
+    const scrape =
+      jur.platform === 'accela'
+        ? runAccelaScrape(ctx, jur)
+        : runPortalScrape(ctx, jur.config);
     const result = await Promise.race([
-      runPortalScrape(ctx, cfg),
+      scrape,
       new Promise<ScrapeResult>((_, reject) =>
         setTimeout(() => reject(new Error(`hard timeout after ${HARD_TIMEOUT}ms`)), HARD_TIMEOUT),
       ),
