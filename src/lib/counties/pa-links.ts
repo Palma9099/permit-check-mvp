@@ -31,6 +31,7 @@ export const PA_SEARCH_URL: Record<string, string> = {
   marion: 'https://www.pa.marion.fl.us/PropertySearch.aspx',
   citrus: 'https://www.citruspa.org/_web/search/commonsearch.aspx?mode=realprop',
   leon: 'https://www.leonpa.gov/pt/search/commonsearch.aspx?mode=realprop',
+  escambia: 'https://www.escpa.org/cama/Search.aspx',
   // Connected counties whose PA is a JS SPA with no stable folio-in-URL deep
   // link - we already show their full property data in-report, so the button
   // just drops the user on the county's property-search app.
