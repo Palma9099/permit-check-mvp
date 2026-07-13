@@ -292,10 +292,43 @@ async function orlando(lat: number, lng: number): Promise<MunicipalResult> {
 }
 
 // ---------------------------------------------------------------------------
-// Dispatch: run the city fetchers that apply to this county. Extend by adding a
-// city fetcher above and a branch here. Only runs where a validated open
-// permit layer exists - everything else keeps its portal links.
+// Registry: each county maps to the list of city/agency fetchers that publish a
+// validated open, geo-queryable permit layer within it. A county can hold
+// several cities - every fetcher runs, and only the one covering the subject
+// point returns rows (each queries a ~30-50m envelope), so results merge cleanly.
+//
+// To add a city: write a `(lat,lng) => Promise<MunicipalResult>` fetcher above
+// and add it to the county's array here. Nothing else changes.
+//
+// Reality check (verified July 2026): outside these, no other FL city or county
+// exposes a current, public, geo-queryable building-permit API - most sit behind
+// Accela / ePZB portals with no open endpoint, and the few open datasets found
+// were either stale (Gainesville, frozen 2023) or geometry-less tables (Cape
+// Coral). Broadening permit coverage further needs the Playwright deep-scan
+// worker to read those portals, not another ArcGIS/Socrata fetcher.
 // ---------------------------------------------------------------------------
+type CityFetcher = (lat: number, lng: number) => Promise<MunicipalResult>;
+
+const CITY_FETCHERS: Record<string, CityFetcher[]> = {
+  broward: [fortLauderdale],
+  hillsborough: [tampa],
+  orange: [orlando],
+};
+
+function mergeResults(results: MunicipalResult[]): MunicipalResult {
+  const hits = results.filter((r) => r.found);
+  if (hits.length === 0) return empty();
+  return {
+    found: true,
+    cityName: hits.map((h) => h.cityName).filter(Boolean).join(', ') || null,
+    permits: hits.flatMap((h) => h.permits),
+    codeCasesOpen: hits.flatMap((h) => h.codeCasesOpen),
+    codeCasesClosedPast5: hits.flatMap((h) => h.codeCasesClosedPast5),
+    sources: hits.flatMap((h) => h.sources),
+    notes: hits.flatMap((h) => h.notes),
+  };
+}
+
 export async function fetchMunicipalPermits(input: {
   countyKey: string | null;
   lat: number;
@@ -303,24 +336,14 @@ export async function fetchMunicipalPermits(input: {
 }): Promise<MunicipalResult> {
   const { countyKey, lat, lng } = input;
   if (!countyKey) return empty();
+  const fetchers = CITY_FETCHERS[countyKey];
+  if (!fetchers || fetchers.length === 0) return empty();
 
   try {
-    if (countyKey === 'broward') {
-      // Currently: Fort Lauderdale. Additional Broward cities with ArcGIS
-      // permit layers drop in here as they are validated.
-      return await fortLauderdale(lat, lng);
-    }
-    if (countyKey === 'hillsborough') {
-      // City of Tampa live active-permit feed (ArcGIS).
-      return await tampa(lat, lng);
-    }
-    if (countyKey === 'orange') {
-      // City of Orlando permit-applications dataset (Socrata).
-      return await orlando(lat, lng);
-    }
-    // Other counties: no city or county publishes queryable permit data yet
-    // (records sit behind Accela/ePZB portals), so there is nothing to pull.
-    return empty();
+    const results = await Promise.all(
+      fetchers.map((fn) => fn(lat, lng).catch(() => empty())),
+    );
+    return mergeResults(results);
   } catch {
     return empty();
   }
