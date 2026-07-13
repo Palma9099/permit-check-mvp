@@ -37,11 +37,16 @@ scrape runs here, on an always-on host with a real Chromium, and the result is
 
 ## One-time setup
 
-### 1. Run the migration (creates the queue)
+### 1. Run the migrations (queue + result cache)
 Against the same database as `SUPABASE_URL` (Supabase SQL editor or psql):
 ```
--- paste migrations/0001_scan_jobs.sql  (in the repo root, one level up)
+-- paste migrations/0001_scan_jobs.sql       (queue)
+-- paste migrations/0002_portal_results.sql  (result cache)
 ```
+`portal_results` caches every **successful** scrape (keyed by folio, else
+normalized address). Repeat lookups and — once wired in Phase 3 — the instant
+`/api/check` report reuse it instead of re-driving the portal. Misses are never
+cached, so a transient failure can't suppress a future scrape.
 
 ### 2. Set env (see `.env.example`)
 ```

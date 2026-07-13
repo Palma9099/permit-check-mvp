@@ -6,6 +6,7 @@ import { claimJob, completeJob, failJob, markEmailed } from './queue.js';
 import { runScrapeForJob } from './scrapers/index.js';
 import { buildEmail } from './report.js';
 import { sendEmail } from './email.js';
+import { cachePortalResult } from './cache.js';
 import type { ScrapeResult } from './types.js';
 
 const POLL = Number(process.env.POLL_INTERVAL_MS ?? 5000);
@@ -22,6 +23,9 @@ async function processOne(browser: Browser): Promise<boolean> {
     await sendEmail(job.email, subject, html, text);
     await completeJob(job.id, result);
     await markEmailed(job.id);
+    // Cache a successful scrape so repeat lookups + the instant report can
+    // reuse it without re-driving the portal. Best-effort; never blocks.
+    await cachePortalResult(job, result);
     console.log(
       `[worker] done ${job.id} permits=${result.permits.length} violations=${result.violations.length} → ${job.email}`,
     );
