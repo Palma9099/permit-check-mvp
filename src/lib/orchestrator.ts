@@ -33,6 +33,10 @@ import {
 import { buildStreetViewEngine } from './images/streetview';
 import { fetchHistoricalAerials } from './images/historical-aerial';
 import { compareImagery } from './vision-compare';
+import { assessInsurance } from './risk/insurance';
+import { assessRecert } from './risk/milestone';
+import { assessFlood } from './flood';
+import { buildNegotiationPack } from './resolution';
 import { recordToLedger } from './ledger';
 
 // ---------------------------------------------------------------------------
@@ -460,9 +464,11 @@ export async function runDiagnostic(input: {
   //     publishes them as queryable ArcGIS data (e.g. Fort Lauderdale). Merges
   //     into the adapter result so the report shows live records instead of just
   //     portal links. No-op for counties/cities without open permit data.
+  let municipalPermitsQueried = false;
   try {
     const municipal = await fetchMunicipalPermits({ countyKey, lat: geo.lat, lng: geo.lng });
     if (municipal.found) {
+      municipalPermitsQueried = true;
       if (municipal.permits.length) adapterResult.permits = municipal.permits;
       if (municipal.codeCasesOpen.length || municipal.codeCasesClosedPast5.length) {
         adapterResult.codeCasesOpen = municipal.codeCasesOpen;
@@ -507,7 +513,7 @@ export async function runDiagnostic(input: {
   //    historical THEN/NOW pairs from one Google pano-list call, all
   //    rendered with bearing-to-aim so the camera points at the building
   //    rather than at the parcel-line geocode.
-  const [svEngine, historicalAerials] = await Promise.all([
+  const [svEngine, historicalAerials, floodResult] = await Promise.all([
     buildStreetViewEngine({
       searchLat: geo.lat,
       searchLng: geo.lng,
@@ -521,6 +527,9 @@ export async function runDiagnostic(input: {
       aimPolygon: polygon.polygon && !polygon.isFallback ? polygon.polygon : null,
     }),
     fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
+    // Flood (FEMA NFHL) only needs the point, so run it in parallel with imagery
+    // rather than adding its latency to the end of the pipeline.
+    assessFlood(geo.lat, geo.lng),
   ]);
   const streetViewImages = svEngine.current;
 
@@ -567,6 +576,17 @@ export async function runDiagnostic(input: {
   const buckets = yearBuckets(features);
   const codeEnf = { open: adapterResult.codeCasesOpen, closedPast5: adapterResult.codeCasesClosedPast5 };
 
+  // Insurability & roof-age risk. Permits are queried live only for Miami-Dade
+  // and any matched municipal source; elsewhere a missing roof permit is unknown,
+  // not "original roof".
+  const permitsQueried = countyKey === 'miami-dade' || municipalPermitsQueried;
+  const insurance = assessInsurance(
+    permits,
+    adapterResult.propertyBasics.yearBuilt,
+    new Date().getFullYear(),
+    permitsQueried,
+  );
+
   const flags = buildFlags(
     permits,
     adapterResult.neighborPermitTotal,
@@ -596,6 +616,36 @@ export async function runDiagnostic(input: {
       buildingDept: countyInfo.portals.buildingDept,
     },
   );
+
+  // Flood risk (FEMA NFHL) was fetched in parallel above. The 50% "substantial
+  // improvement" caveat gets a sharper clause when there's a likely unpermitted
+  // addition in play, which we only know once the flags are built.
+  const hasUnpermittedAdditions = flags.strong.some((f) =>
+    /addition|unpermit/i.test(`${f.title} ${f.detail}`),
+  );
+  const flood = floodResult;
+  if (flood.inSFHA && flood.fiftyPercentNote && hasUnpermittedAdditions) {
+    flood.fiftyPercentNote +=
+      ' Resolving unpermitted additions here can count toward that threshold, so confirm the path with the floodplain administrator before starting.';
+  }
+
+  // Milestone / recertification / SIRS exposure — derived from building class + age.
+  const recert = assessRecert(
+    adapterResult.propertyBasics.dorDescription,
+    yearBuilt,
+    countyKey ?? '',
+    new Date().getFullYear(),
+  );
+
+  // Turn the findings into fix-paths + a buyer negotiation pack.
+  const negotiation = buildNegotiationPack({
+    flags,
+    openCases: codeEnf.open,
+    permits,
+    insurance,
+    flood,
+    recert,
+  });
 
   const postBuildSummary = summarizeBuckets(buckets, yearBuilt);
 
@@ -689,6 +739,9 @@ export async function runDiagnostic(input: {
     'Google Street View Static API for ground-level imagery',
     ...adapterResult.sourcesTried,
   ];
+  if (!flood.failureReason) {
+    dataSources.push('FEMA National Flood Hazard Layer (NFHL) for the flood zone');
+  }
   if (visualComparison.performed) {
     dataSources.push(`Anthropic Claude (${visualComparison.modelUsed}) for AI visual comparison`);
   }
@@ -707,6 +760,11 @@ export async function runDiagnostic(input: {
   const dataLimitations: string[] = [
     ...adapterResult.notes,
     'Records reflect the digital portal only. Paper/microfilm permit archives predating county digital migration may not appear.',
+    ...(countyKey !== 'miami-dade' && features.length === 0
+      ? [
+          'The records-based "addition with no matching permit" check relies on itemized, dated improvement records that are published only by the Miami-Dade Property Appraiser. For this county those itemized records and live permits are not available, so the imagery Then-vs-Now comparison above is the primary check for additions here, confirm anything it surfaces against the county building department.',
+        ]
+      : []),
     polygon.isFallback
       ? 'No parcel polygon was available for this county; a synthetic ~120ft box was drawn around the geocoded point as a subject-area hint. This reduces the accuracy of the neighbor/subject distinction.'
       : 'Parcel polygon came from a live county or statewide source; AI visual analysis was constrained to the area inside the red outline.',
@@ -755,6 +813,10 @@ export async function runDiagnostic(input: {
     },
     flags,
     confidenceAssessment: confidence,
+    insurance,
+    flood,
+    recert,
+    negotiation,
     nextSteps,
     dataSources,
     dataLimitations,

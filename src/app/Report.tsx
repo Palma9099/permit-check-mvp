@@ -39,6 +39,17 @@ function fmtYear(n: number | null): string {
   return String(Math.trunc(n));
 }
 
+function ConfidenceBadge({ grade }: { grade: 'high' | 'medium' | 'low' | 'not_observed' }) {
+  const cls =
+    grade === 'high'
+      ? 'badge badge-ok'
+      : grade === 'medium'
+        ? 'badge badge-medium'
+        : 'badge badge-weak';
+  const label = grade === 'not_observed' ? 'NOT OBSERVED' : grade.toUpperCase();
+  return <span className={cls}>{label}</span>;
+}
+
 function FlagCard({ flag }: { flag: Flag }) {
   const cls =
     flag.severity === 'strong'
@@ -99,6 +110,176 @@ function ObservationCard({ obs }: { obs: VisionObservation }) {
       </p>
       <p className="text-sm text-ink-soft leading-relaxed mt-1">
         <span className="font-semibold text-ink">Vs. permit record:</span> {obs.vsPermitRecord}
+      </p>
+    </div>
+  );
+}
+
+function InsuranceCard({ ins }: { ins: DiagnosticReport['insurance'] }) {
+  const cls =
+    ins.band === 'newer'
+      ? 'border-green-300 bg-green-50'
+      : ins.band === 'old'
+        ? 'border-red-300 bg-red-50'
+        : ins.band === 'unknown'
+          ? 'border-gray-300 bg-gray-50'
+          : 'border-amber-300 bg-amber-50';
+  const badgeCls =
+    ins.band === 'newer'
+      ? 'badge badge-ok'
+      : ins.band === 'old'
+        ? 'badge badge-strong'
+        : ins.band === 'unknown'
+          ? 'badge badge-weak'
+          : 'badge badge-medium';
+  const bandLabel =
+    ins.band === 'newer'
+      ? 'LIKELY INSURABLE'
+      : ins.band === 'watch'
+        ? 'WATCH'
+        : ins.band === 'aging'
+          ? 'AGING ROOF'
+          : ins.band === 'old'
+            ? 'ROOF RISK'
+            : 'ROOF AGE UNKNOWN';
+  return (
+    <div className={`border rounded-md p-4 ${cls}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <h3 className="font-semibold text-ink text-sm">
+          Roof &amp; insurability
+          {ins.roofAgeYears != null ? ` · ~${ins.roofAgeYears} yr roof` : ''}
+        </h3>
+        <span className={badgeCls}>{bandLabel}</span>
+      </div>
+      <p className="text-sm text-ink-soft leading-relaxed">{ins.roofBasis}</p>
+      <p className="text-sm text-ink-soft leading-relaxed mt-1">{ins.insurabilityNote}</p>
+      <p className="text-sm text-ink-soft leading-relaxed mt-1">{ins.windMitNote}</p>
+      {ins.recommendations.length > 0 && (
+        <ul className="mt-2">
+          {ins.recommendations.map((rec, i) => (
+            <li key={i} className="text-sm text-ink-soft leading-relaxed">
+              {rec}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-xs text-ink-muted italic mt-2">
+        Estimate from the permit record, not an insurance quote. We provide the 4-point
+        and wind-mitigation inspection reports insurers ask for at $175 each.
+      </p>
+    </div>
+  );
+}
+
+function RecertCard({ rc }: { rc: DiagnosticReport['recert'] }) {
+  const cls =
+    rc.applies === 'unlikely'
+      ? 'border-green-300 bg-green-50'
+      : rc.applies === 'likely'
+        ? 'border-amber-300 bg-amber-50'
+        : rc.applies === 'possible'
+          ? 'border-amber-200 bg-amber-50'
+          : 'border-gray-300 bg-gray-50';
+  const badgeCls =
+    rc.applies === 'unlikely'
+      ? 'badge badge-ok'
+      : rc.applies === 'unknown'
+        ? 'badge badge-weak'
+        : 'badge badge-medium';
+  const badgeLabel =
+    rc.applies === 'unlikely'
+      ? 'NOT APPLICABLE'
+      : rc.applies === 'likely'
+        ? 'LIKELY APPLIES'
+        : rc.applies === 'possible'
+          ? 'MAY APPLY'
+          : 'UNKNOWN';
+  return (
+    <div className={`border rounded-md p-4 ${cls}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <h3 className="font-semibold text-ink text-sm">Milestone &amp; recertification</h3>
+        <span className={badgeCls}>{badgeLabel}</span>
+      </div>
+      <p className="text-sm text-ink-soft leading-relaxed">{rc.detail}</p>
+      {rc.programs.length > 0 && (
+        <p className="text-sm text-ink-soft leading-relaxed mt-1">
+          <span className="font-semibold text-ink">Programs that may apply:</span>{' '}
+          {rc.programs.join('; ')}.
+        </p>
+      )}
+      {rc.recommendation && (
+        <p className="text-sm text-ink-soft leading-relaxed mt-1">{rc.recommendation}</p>
+      )}
+      <p className="text-xs text-ink-muted italic mt-2">
+        Thresholds and timing are set by each jurisdiction and change; confirm the current
+        requirement and any deadline with the county.
+      </p>
+    </div>
+  );
+}
+
+function ResolutionCard({ item }: { item: NonNullable<DiagnosticReport['negotiation']>['items'][number] }) {
+  return (
+    <div className="border border-black/10 bg-white rounded-md p-4">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <h3 className="font-semibold text-ink text-sm">{item.finding}</h3>
+        {item.engineeringLikely && <span className="badge badge-medium">ENGINEERING LIKELY</span>}
+      </div>
+      <p className="text-sm text-ink-soft leading-relaxed">
+        <span className="font-semibold text-ink">What it means:</span> {item.what}
+      </p>
+      <p className="text-sm text-ink-soft leading-relaxed mt-1">
+        <span className="font-semibold text-ink">How it’s resolved:</span> {item.path}
+      </p>
+      <p className="text-sm text-ink-soft leading-relaxed mt-1">
+        <span className="font-semibold text-ink">What drives the cost:</span> {item.costDrivers}
+      </p>
+      <p className="text-sm text-ink-soft leading-relaxed mt-1">
+        <span className="font-semibold text-ink">Ask the seller:</span> {item.askSeller}
+      </p>
+    </div>
+  );
+}
+
+function FloodCard({ flood }: { flood: DiagnosticReport['flood'] }) {
+  const coastal = (flood.zone ?? '').toUpperCase().startsWith('V');
+  const unknown = flood.failureReason != null || (flood.inSFHA == null && !flood.zone);
+  const cls = unknown
+    ? 'border-gray-300 bg-gray-50'
+    : coastal
+      ? 'border-red-300 bg-red-50'
+      : flood.inSFHA
+        ? 'border-amber-300 bg-amber-50'
+        : 'border-green-300 bg-green-50';
+  const badgeCls = unknown
+    ? 'badge badge-weak'
+    : coastal
+      ? 'badge badge-strong'
+      : flood.inSFHA
+        ? 'badge badge-medium'
+        : 'badge badge-ok';
+  const badgeLabel = unknown
+    ? 'ZONE UNKNOWN'
+    : flood.inSFHA
+      ? `HIGH-RISK · ${flood.zone ?? 'SFHA'}`
+      : `LOWER RISK${flood.zone ? ` · ${flood.zone}` : ''}`;
+  return (
+    <div className={`border rounded-md p-4 ${cls}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <h3 className="font-semibold text-ink text-sm">
+          Flood zone
+          {flood.baseFloodElevationFt != null ? ` · BFE ~${flood.baseFloodElevationFt} ft` : ''}
+        </h3>
+        <span className={badgeCls}>{badgeLabel}</span>
+      </div>
+      <p className="text-sm text-ink-soft leading-relaxed">{flood.summary}</p>
+      <p className="text-sm text-ink-soft leading-relaxed mt-1">{flood.insuranceNote}</p>
+      {flood.fiftyPercentNote && (
+        <p className="text-sm text-ink-soft leading-relaxed mt-1">{flood.fiftyPercentNote}</p>
+      )}
+      <p className="text-xs text-ink-muted italic mt-2">
+        {flood.source}. The mapped zone can differ for a specific parcel; confirm on the
+        FEMA Map Service Center (msc.fema.gov) and with the community floodplain office.
       </p>
     </div>
   );
@@ -212,6 +393,93 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                 <FlagCard key={`m${i}`} flag={f} />
               ))}
             </div>
+          </section>
+        )}
+
+        {/* Insurance & roof outlook — the #1 Florida deal factor */}
+        {r.insurance && (
+          <section>
+            <h2>Insurance &amp; roof outlook</h2>
+            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
+              In Florida, roof age and wind mitigation decide whether a home can be
+              insured and at what price. Here is where this one stands on the records.
+            </p>
+            <InsuranceCard ins={r.insurance} />
+          </section>
+        )}
+
+        {/* Flood zone — FEMA NFHL, nationwide */}
+        {r.flood && (
+          <section>
+            <h2>Flood risk</h2>
+            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
+              The FEMA flood zone drives flood-insurance cost and, in a high-risk zone,
+              what you are allowed to renovate without elevating the home.
+            </p>
+            <FloodCard flood={r.flood} />
+          </section>
+        )}
+
+        {/* Milestone / recertification exposure */}
+        {r.recert && (
+          <section>
+            <h2>Milestone &amp; recertification</h2>
+            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
+              Older condos and larger buildings in Florida can be forced into a
+              structural inspection and a funded reserve study. Here is whether that is
+              likely for this one.
+            </p>
+            <RecertCard rc={r.recert} />
+          </section>
+        )}
+
+        {/* What this means & how to negotiate */}
+        {r.negotiation && r.negotiation.items.length > 0 && (
+          <section>
+            <h2>What this means &amp; how to negotiate</h2>
+            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
+              {r.negotiation.exposureSummary}
+            </p>
+            <div className="space-y-3">
+              {r.negotiation.items.map((it, i) => (
+                <ResolutionCard key={i} item={it} />
+              ))}
+            </div>
+
+            {r.negotiation.sellerQuestions.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold text-ink text-sm mb-1">Ask the seller</h3>
+                <ul>
+                  {r.negotiation.sellerQuestions.map((q, i) => (
+                    <li key={i}>{q}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {r.negotiation.contingencyItems.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold text-ink text-sm mb-1">Put in your offer</h3>
+                <ul>
+                  {r.negotiation.contingencyItems.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {r.negotiation.engineeringFlagged && (
+              <p className="text-sm text-ink-soft leading-relaxed mt-3">
+                Items marked <span className="badge badge-medium">ENGINEERING LIKELY</span> generally
+                need a sealed structural package to legalize or verify. Ask us below and we can
+                scope one.
+              </p>
+            )}
+
+            <p className="text-xs text-ink-muted italic mt-3">
+              Guidance based on the finding type, not a bid. Get a contractor or engineer quote for
+              the specific work before you rely on any number.
+            </p>
           </section>
         )}
 
@@ -728,6 +996,67 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                 ))}
               </tbody>
             </table>
+          </section>
+        )}
+
+        {/* Sourcing & confidence - transparency block (data already computed) */}
+        {(r.confidenceAssessment.length > 0 ||
+          r.dataSources.length > 0 ||
+          r.dataLimitations.length > 0) && (
+          <section>
+            <h2>How we sourced this</h2>
+            <p className="text-sm text-ink-soft leading-relaxed mb-3">
+              Every line above is pulled from public records or read from imagery.
+              Here is how confident we are in each part, where it came from, and what
+              this report does not cover.
+            </p>
+
+            {r.confidenceAssessment.length > 0 && (
+              <table>
+                <thead>
+                  <tr>
+                    <th>What</th>
+                    <th>Confidence</th>
+                    <th>Basis</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.confidenceAssessment.map((c, i) => (
+                    <tr key={i}>
+                      <td>{c.topic}</td>
+                      <td>
+                        <ConfidenceBadge grade={c.grade} />
+                      </td>
+                      <td>{c.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {r.dataSources.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold text-ink text-sm mb-1">Sources pulled</h3>
+                <ul>
+                  {r.dataSources.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {r.dataLimitations.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-semibold text-ink text-sm mb-1">
+                  What this report does not cover
+                </h3>
+                <ul>
+                  {r.dataLimitations.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
         )}
 
