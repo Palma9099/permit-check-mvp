@@ -512,7 +512,7 @@ export async function runDiagnostic(input: {
   //    historical THEN/NOW pairs from one Google pano-list call, all
   //    rendered with bearing-to-aim so the camera points at the building
   //    rather than at the parcel-line geocode.
-  const [svEngine, historicalAerials] = await Promise.all([
+  const [svEngine, historicalAerials, floodResult] = await Promise.all([
     buildStreetViewEngine({
       searchLat: geo.lat,
       searchLng: geo.lng,
@@ -526,6 +526,9 @@ export async function runDiagnostic(input: {
       aimPolygon: polygon.polygon && !polygon.isFallback ? polygon.polygon : null,
     }),
     fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
+    // Flood (FEMA NFHL) only needs the point, so run it in parallel with imagery
+    // rather than adding its latency to the end of the pipeline.
+    assessFlood(geo.lat, geo.lng),
   ]);
   const streetViewImages = svEngine.current;
 
@@ -613,13 +616,17 @@ export async function runDiagnostic(input: {
     },
   );
 
-  // Flood risk (FEMA NFHL) — nationwide, so it works in every county. The 50%
-  // "substantial improvement" caveat gets a sharper clause when there's a likely
-  // unpermitted addition in play.
+  // Flood risk (FEMA NFHL) was fetched in parallel above. The 50% "substantial
+  // improvement" caveat gets a sharper clause when there's a likely unpermitted
+  // addition in play, which we only know once the flags are built.
   const hasUnpermittedAdditions = flags.strong.some((f) =>
     /addition|unpermit/i.test(`${f.title} ${f.detail}`),
   );
-  const flood = await assessFlood(geo.lat, geo.lng, { hasUnpermittedAdditions });
+  const flood = floodResult;
+  if (flood.inSFHA && flood.fiftyPercentNote && hasUnpermittedAdditions) {
+    flood.fiftyPercentNote +=
+      ' Resolving unpermitted additions here can count toward that threshold, so confirm the path with the floodplain administrator before starting.';
+  }
 
   // Turn the findings into fix-paths + a buyer negotiation pack.
   const negotiation = buildNegotiationPack({
