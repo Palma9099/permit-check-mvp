@@ -48,6 +48,50 @@ export interface ConfidenceRow {
   note: string;
 }
 
+// Insurability & roof-age risk, derived from the permit record. Never a quote.
+export interface InsuranceRisk {
+  roofPermitYear: number | null;
+  roofAgeYears: number | null;
+  roofBasis: string;
+  band: 'newer' | 'watch' | 'aging' | 'old' | 'unknown';
+  insurabilityNote: string;
+  openingProtection: boolean;
+  windMitNote: string;
+  recommendations: string[];
+}
+
+// One finding turned into a buyer decision (what / path / engineering / cost drivers / ask).
+export interface ResolutionItem {
+  finding: string;
+  what: string;
+  path: string;
+  engineeringLikely: boolean;
+  costDrivers: string;
+  askSeller: string;
+}
+
+// Aggregated, actionable negotiation guidance derived from the findings.
+export interface NegotiationPack {
+  items: ResolutionItem[];
+  sellerQuestions: string[];
+  contingencyItems: string[];
+  exposureSummary: string;
+  engineeringFlagged: boolean;
+}
+
+// Flood risk from FEMA's National Flood Hazard Layer. Never a premium quote.
+export interface FloodRisk {
+  zone: string | null;
+  zoneSubtype: string | null;
+  inSFHA: boolean | null;
+  baseFloodElevationFt: number | null;
+  summary: string;
+  insuranceNote: string;
+  fiftyPercentNote: string | null;
+  source: string;
+  failureReason: string | null;
+}
+
 export interface ChecklistItem {
   // What to look at when flipping to Street View / satellite / historical aerials
   item: string;
@@ -254,6 +298,15 @@ export interface DiagnosticReport {
   };
 
   confidenceAssessment: ConfidenceRow[];
+
+  // Insurability & roof-age risk, derived from the permit record.
+  insurance: InsuranceRisk;
+
+  // Flood risk from FEMA's National Flood Hazard Layer.
+  flood: FloodRisk;
+
+  // Findings turned into fix-paths + a buyer negotiation pack (null when nothing to act on).
+  negotiation: NegotiationPack | null;
 
   nextSteps: string[];
 

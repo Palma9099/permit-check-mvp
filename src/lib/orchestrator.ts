@@ -33,6 +33,9 @@ import {
 import { buildStreetViewEngine } from './images/streetview';
 import { fetchHistoricalAerials } from './images/historical-aerial';
 import { compareImagery } from './vision-compare';
+import { assessInsurance } from './risk/insurance';
+import { assessFlood } from './flood';
+import { buildNegotiationPack } from './resolution';
 import { recordToLedger } from './ledger';
 
 // ---------------------------------------------------------------------------
@@ -460,9 +463,11 @@ export async function runDiagnostic(input: {
   //     publishes them as queryable ArcGIS data (e.g. Fort Lauderdale). Merges
   //     into the adapter result so the report shows live records instead of just
   //     portal links. No-op for counties/cities without open permit data.
+  let municipalPermitsQueried = false;
   try {
     const municipal = await fetchMunicipalPermits({ countyKey, lat: geo.lat, lng: geo.lng });
     if (municipal.found) {
+      municipalPermitsQueried = true;
       if (municipal.permits.length) adapterResult.permits = municipal.permits;
       if (municipal.codeCasesOpen.length || municipal.codeCasesClosedPast5.length) {
         adapterResult.codeCasesOpen = municipal.codeCasesOpen;
@@ -567,6 +572,17 @@ export async function runDiagnostic(input: {
   const buckets = yearBuckets(features);
   const codeEnf = { open: adapterResult.codeCasesOpen, closedPast5: adapterResult.codeCasesClosedPast5 };
 
+  // Insurability & roof-age risk. Permits are queried live only for Miami-Dade
+  // and any matched municipal source; elsewhere a missing roof permit is unknown,
+  // not "original roof".
+  const permitsQueried = countyKey === 'miami-dade' || municipalPermitsQueried;
+  const insurance = assessInsurance(
+    permits,
+    adapterResult.propertyBasics.yearBuilt,
+    new Date().getFullYear(),
+    permitsQueried,
+  );
+
   const flags = buildFlags(
     permits,
     adapterResult.neighborPermitTotal,
@@ -596,6 +612,23 @@ export async function runDiagnostic(input: {
       buildingDept: countyInfo.portals.buildingDept,
     },
   );
+
+  // Flood risk (FEMA NFHL) — nationwide, so it works in every county. The 50%
+  // "substantial improvement" caveat gets a sharper clause when there's a likely
+  // unpermitted addition in play.
+  const hasUnpermittedAdditions = flags.strong.some((f) =>
+    /addition|unpermit/i.test(`${f.title} ${f.detail}`),
+  );
+  const flood = await assessFlood(geo.lat, geo.lng, { hasUnpermittedAdditions });
+
+  // Turn the findings into fix-paths + a buyer negotiation pack.
+  const negotiation = buildNegotiationPack({
+    flags,
+    openCases: codeEnf.open,
+    permits,
+    insurance,
+    flood,
+  });
 
   const postBuildSummary = summarizeBuckets(buckets, yearBuilt);
 
@@ -689,6 +722,9 @@ export async function runDiagnostic(input: {
     'Google Street View Static API for ground-level imagery',
     ...adapterResult.sourcesTried,
   ];
+  if (!flood.failureReason) {
+    dataSources.push('FEMA National Flood Hazard Layer (NFHL) for the flood zone');
+  }
   if (visualComparison.performed) {
     dataSources.push(`Anthropic Claude (${visualComparison.modelUsed}) for AI visual comparison`);
   }
@@ -755,6 +791,9 @@ export async function runDiagnostic(input: {
     },
     flags,
     confidenceAssessment: confidence,
+    insurance,
+    flood,
+    negotiation,
     nextSteps,
     dataSources,
     dataLimitations,
