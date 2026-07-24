@@ -96,6 +96,11 @@ const CLUSTER_RADIUS_M = 5;         // panos within 5m of cluster centroid = sam
                                     // when there's actually a continuous capture from one side
                                     // to the other — i.e. a real drive that should cluster).
 const MIN_THEN_NOW_YEARS = 3;       // require ≥3yr span for a real THEN/NOW
+const EDGE_TRUST_DEG = 45;          // trust the edge-perpendicular heading only when it
+                                    // agrees with the direct camera→building bearing within
+                                    // this much. Beyond it, the "nearest edge" was a side lot
+                                    // line (front-corner panos) and its perpendicular points
+                                    // ~90° off the facade — aim straight at the building instead.
 
 // Public API: build the entire Street View block — current + historical —
 // from one unified pipeline.
@@ -564,7 +569,17 @@ function bearingToBuilding(
   const midLat = (bestFrom[0] + bestTo[0]) / 2;
   const midLng = (bestFrom[1] + bestTo[1]) / 2;
   const panoToMid = bearingFromTo(panoLat, panoLng, midLat, midLng);
-  return angularDelta(perp1, panoToMid) <= angularDelta(perp2, panoToMid) ? perp1 : perp2;
+  const perp = angularDelta(perp1, panoToMid) <= angularDelta(perp2, panoToMid) ? perp1 : perp2;
+
+  // Sanity-guard the edge-perpendicular against the direct camera→building
+  // bearing. The perpendicular is a good "look straight at the facade" heading
+  // ONLY when the nearest edge is the frontage. For a pano near a front corner,
+  // the nearest edge can be a SIDE lot line, and its perpendicular points ~90°
+  // off the house (the 88°-instead-of-193° bug). When the two disagree by more
+  // than EDGE_TRUST_DEG, the edge pick is unreliable — aim straight at the
+  // building (parcel centroid), which can never be 90° off.
+  const toAim = bearingFromTo(panoLat, panoLng, fallbackAimLat, fallbackAimLng);
+  return angularDelta(perp, toAim) <= EDGE_TRUST_DEG ? perp : toAim;
 }
 
 // Midpoint of the polygon edge nearest a given point. Used as an extra
