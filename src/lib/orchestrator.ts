@@ -34,6 +34,7 @@ import { buildStreetViewEngine } from './images/streetview';
 import { fetchHistoricalAerials } from './images/historical-aerial';
 import { compareImagery } from './vision-compare';
 import { assessInsurance } from './risk/insurance';
+import { assessRecert } from './risk/milestone';
 import { assessFlood } from './flood';
 import { buildNegotiationPack } from './resolution';
 import { recordToLedger } from './ledger';
@@ -628,6 +629,14 @@ export async function runDiagnostic(input: {
       ' Resolving unpermitted additions here can count toward that threshold, so confirm the path with the floodplain administrator before starting.';
   }
 
+  // Milestone / recertification / SIRS exposure — derived from building class + age.
+  const recert = assessRecert(
+    adapterResult.propertyBasics.dorDescription,
+    yearBuilt,
+    countyKey ?? '',
+    new Date().getFullYear(),
+  );
+
   // Turn the findings into fix-paths + a buyer negotiation pack.
   const negotiation = buildNegotiationPack({
     flags,
@@ -635,6 +644,7 @@ export async function runDiagnostic(input: {
     permits,
     insurance,
     flood,
+    recert,
   });
 
   const postBuildSummary = summarizeBuckets(buckets, yearBuilt);
@@ -750,6 +760,11 @@ export async function runDiagnostic(input: {
   const dataLimitations: string[] = [
     ...adapterResult.notes,
     'Records reflect the digital portal only. Paper/microfilm permit archives predating county digital migration may not appear.',
+    ...(countyKey !== 'miami-dade' && features.length === 0
+      ? [
+          'The records-based "addition with no matching permit" check relies on itemized, dated improvement records that are published only by the Miami-Dade Property Appraiser. For this county those itemized records and live permits are not available, so the imagery Then-vs-Now comparison above is the primary check for additions here, confirm anything it surfaces against the county building department.',
+        ]
+      : []),
     polygon.isFallback
       ? 'No parcel polygon was available for this county; a synthetic ~120ft box was drawn around the geocoded point as a subject-area hint. This reduces the accuracy of the neighbor/subject distinction.'
       : 'Parcel polygon came from a live county or statewide source; AI visual analysis was constrained to the area inside the red outline.',
@@ -800,6 +815,7 @@ export async function runDiagnostic(input: {
     confidenceAssessment: confidence,
     insurance,
     flood,
+    recert,
     negotiation,
     nextSteps,
     dataSources,

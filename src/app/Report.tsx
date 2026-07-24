@@ -171,6 +171,53 @@ function InsuranceCard({ ins }: { ins: DiagnosticReport['insurance'] }) {
   );
 }
 
+function RecertCard({ rc }: { rc: DiagnosticReport['recert'] }) {
+  const cls =
+    rc.applies === 'unlikely'
+      ? 'border-green-300 bg-green-50'
+      : rc.applies === 'likely'
+        ? 'border-amber-300 bg-amber-50'
+        : rc.applies === 'possible'
+          ? 'border-amber-200 bg-amber-50'
+          : 'border-gray-300 bg-gray-50';
+  const badgeCls =
+    rc.applies === 'unlikely'
+      ? 'badge badge-ok'
+      : rc.applies === 'unknown'
+        ? 'badge badge-weak'
+        : 'badge badge-medium';
+  const badgeLabel =
+    rc.applies === 'unlikely'
+      ? 'NOT APPLICABLE'
+      : rc.applies === 'likely'
+        ? 'LIKELY APPLIES'
+        : rc.applies === 'possible'
+          ? 'MAY APPLY'
+          : 'UNKNOWN';
+  return (
+    <div className={`border rounded-md p-4 ${cls}`}>
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <h3 className="font-semibold text-ink text-sm">Milestone &amp; recertification</h3>
+        <span className={badgeCls}>{badgeLabel}</span>
+      </div>
+      <p className="text-sm text-ink-soft leading-relaxed">{rc.detail}</p>
+      {rc.programs.length > 0 && (
+        <p className="text-sm text-ink-soft leading-relaxed mt-1">
+          <span className="font-semibold text-ink">Programs that may apply:</span>{' '}
+          {rc.programs.join('; ')}.
+        </p>
+      )}
+      {rc.recommendation && (
+        <p className="text-sm text-ink-soft leading-relaxed mt-1">{rc.recommendation}</p>
+      )}
+      <p className="text-xs text-ink-muted italic mt-2">
+        Thresholds and timing are set by each jurisdiction and change; confirm the current
+        requirement and any deadline with the county.
+      </p>
+    </div>
+  );
+}
+
 function ResolutionCard({ item }: { item: NonNullable<DiagnosticReport['negotiation']>['items'][number] }) {
   return (
     <div className="border border-black/10 bg-white rounded-md p-4">
@@ -370,6 +417,19 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               what you are allowed to renovate without elevating the home.
             </p>
             <FloodCard flood={r.flood} />
+          </section>
+        )}
+
+        {/* Milestone / recertification exposure */}
+        {r.recert && (
+          <section>
+            <h2>Milestone &amp; recertification</h2>
+            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
+              Older condos and larger buildings in Florida can be forced into a
+              structural inspection and a funded reserve study. Here is whether that is
+              likely for this one.
+            </p>
+            <RecertCard rc={r.recert} />
           </section>
         )}
 

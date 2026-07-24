@@ -12,6 +12,7 @@ import type {
   Permit,
   InsuranceRisk,
   FloodRisk,
+  RecertExposure,
   ResolutionItem,
   NegotiationPack,
 } from './types';
@@ -34,6 +35,7 @@ export function buildNegotiationPack(input: {
   permits: Permit[];
   insurance: InsuranceRisk;
   flood: FloodRisk;
+  recert: RecertExposure;
 }): NegotiationPack | null {
   const items: ResolutionItem[] = [];
 
@@ -113,6 +115,20 @@ export function buildNegotiationPack(input: {
         'Flood premium is driven by the elevation of the lowest floor relative to the base flood elevation; an elevation certificate showing the home sits at or above it can cut the cost substantially.',
       askSeller:
         'Do you have an elevation certificate and the current flood-insurance premium you can transfer or share?',
+    });
+  }
+
+  // 6. Milestone / recertification exposure (condos & larger buildings).
+  if (input.recert.applies === 'likely' || input.recert.applies === 'possible') {
+    items.push({
+      finding: 'Milestone / recertification exposure',
+      what: 'Older condos and larger buildings can be forced into a structural milestone inspection and a funded reserve study (SIRS). A pending or overdue one can mean a special assessment landing on you as the new owner.',
+      path: 'Confirm the building’s milestone / recertification status and deadline with the county, and get the latest inspection report and reserve study from the association.',
+      engineeringLikely: true,
+      costDrivers:
+        'The inspection itself is modest; the real exposure is the repair scope it can trigger and the reserve funding the association must collect, which can arrive as a special assessment.',
+      askSeller:
+        'Can you provide the latest milestone / recertification report and reserve study, and confirm no special assessment is pending?',
     });
   }
 

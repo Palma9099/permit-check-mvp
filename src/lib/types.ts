@@ -79,6 +79,17 @@ export interface NegotiationPack {
   engineeringFlagged: boolean;
 }
 
+// Milestone inspection / county recertification / SIRS exposure, derived from the
+// building class (DOR use), age, and county. Conditional on story count we can't confirm.
+export interface RecertExposure {
+  applies: 'likely' | 'possible' | 'unlikely' | 'unknown';
+  buildingClass: string;
+  programs: string[];
+  timing: string;
+  detail: string;
+  recommendation: string | null;
+}
+
 // Flood risk from FEMA's National Flood Hazard Layer. Never a premium quote.
 export interface FloodRisk {
   zone: string | null;
@@ -304,6 +315,9 @@ export interface DiagnosticReport {
 
   // Flood risk from FEMA's National Flood Hazard Layer.
   flood: FloodRisk;
+
+  // Milestone inspection / county recertification / SIRS exposure.
+  recert: RecertExposure;
 
   // Findings turned into fix-paths + a buyer negotiation pack (null when nothing to act on).
   negotiation: NegotiationPack | null;
