@@ -164,8 +164,8 @@ function InsuranceCard({ ins }: { ins: DiagnosticReport['insurance'] }) {
         </ul>
       )}
       <p className="text-xs text-ink-muted italic mt-2">
-        Estimate from the permit record, not an insurance quote. Confirm with a quote and
-        a 4-point / wind-mitigation inspection.
+        Estimate from the permit record, not an insurance quote. We provide the 4-point
+        and wind-mitigation inspection reports insurers ask for at $175 each.
       </p>
     </div>
   );
