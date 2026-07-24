@@ -15,6 +15,7 @@
 // each we stay well under. We clamp to 200 points defensively.
 
 import type { ParcelRing } from '../types';
+import { browserMapsKey } from './keys';
 
 export interface SatelliteUrlOpts {
   lat: number;
@@ -30,7 +31,7 @@ export interface SatelliteUrlOpts {
 }
 
 export function buildGoogleSatelliteUrl(opts: SatelliteUrlOpts): string | null {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = browserMapsKey();
   if (!key) return null;
 
   const size = opts.size ?? { w: 640, h: 640 };

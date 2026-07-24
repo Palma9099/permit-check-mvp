@@ -21,6 +21,8 @@
 // or "Invalid 'pb' parameter", check that lib for the latest payload and
 // update `makeSearchUrl` below.
 
+import { browserMapsKey } from './keys';
+
 const SEARCH_URL = 'https://maps.googleapis.com/maps/api/js/GeoPhotoService.SingleImageSearch';
 
 export interface GooglePano {
@@ -269,7 +271,7 @@ export function buildHistoricalStaticUrl(
   fov = 90,
   pitch = 5,
 ): string | null {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = browserMapsKey();
   if (!key) return null;
   const u = new URL('https://maps.googleapis.com/maps/api/streetview');
   u.searchParams.set('size', `${size.w}x${size.h}`);
@@ -296,7 +298,7 @@ export function buildCurrentStaticUrl(
   fov = 90,
   pitch = 5,
 ): string | null {
-  const key = process.env.GOOGLE_MAPS_API_KEY;
+  const key = browserMapsKey();
   if (!key) return null;
   const u = new URL('https://maps.googleapis.com/maps/api/streetview');
   u.searchParams.set('size', `${size.w}x${size.h}`);

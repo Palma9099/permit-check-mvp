@@ -48,6 +48,21 @@ Flow B below instead.
    This turns on the AI visual comparison. Skip for now if you don't have a key.
 6. Click **Deploy**.
 
+**Google Maps keys — use TWO keys for security.** The app builds street-view and
+satellite **image** URLs that load in the visitor's browser (so that key is visible
+in page source), and separately makes **server** calls (geocoding, autocomplete,
+street-view metadata) that must not be referrer-restricted. Set:
+   - `GOOGLE_MAPS_API_KEY` — the **server** key. Keep it secret. Application
+     restriction: **None** (server calls send no referer). API restriction: only
+     Geocoding, Places, and Street View Static (metadata).
+   - `GOOGLE_MAPS_BROWSER_KEY` — the **browser** key used only for image URLs.
+     Application restriction: **HTTP referrers** = your domains
+     (`permit-check-mvp.vercel.app`, `permits.palma.llc`, `*.vercel.app`). API
+     restriction: only **Street View Static API** + **Maps Static API**. Safe to
+     expose because it only works from your domains and only for image tiles.
+   If `GOOGLE_MAPS_BROWSER_KEY` is unset, images fall back to `GOOGLE_MAPS_API_KEY`,
+   so add the code first and the browser key whenever you're ready.
+
 Wait ~60 seconds. You'll get a working URL like
 `permit-check-mvp-<randomsuffix>.vercel.app` and a green checkmark.
 
