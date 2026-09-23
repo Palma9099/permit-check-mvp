@@ -18,7 +18,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-screen bg-page text-ink">
-        {/* Google tag (gtag.js) — GA4 retargeting */}
+        {/* Google tag (gtag.js) | GA4 retargeting */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-YBQ1SM3F7M"
           strategy="afterInteractive"

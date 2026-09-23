@@ -146,7 +146,7 @@ export default function HomePage() {
         <p className="mt-3 text-ink-soft text-base sm:text-lg max-w-2xl">
           Plain-English records review for any Florida property. Enter an address,
           we route to the right county portal, pull what's publicly available, and
-          compare it to current satellite + Street View imagery — parcel-bounded
+          compare it to current satellite + Street View imagery, parcel-bounded
           so the findings stay on the subject property, not the neighbors.
         </p>
       </header>
@@ -177,7 +177,7 @@ export default function HomePage() {
               className="w-full px-3 py-2 border border-black/10 rounded-md bg-white text-ink focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
           </div>
-          {/* Optional historical photo upload — for properties where Google
+          {/* Optional historical photo upload, for properties where Google
               Street View has no front-facing dated capture (privacy fences,
               gated communities, single-side cul-de-sacs). The realtor drops
               in any old listing photo and the AI uses it as the THEN frame
@@ -258,7 +258,7 @@ export default function HomePage() {
         <div className="mt-8 text-ink-muted text-sm">
           Geocoding the address, resolving the county, pulling whatever permit
           data the portal exposes, and comparing satellite + Street View against
-          the parcel boundary. Typically 5–15 seconds.
+          the parcel boundary. Typically 5 to 15 seconds.
         </div>
       )}
 

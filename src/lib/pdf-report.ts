@@ -112,7 +112,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     margins: { top: 56, bottom: 64, left: 56, right: 56 },
     bufferPages: true,
     info: {
-      Title: `Permit History — ${report.property.siteAddress ?? report.query.address}`,
+      Title: `Permit History, ${report.property.siteAddress ?? report.query.address}`,
       Author: 'Palma Property Intelligence',
       Subject: 'Permit History & Unpermitted Improvement Check',
       Producer: 'Permit Check MVP',
@@ -210,7 +210,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     } else {
       paragraph(
         doc,
-        "Records tell half the story. Compare the satellite views below — subject vs. neighbors — and look for anything the permit record doesn't explain.",
+        "Records tell half the story. Compare the satellite views below, subject vs. neighbors, and look for anything the permit record doesn't explain.",
         contentWidth,
       );
     }
@@ -224,7 +224,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     if (thenAerialBuf && closeBuf && thenFrame) {
       ensureSpace(doc, 260);
       doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
-        .text('THEN vs NOW — AERIAL COMPARISON', 56, doc.y, { characterSpacing: 1 });
+        .text('THEN vs NOW, AERIAL COMPARISON', 56, doc.y, { characterSpacing: 1 });
       doc.moveDown(0.3);
       const pairGap = 12;
       const pairW = Math.floor((contentWidth - pairGap) / 2);
@@ -281,7 +281,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
         .fontSize(8.5)
         .fillColor(COLORS.inkMuted)
         .text(
-          'Block context — subject vs. neighbors. Google satellite.' + parcelSrc,
+          'Block context, subject vs. neighbors. Google satellite.' + parcelSrc,
           56,
           doc.y,
           { width: contentWidth },
@@ -306,8 +306,8 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     if (usableSides.length > 0) {
       ensureSpace(doc, 240);
       const heading = usableSides.length > 1
-        ? `THEN vs NOW — STREET VIEW (MAPILLARY · ${usableSides.length} SIDES)`
-        : 'THEN vs NOW — STREET VIEW (MAPILLARY)';
+        ? `THEN vs NOW, STREET VIEW (MAPILLARY · ${usableSides.length} SIDES)`
+        : 'THEN vs NOW, STREET VIEW (MAPILLARY)';
       doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
         .text(heading, 56, doc.y, { characterSpacing: 1 });
       doc.moveDown(0.3);
@@ -355,7 +355,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     if (svImages.length > 0) {
       ensureSpace(doc, 180);
       doc.font('Helvetica-Bold').fontSize(9).fillColor(COLORS.inkMuted)
-        .text('STREET VIEW — FRONT OF SUBJECT (CURRENT)', 56, doc.y, { characterSpacing: 1 });
+        .text('STREET VIEW, FRONT OF SUBJECT (CURRENT)', 56, doc.y, { characterSpacing: 1 });
       doc.moveDown(0.3);
       const perRow = Math.min(4, svImages.length);
       const svGap = 8;
@@ -589,7 +589,7 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
     .fontSize(8.5)
     .fillColor(COLORS.inkMuted)
     .text(
-      'Records-level triage only — not legal advice, not a final compliance determination. Always verify with the AHJ before acting.',
+      'Records-level triage only, not legal advice, not a final compliance determination. Always verify with the AHJ before acting.',
       56,
       doc.y,
       { width: contentWidth },

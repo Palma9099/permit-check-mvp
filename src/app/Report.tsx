@@ -3,17 +3,17 @@
 import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 
 function fmtMoney(n: number | null): string {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 'n/a';
   return '$' + n.toLocaleString('en-US');
 }
 
 function fmtNum(n: number | null): string {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 'n/a';
   return n.toLocaleString('en-US');
 }
 
 function fmtYear(n: number | null): string {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
+  if (typeof n !== 'number' || !Number.isFinite(n)) return 'n/a';
   return String(Math.trunc(n));
 }
 
@@ -149,16 +149,16 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </p>
             )}
 
-            {/* Then vs Now — historical NAIP (THEN) paired with current Google
+            {/* Then vs Now, historical NAIP (THEN) paired with current Google
                 satellite (NOW) for maximum visual sharpness. NAIP is 1m
                 native for older years and looks pixelated when upsampled;
                 Google Static Maps at zoom 20 is sub-meter and crisp. The AI
                 still receives both NAIP frames internally for like-for-like
-                change detection — this is just for the human reader. */}
+                change detection, this is just for the human reader. */}
             {r.thenVsNow.historicalAerials?.then && r.thenVsNow.satelliteImageUrl && (
               <div className="mt-5">
                 <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Then vs Now — aerial comparison
+                  Then vs Now, aerial comparison
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -201,13 +201,13 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </p>
             )}
 
-            {/* Block context — subject vs neighbors. The tight subject frame
+            {/* Block context, subject vs neighbors. The tight subject frame
                 with the red polygon is already shown above as "Now"; we drop
                 the standalone subject image here to avoid duplicating it. */}
             {r.thenVsNow.contextSatelliteImageUrl && (
               <div className="mt-4">
                 <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Block context — subject vs. neighbors
+                  Block context, subject vs. neighbors
                 </div>
                 <img
                   src={r.thenVsNow.contextSatelliteImageUrl}
@@ -218,13 +218,13 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </div>
             )}
 
-            {/* User-uploaded historical photo — when supplied, this is the
+            {/* User-uploaded historical photo, when supplied, this is the
                 canonical THEN reference, paired against the closest current
                 Google Street View frame for facade comparison. */}
             {r.thenVsNow.userUploadedThen?.dataUrl && (
               <div className="mt-5">
                 <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Then vs Now — Street View (User-supplied historical photo)
+                  Then vs Now, Street View (User-supplied historical photo)
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -269,7 +269,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               </div>
             )}
 
-            {/* Street View — Then vs Now (Mapillary), one row per fronting
+            {/* Street View, Then vs Now (Mapillary), one row per fronting
                 street so corner lots show all sides. */}
             {(() => {
               const sides = r.thenVsNow.historicalStreetView?.sides ?? [];
@@ -278,7 +278,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               return (
                 <div className="mt-5">
                   <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                    Then vs Now — Street View
+                    Then vs Now, Street View
                     {r.thenVsNow.historicalStreetView?.source ? ` (${r.thenVsNow.historicalStreetView.source})` : ''}
                     {usableSides.length > 1 ? ` · ${usableSides.length} sides` : ''}
                   </div>
@@ -330,7 +330,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                 {!r.thenVsNow.userUploadedThen?.dataUrl && (
                   <p className="text-xs text-amber-800 mt-1.5">
                     To still get an old-vs-new comparison, re-run the check and attach an older
-                    photo — an old MLS listing photo or a field photo — in the{' '}
+                    photo, an old MLS listing photo or a field photo, in the{' '}
                     <span className="font-semibold">“Upload a historical photo”</span> slot. The AI
                     will compare it against the current Street View and flag changes to the roof,
                     windows, doors, fence, and driveway.
@@ -343,7 +343,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
             {r.thenVsNow.streetViewImages && r.thenVsNow.streetViewImages.length > 0 && (
               <div className="mt-5">
                 <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Street View — front of subject (current)
+                  Street View, front of subject (current)
                 </div>
                 <div className={`grid gap-2 ${r.thenVsNow.streetViewImages.length === 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-2 md:grid-cols-4'}`}>
                   {r.thenVsNow.streetViewImages.map((sv, i) =>
@@ -369,7 +369,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
             {r.thenVsNow.parcelPolygonSource && (
               <p className="text-xs text-ink-muted italic mt-3">
                 Parcel boundary: {r.thenVsNow.parcelPolygonSource}. The red outline
-                marks the subject property — anything outside it is a neighbor and is
+                marks the subject property, anything outside it is a neighbor and is
                 never used as a finding.
               </p>
             )}
@@ -420,7 +420,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               )}
             </div>
 
-            {/* AI observations — the actual comparison */}
+            {/* AI observations, the actual comparison */}
             {vc?.performed && vc.observations.length > 0 && (
               <div className="mt-6 space-y-3">
                 {vc.observations.map((o, i) => (
@@ -462,7 +462,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
             <tbody>
               <tr>
                 <th style={{ width: '38%' }}>Owner</th>
-                <td>{r.property.owner ?? '—'}</td>
+                <td>{r.property.owner ?? 'n/a'}</td>
               </tr>
               <tr>
                 <th>Year built</th>
@@ -515,11 +515,11 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               <tbody>
                 {r.permitHistory.subjectPermits.map((p, i) => (
                   <tr key={i}>
-                    <td>{p.processNumber ?? '—'}</td>
-                    <td>{p.appType ?? '—'}</td>
-                    <td>{p.issueDate ?? '—'}</td>
-                    <td>{p.status ?? '—'}</td>
-                    <td>{p.scope ?? '—'}</td>
+                    <td>{p.processNumber ?? 'n/a'}</td>
+                    <td>{p.appType ?? 'n/a'}</td>
+                    <td>{p.issueDate ?? 'n/a'}</td>
+                    <td>{p.status ?? 'n/a'}</td>
+                    <td>{p.scope ?? 'n/a'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -561,7 +561,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </section>
         )}
 
-        {/* Code enforcement — only shown when there's something to show */}
+        {/* Code enforcement, only shown when there's something to show */}
         {(r.codeEnforcement.openCases.length > 0 ||
           r.codeEnforcement.closedCases.length > 0) && (
           <section>
@@ -585,7 +585,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                     {r.codeEnforcement.openCases.map((c, i) => (
                       <tr key={i}>
                         <td>{c.caseNumber}</td>
-                        <td>{c.caseDate ?? '—'}</td>
+                        <td>{c.caseDate ?? 'n/a'}</td>
                         <td>{c.problemDescription}</td>
                       </tr>
                     ))}
@@ -608,7 +608,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                     {r.codeEnforcement.closedCases.map((c, i) => (
                       <tr key={i}>
                         <td>{c.caseNumber}</td>
-                        <td>{c.caseDate ?? '—'}</td>
+                        <td>{c.caseDate ?? 'n/a'}</td>
                         <td>{c.problemDescription}</td>
                       </tr>
                     ))}
@@ -619,7 +619,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </section>
         )}
 
-        {/* Sales — only if we have any */}
+        {/* Sales, only if we have any */}
         {r.sales.length > 0 && (
           <section>
             <h2>Sales history</h2>
@@ -634,9 +634,9 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               <tbody>
                 {r.sales.map((s, i) => (
                   <tr key={i}>
-                    <td>{s.date ?? '—'}</td>
+                    <td>{s.date ?? 'n/a'}</td>
                     <td>{fmtMoney(s.price)}</td>
-                    <td>{s.qualificationDescription ?? '—'}</td>
+                    <td>{s.qualificationDescription ?? 'n/a'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -644,7 +644,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </section>
         )}
 
-        {/* Next steps — short list */}
+        {/* Next steps, short list */}
         <section>
           <h2>Next steps</h2>
           <ul>
@@ -656,7 +656,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
 
         <section>
           <p className="text-xs text-ink-muted italic">
-            Records-level triage only — not legal advice, not a final compliance
+            Records-level triage only, not legal advice, not a final compliance
             determination. Always verify with the AHJ before acting.
           </p>
         </section>
