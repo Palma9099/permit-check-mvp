@@ -1,6 +1,7 @@
 'use client';
 
 import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
+import { buildPalmaQuoteUrl, hasActionableFindings } from '@/lib/palma-cta';
 
 function fmtMoney(n: number | null): string {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
@@ -653,6 +654,37 @@ export default function Report({ report }: { report: DiagnosticReport }) {
             ))}
           </ul>
         </section>
+
+        {/* Palma resolution CTA: shown when the check found something to fix */}
+        {hasActionableFindings(r) && (
+          <section>
+            <div className="not-prose border border-[#1f3864]/20 bg-[#1f3864]/[0.04] rounded-lg p-5 sm:p-6">
+              <h3 className="font-serif text-xl font-semibold text-ink">
+                Want Palma to resolve this?
+              </h3>
+              <p className="text-sm text-ink-soft leading-relaxed mt-2">
+                Palma coordinates licensed Florida professionals (engineers,
+                permit expeditors, private providers, and trade contractors) to
+                close out open cases and bring unpermitted work into compliance.
+                Start a project and we will carry this address and these findings
+                over so you get a free, no obligation quote.
+              </p>
+              <a
+                href={buildPalmaQuoteUrl(r)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 mt-4 px-4 py-2.5 rounded-md bg-[#1f3864] text-white text-sm font-semibold hover:bg-[#102447] transition-colors"
+              >
+                Get a free quote from Palma →
+              </a>
+              <p className="text-[11px] text-ink-muted mt-3">
+                Palma coordinates independent, licensed professionals. It does not
+                itself certify compliance, and no permit outcome or timeline is
+                guaranteed.
+              </p>
+            </div>
+          </section>
+        )}
 
         <section>
           <p className="text-xs text-ink-muted italic">
