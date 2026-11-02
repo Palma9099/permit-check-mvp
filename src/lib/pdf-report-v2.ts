@@ -63,6 +63,23 @@ function firstSentence(s: unknown, max = 110): string {
   return t.length > max ? t.slice(0, max - 1).replace(/\s+\S*$/, '') + '...' : t;
 }
 
+type Ring = Array<[number, number]>; // [lat, lng]
+interface Bbox { lon1: number; lat1: number; lon2: number; lat2: number }
+
+// Re-aim a Planetary Computer NAIP bbox URL at the parcel (tighter, centred).
+function tightNaipUrl(url: string | null | undefined, ring: Ring | null | undefined): { url: string; bbox: Bbox } | null {
+  if (!url || !ring || ring.length < 3) return null;
+  const lats = ring.map((p) => p[0]);
+  const lngs = ring.map((p) => p[1]);
+  const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const cLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+  const halfLat = 0.00042; // about 47 m
+  const halfLng = halfLat / Math.cos((cLat * Math.PI) / 180);
+  const bbox = { lon1: cLng - halfLng, lat1: cLat - halfLat, lon2: cLng + halfLng, lat2: cLat + halfLat };
+  const next = url.replace(/\/bbox\/[^/]+\//, `/bbox/${bbox.lon1},${bbox.lat1},${bbox.lon2},${bbox.lat2}/`);
+  return next === url ? null : { url: next, bbox };
+}
+
 async function fetchImage(url: string | null | undefined, timeoutMs = 25000): Promise<Buffer | null> {
   if (!url) return null;
   const ctrl = new AbortController();
@@ -91,41 +108,41 @@ function buildBadges(r: DiagnosticReport): Badge[] {
   const permits: Badge =
     nPermits === 0
       ? {
-          label: 'Permits on file',
+          label: 'Permits',
           value: 'None found',
-          detail: age ? `Home is about ${age} years old; no permit appears in county records.` : 'No permit appears in county records.',
+          detail: r.property.yearBuilt ? `Built ${r.property.yearBuilt}. Nothing in county records.` : 'Nothing in county records.',
           tone: age && age > 15 ? 'amber' : 'grey',
         }
-      : { label: 'Permits on file', value: `${nPermits} found`, detail: 'See permit history in the detail pages.', tone: 'green' };
+      : { label: 'Permits', value: `${nPermits} on file`, detail: 'Listed in county records.', tone: 'green' };
 
   const roofRisk = r.insurance.band === 'old' || r.insurance.band === 'unknown';
   const roof: Badge = {
-    label: 'Roof and insurability',
-    value: roofRisk ? 'Needs a closer look' : 'No roof concern on record',
-    detail: roofRisk ? 'No roof permit on file, so the roof may be original. Insurers often require replacement at this age.' : 'No roof concern on the permit record.',
+    label: 'Roof and insurance',
+    value: roofRisk ? 'Likely original' : 'No concern',
+    detail: roofRisk ? 'No roof permit. Insurers may balk.' : 'Roof permit on record.',
     tone: roofRisk ? 'red' : 'green',
   };
 
   const flood: Badge = {
     label: 'Flood zone',
-    value: r.flood.zone ? `FEMA Zone ${r.flood.zone}` : 'Not determined',
-    detail: r.flood.inSFHA ? 'Inside a high-risk flood area.' : 'Outside the mapped high-risk flood areas.',
+    value: r.flood.zone ? `Zone ${r.flood.zone}` : 'Unknown',
+    detail: r.flood.zone ? (r.flood.inSFHA ? 'High-risk area. Insurance likely required.' : 'Low risk. Not required.') : 'Check FEMA map.',
     tone: r.flood.zone ? (r.flood.inSFHA ? 'red' : 'green') : 'grey',
   };
 
   const recertNA = /no|unlikely|not/i.test(String(r.recert.applies));
   const recert: Badge = {
     label: 'Milestone / recert',
-    value: recertNA ? 'Unlikely to apply' : 'May apply',
-    detail: recertNA ? 'Aimed at condos and larger buildings, not single-family homes.' : firstSentence(r.recert.detail) + '.',
+    value: recertNA ? 'Not expected' : 'May apply',
+    detail: recertNA ? 'Condos and large buildings only.' : 'Check county deadline.',
     tone: recertNA ? 'grey' : 'amber',
   };
 
   const openCases = r.codeEnforcement.openCount;
   const code: Badge = {
-    label: 'Code enforcement',
-    value: openCases === 0 ? 'No open cases' : `${openCases} open`,
-    detail: `${r.codeEnforcement.closedPast5yCount} closed in the past 5 years.`,
+    label: 'Code cases',
+    value: openCases === 0 ? 'None open' : `${openCases} open`,
+    detail: openCases === 0 ? 'Clean in county records.' : 'See county code portal.',
     tone: openCases === 0 ? 'green' : 'red',
   };
 
@@ -133,14 +150,24 @@ function buildBadges(r: DiagnosticReport): Badge[] {
   const flags = vc?.performed ? vc.observations.filter((o) => o.severity === 'flag').length : 0;
   const imagery: Badge = vc?.performed
     ? {
-        label: 'Aerial changes since 2010',
-        value: flags ? `${flags} to review` : 'Nothing notable',
-        detail: 'Compared 2010 and 2022 aerials against the permit record. Details on the next pages.',
+        label: 'Aerial photos',
+        value: flags ? `${flags} to check` : 'No changes',
+        detail: flags ? '2010 vs 2022, for review.' : '2010 vs 2022 look alike.',
         tone: flags ? 'amber' : 'green',
       }
-    : { label: 'Aerial changes', value: 'Not compared', detail: 'Historical imagery was not available.', tone: 'grey' };
+    : { label: 'Aerial photos', value: 'Not compared', detail: 'No historical photos.', tone: 'grey' };
 
   return [permits, roof, flood, recert, code, imagery];
+}
+
+function nextSteps(r: DiagnosticReport, badges: Badge[]): string[] {
+  const out: string[] = [];
+  const [permits, roof, , , , imagery] = badges;
+  if (permits.tone === 'amber') out.push('Pull the certified permit file from the county, by address.');
+  if (roof.tone === 'red') out.push('Order a roof, 4-point and wind-mitigation inspection.');
+  if (imagery.tone === 'amber') out.push('Ask the seller about the changes seen from the air.');
+  out.push('Get an insurance quote before your contingency ends.');
+  return out.slice(0, 4);
 }
 
 export async function buildPdfV2(
@@ -158,11 +185,14 @@ export async function buildPdfV2(
     opts.liveUrl ?? `https://permit-check-mvp.vercel.app/?address=${encodeURIComponent(r.query.address ?? siteAddr)}`;
 
   const th = r.thenVsNow;
+  const ring = (th.parcelPolygon as Ring | null) ?? null;
+  const thenTight = tightNaipUrl(th.historicalAerials?.then?.imageUrl, ring);
+  const nowTight = tightNaipUrl(th.historicalAerials?.now?.imageUrl, ring);
   const [sat, ctxSat, thenImg, nowImg, street, qr] = await Promise.all([
     fetchImage(th.satelliteImageUrl),
     fetchImage(th.contextSatelliteImageUrl),
-    fetchImage(th.historicalAerials?.then?.imageUrl),
-    fetchImage(th.historicalAerials?.now?.imageUrl),
+    fetchImage(thenTight?.url ?? th.historicalAerials?.then?.imageUrl),
+    fetchImage(nowTight?.url ?? th.historicalAerials?.now?.imageUrl),
     fetchImage(th.streetViewImages?.[0]?.imageUrl),
     QRCode.toBuffer(liveUrl, { margin: 1, width: 240, color: { dark: '#0f2547', light: '#ffffff' } }),
   ]);
@@ -213,6 +243,20 @@ export async function buildPdfV2(
     doc.roundedRect(x, y, w, h, 6).lineWidth(0.6).stroke(C.line);
     if (caption) text(caption, x, y + h + 5, { w, size: 8, color: C.soft });
   };
+  const outline = (bbox: Bbox | undefined, x: number, y: number, w: number, h: number) => {
+    if (!bbox || !ring) return;
+    const pts = ring.map(([lat, lng]) => [
+      x + ((lng - bbox.lon1) / (bbox.lon2 - bbox.lon1)) * w,
+      y + ((bbox.lat2 - lat) / (bbox.lat2 - bbox.lat1)) * h,
+    ]);
+    doc.save();
+    doc.roundedRect(x, y, w, h, 6).clip();
+    doc.lineWidth(2).strokeColor('#ff2d2d');
+    doc.moveTo(pts[0][0], pts[0][1]);
+    for (const q of pts.slice(1)) doc.lineTo(q[0], q[1]);
+    doc.closePath().stroke();
+    doc.restore();
+  };
   const header = (title: string, kicker: string) => {
     doc.rect(0, 0, W, 6).fill(C.navy);
     doc.rect(0, 6, 120, 2).fill(C.gold);
@@ -248,7 +292,7 @@ export async function buildPdfV2(
   doc.rect(0, 0, W, 8).fill(C.gold);
   text('PALMA BUILDING SOLUTIONS', M, 44, { size: 9, font: 'Helvetica-Bold', color: C.white, spacing: 2 });
   text('Property Records Report', M, 58, { size: 9, color: '#9fb3d6', spacing: 0.6 });
-  text('RECORDS AND IMAGERY TRIAGE', M, 150, { size: 9, font: 'Helvetica-Bold', color: C.gold, spacing: 2 });
+  text('PROPERTY CHECK', M, 150, { size: 9, font: 'Helvetica-Bold', color: C.gold, spacing: 2 });
   const tH = text(streetPart, M, 168, { size: 40, font: 'Times-Bold', color: C.white, gap: 0 });
   text(cityLine, M, 168 + tH + 4, { size: 14, color: '#c8d5ee' });
   const metaY = 168 + tH + 34;
@@ -262,21 +306,21 @@ export async function buildPdfV2(
   else doc.rect(M, heroY, CW, heroH).fill(C.navy2);
   doc.restore();
   doc.roundedRect(M, heroY, CW, heroH, 10).lineWidth(1).stroke(C.gold);
-  text('CURRENT SATELLITE VIEW. RED OUTLINE MARKS THE SUBJECT PARCEL.', M, heroY + heroH + 7, { size: 7, color: '#9fb3d6', spacing: 0.8 });
+  text('RED OUTLINE = SUBJECT PARCEL', M, heroY + heroH + 7, { size: 7, color: '#9fb3d6', spacing: 0.8 });
   // Footer band: facts + QR
   const fy = 690;
   doc.rect(0, fy - 20, W, H - (fy - 20)).fill('#0b1c38');
   doc.image(qr, W - M - 70, fy - 4, { width: 70 });
   text(`Report ID  ${reportId}`, M, fy, { size: 9, font: 'Helvetica-Bold', color: C.white });
-  text('Scan to open or re-run this report on the live site.', M, fy + 14, { size: 8, color: '#9fb3d6', w: 360 });
-  text('A records-level review for context. It is not an official compliance determination, legal advice, or an inspection.', M, fy + 34, { size: 7.5, color: '#9fb3d6', w: 400 });
+  text('Scan to open this report online.', M, fy + 14, { size: 8, color: '#9fb3d6', w: 360 });
+  text('Records review. Not an inspection or official determination.', M, fy + 34, { size: 7.5, color: '#9fb3d6', w: 400 });
 
-  // ===== PAGE 2: SCORECARD =================================================
+  // ===== PAGE 2: AT A GLANCE ==============================================
   doc.addPage({ size: 'LETTER', margin: 0 });
   header('At a glance', 'Scorecard');
   const badges = buildBadges(r);
   const bw = (CW - 24) / 3;
-  const bh = 124;
+  const bh = 104;
   badges.forEach((b, i) => {
     const x = M + (i % 3) * (bw + 12);
     const y = 122 + Math.floor(i / 3) * (bh + 12);
@@ -284,24 +328,21 @@ export async function buildPdfV2(
     doc.roundedRect(x, y, bw, bh, 8).fill(C.white).lineWidth(0.8).stroke(C.line);
     doc.roundedRect(x, y, bw, 5, 2.5).fill(t.fg);
     text(b.label.toUpperCase(), x + 12, y + 16, { w: bw - 24, size: 7, font: 'Helvetica-Bold', color: C.muted, spacing: 0.8 });
-    const vh = text(b.value, x + 12, y + 32, { w: bw - 24, size: 14, font: 'Times-Bold', color: t.fg, gap: 0 });
-    text(b.detail, x + 12, y + 36 + vh, { w: bw - 24, size: 8.5, color: C.soft });
+    const vh = text(b.value, x + 12, y + 32, { w: bw - 24, size: 16, font: 'Times-Bold', color: t.fg, gap: 0 });
+    text(b.detail, x + 12, y + 38 + vh, { w: bw - 24, size: 9, color: C.soft });
   });
-  let y2 = 122 + 2 * (bh + 12) + 14;
-  y2 = sectionTitle('Bottom line', y2);
-  for (const line of r.bottomLine) {
-    doc.circle(M + 4, y2 + 5, 2).fill(C.gold);
-    y2 += text(line, M + 16, y2, { w: CW - 16, size: 10.5, color: C.ink, gap: 3 }) + 8;
-  }
-  y2 += 6;
-  const top = [...r.flags.strong, ...r.flags.medium].filter((f) => !/homestead/i.test(f.title)).slice(0, 3);
-  if (top.length) {
-    y2 = sectionTitle('Top items to ask about', y2);
-    for (const f of top) {
-      const tone: Tone = f.severity === 'strong' ? 'red' : 'amber';
-      const h = toneCard(M, y2, CW, tone, f.severity === 'strong' ? 'Strong signal' : 'Worth a question', f.title, f.detail);
-      y2 += h + 10;
-    }
+  let y2 = 122 + 2 * (bh + 12) + 10;
+  const attention = badges.filter((b) => b.tone === 'red' || b.tone === 'amber').length;
+  doc.roundedRect(M, y2, CW, 64, 10).fill(C.navy);
+  text(
+    attention ? `${attention} thing${attention > 1 ? 's' : ''} to check before you make an offer.` : 'Nothing alarming in county records.',
+    M + 22, y2 + 20, { w: CW - 44, size: 19, font: 'Times-Bold', color: C.white },
+  );
+  y2 += 64 + 26;
+  y2 = sectionTitle('Do this next', y2);
+  for (const step of nextSteps(r, badges)) {
+    doc.roundedRect(M, y2 + 1, 12, 12, 3).lineWidth(1.2).stroke(C.gold);
+    y2 += text(step, M + 24, y2, { w: CW - 24, size: 12, color: C.ink }) + 12;
   }
 
   // ===== PAGE 3: IMAGERY ===================================================
@@ -310,107 +351,80 @@ export async function buildPdfV2(
   const hw = (CW - 14) / 2;
   const thenYear = th.historicalAerials?.then?.captureYear;
   const nowYear = th.historicalAerials?.now?.captureYear;
-  const imgH = 250;
-  image(thenImg, M, 122, hw, imgH, `THEN, ${thenYear ?? ''} (USDA NAIP aerial)`);
-  image(nowImg, M + hw + 14, 122, hw, imgH, `NOW, ${nowYear ?? ''} (USDA NAIP aerial)`);
-  let y3 = 122 + imgH + 30;
-  if (th.visualComparison?.performed) {
-    y3 += toneCard(M, y3, CW, 'grey', 'What the comparison shows', firstSentence(th.visualComparison.summary, 170) + '.', 'This is an automated visual comparison, a starting point for questions. Confirm anything notable with the county.') + 14;
-  }
-  const lowerH = 190;
-  image(street, M, y3, hw, lowerH, 'CURRENT STREET VIEW, FRONT OF PROPERTY (Google)');
-  image(ctxSat, M + hw + 14, y3, hw, lowerH, 'BLOCK CONTEXT, SUBJECT VS NEIGHBORS (Google)');
+  const imgH = hw; // square, so the outline maps exactly
+  image(thenImg, M, 122, hw, imgH, `THEN, ${thenYear ?? ''}`);
+  outline(thenTight?.bbox, M, 122, hw, imgH);
+  image(nowImg, M + hw + 14, 122, hw, imgH, `NOW, ${nowYear ?? ''}`);
+  outline(nowTight?.bbox, M + hw + 14, 122, hw, imgH);
+  const y3 = 122 + imgH + 36;
+  image(street, M, y3, hw, 200, 'STREET VIEW TODAY');
+  image(ctxSat, M + hw + 14, y3, hw, 200, 'SUBJECT VS NEIGHBORS');
+  text('Photos are a starting point for questions, not a finding. Confirm with the county.', M, y3 + 222, { w: CW, size: 8.5, color: C.muted });
 
-  // ===== PAGE 4: RISK DETAIL ==============================================
+  // ===== PAGE 4: NEGOTIATE + FACTS =========================================
   doc.addPage({ size: 'LETTER', margin: 0 });
-  header('Insurance, flood and recertification', 'Florida risk factors');
-  let y4 = 124;
-  const roofTone: Tone = r.insurance.band === 'old' || r.insurance.band === 'unknown' ? 'red' : 'green';
-  y4 += toneCard(M, y4, CW, roofTone, 'Roof and insurability', firstSentence(r.insurance.roofBasis, 150) + '.', clean(r.insurance.insurabilityNote), 'Estimate from the permit record, not an insurance quote.') + 12;
-  for (const rec of r.insurance.recommendations.slice(0, 4)) {
-    doc.circle(M + 4, y4 + 5, 2).fill(C.gold);
-    y4 += text(rec, M + 16, y4, { w: CW - 16, size: 9.5, color: C.soft }) + 5;
-  }
-  y4 += 10;
-  y4 += toneCard(M, y4, CW, r.flood.inSFHA ? 'red' : 'green', 'Flood zone', `FEMA Zone ${r.flood.zone ?? 'unknown'}`, clean(r.flood.summary) + ' ' + clean(r.flood.insuranceNote), 'The mapped zone can differ for a specific parcel. Confirm on the FEMA Map Service Center (msc.fema.gov).') + 12;
-  y4 += toneCard(M, y4, CW, 'grey', 'Milestone and recertification', 'Applicability', clean(r.recert.detail), 'Thresholds and timing are set by each jurisdiction. Confirm the current requirement with the county.') + 12;
+  header('Use it in the deal', 'Negotiate');
+  const colW = (CW - 18) / 2;
+  const asks: string[] = [];
+  if (badges[1].tone === 'red') asks.push('How old is the roof? Is there a permit?');
+  if (badges[0].tone === 'amber') asks.push('Were any repairs or additions permitted?');
+  if (badges[5].tone === 'amber') asks.push('What changed in the yard since 2010?');
+  asks.push('Will you credit repairs or an after-the-fact permit?');
+  const offers = [
+    'Inspection and insurance-quote contingency.',
+    'Permit and records contingency.',
+    'Budget for sealed engineering if work is flagged.',
+  ];
+  const col = (title: string, items: string[], x: number, y: number) => {
+    let cy = y;
+    doc.roundedRect(x, y, colW, 154, 8).fill(C.paper);
+    text(title.toUpperCase(), x + 14, y + 14, { w: colW - 28, size: 8, font: 'Helvetica-Bold', color: C.gold, spacing: 1.2 });
+    cy = y + 34;
+    for (const it of items.slice(0, 4)) {
+      doc.circle(x + 18, cy + 5, 2).fill(C.navy);
+      cy += text(it, x + 28, cy, { w: colW - 42, size: 10.5, color: C.ink }) + 8;
+    }
+  };
+  col('Ask the seller', asks, M, 122);
+  col('Put in the offer', offers, M + colW + 18, 122);
 
-  // ===== PAGE 5: NEGOTIATION ==============================================
-  doc.addPage({ size: 'LETTER', margin: 0 });
-  header('What this means and how to use it', 'Negotiation guide');
-  const neg = r.negotiation ?? { exposureSummary: 'No negotiation items were generated for this property.', items: [], sellerQuestions: [], contingencyItems: [] };
-  let y5 = 124;
-  y5 += text(clean(neg.exposureSummary), M, y5, { size: 10.5, color: C.soft, gap: 3 }) + 14;
-  for (const it of neg.items.slice(0, 2)) {
-    const h = toneCard(M, y5, CW, it.engineeringLikely ? 'amber' : 'grey', it.engineeringLikely ? 'Sealed engineering likely' : 'Resolution path', it.finding, `${clean(it.what)} ${clean(it.path)}`);
-    y5 += h + 10;
-  }
-  y5 += 4;
-  y5 = sectionTitle('Questions to ask the seller', y5);
-  for (const q of neg.sellerQuestions.slice(0, 4)) {
-    doc.circle(M + 4, y5 + 5, 2).fill(C.gold);
-    y5 += text(q, M + 16, y5, { w: CW - 16, size: 9.5, color: C.ink }) + 6;
-  }
-  y5 += 8;
-  y5 = sectionTitle('Contingencies to consider', y5);
-  for (const q of neg.contingencyItems.slice(0, 4)) {
-    doc.circle(M + 4, y5 + 5, 2).fill(C.gold);
-    y5 += text(q, M + 16, y5, { w: CW - 16, size: 9.5, color: C.ink }) + 6;
-  }
-
-  // ===== PAGE 6: FACTS, SOURCES, CTA ======================================
-  doc.addPage({ size: 'LETTER', margin: 0 });
-  header('Property facts and sources', 'Reference');
-  let y6 = 124;
+  let y4 = 122 + 154 + 28;
+  y4 = sectionTitle('The property', y4);
   const p = r.property;
   const facts: Array<[string, string]> = [
+    ['Built', String(p.yearBuilt ?? '-')],
+    ['Living area', `${p.heatedArea?.toLocaleString('en-US') ?? '-'} sq ft`],
+    ['Lot', `${p.lotSize?.toLocaleString('en-US') ?? '-'} sq ft`],
+    ['Beds / baths', `${p.bedrooms ?? '-'} / ${p.bathrooms ?? '-'}`],
+    ['Last sale', r.sales.length ? `$${(r.sales[r.sales.length - 1].price || 0).toLocaleString('en-US')}` : '-'],
     ['Folio', clean(p.folio)],
-    ['Year built', String(p.yearBuilt ?? '-')],
-    ['Heated / total area', `${p.heatedArea?.toLocaleString('en-US') ?? '-'} / ${p.totalArea?.toLocaleString('en-US') ?? '-'} sq ft`],
-    ['Lot size', `${p.lotSize?.toLocaleString('en-US') ?? '-'} sq ft`],
-    ['Bedrooms / bathrooms', `${p.bedrooms ?? '-'} / ${p.bathrooms ?? '-'}`],
-    ['Use', /single family/i.test(p.dorDescription ?? '') ? 'Single family' : clean(p.dorDescription).slice(0, 26)],
-    ['Homestead', p.homesteadPercent ? `${p.homesteadPercent}%` : 'None on file'],
-    ['Permits on file', String(r.permitHistory.totalSubjectPermits)],
-    ['Open code cases', String(r.codeEnforcement.openCount)],
   ];
   facts.forEach((f, i) => {
     const x = M + (i % 3) * (bw + 12);
-    const y = y6 + Math.floor(i / 3) * 44;
+    const y = y4 + Math.floor(i / 3) * 42;
     text(f[0].toUpperCase(), x, y, { w: bw, size: 7, font: 'Helvetica-Bold', color: C.muted, spacing: 0.8 });
-    text(f[1], x, y + 12, { w: bw, size: 11, font: 'Helvetica-Bold', color: C.ink });
+    text(f[1], x, y + 12, { w: bw, size: 12, font: 'Helvetica-Bold', color: C.ink });
   });
-  y6 += 3 * 44 + 6;
-  y6 = sectionTitle('Sales history', y6);
-  for (const s of r.sales.slice(0, 5)) {
-    text(clean(s.date), M, y6, { w: 90, size: 9, color: C.soft });
-    text(s.price ? '$' + s.price.toLocaleString('en-US') : '$0', M + 90, y6, { w: 90, size: 9, font: 'Helvetica-Bold' });
-    text(clean(s.qualificationDescription), M + 190, y6, { w: CW - 190, size: 9, color: C.soft });
-    y6 += 15;
-  }
-  y6 += 12;
-  y6 = sectionTitle('How we sourced this', y6);
-  for (const c of r.confidenceAssessment.slice(0, 5)) {
-    const tone: Tone = c.grade === 'high' ? 'green' : c.grade === 'medium' ? 'amber' : 'grey';
-    pill(c.grade, M, y6 - 1, tone);
-    const h = text(`${clean(c.topic)}. ${clean(c.note)}`, M + 70, y6, { w: CW - 70, size: 8.5, color: C.soft });
-    y6 += Math.max(h, 15) + 7;
-  }
-  y6 += 4;
-  text('Sources: ' + r.dataSources.map(clean).filter((s) => !/anthropic|claude/i.test(s)).join('; ') + '.', M, y6, { size: 7.5, color: C.muted, gap: 2 });
-  // CTA band
-  const ctaY = 640;
-  doc.roundedRect(M, ctaY, CW, 74, 10).fill(C.navy);
-  text('Want a second set of eyes on this property?', M + 20, ctaY + 16, { w: CW - 40, size: 14, font: 'Times-Bold', color: C.white });
-  text(`Palma Building Solutions can walk through these records, explain the options, and scope any sealed engineering. Call ${phone}.`, M + 20, ctaY + 38, { w: CW - 150, size: 9, color: '#c8d5ee' });
-  doc.image(qr, M + CW - 62, ctaY + 8, { width: 58 });
+  y4 += 2 * 42 + 14;
+  y4 = sectionTitle('Where this came from', y4);
+  y4 += text(
+    'County property appraiser, county permit and code records, FEMA flood map, USDA aerial photos (2010, 2022) and Google imagery. Records are digital only. Older paper permits may not appear.',
+    M, y4, { size: 9, color: C.soft, gap: 3 },
+  ) + 10;
+  // CTA
+  const ctaY = 618;
+  doc.roundedRect(M, ctaY, CW, 96, 10).fill(C.navy);
+  text('Want a second set of eyes?', M + 22, ctaY + 20, { w: CW - 160, size: 18, font: 'Times-Bold', color: C.white });
+  text(`Palma Building Solutions reviews the records and scopes any sealed engineering.`, M + 22, ctaY + 48, { w: CW - 160, size: 10, color: '#c8d5ee' });
+  text(phone, M + 22, ctaY + 68, { w: CW - 160, size: 13, font: 'Helvetica-Bold', color: C.gold });
+  doc.image(qr, M + CW - 78, ctaY + 12, { width: 70 });
 
   // ---- footers on pages 2..n ----------------------------------------------
   const range = doc.bufferedPageRange();
   for (let i = 1; i < range.count; i++) {
     doc.switchToPage(i);
     doc.moveTo(M, H - 38).lineTo(W - M, H - 38).lineWidth(0.5).stroke(C.line);
-    text(`Records-level triage, not legal advice or an official determination. Verify with ${clean(r.ahj.name)} before acting.`, M, H - 30, { w: CW - 90, size: 7, color: C.muted });
+    text('Records review, not legal advice or an official determination. Verify with the county.', M, H - 30, { w: CW - 90, size: 7, color: C.muted });
     text(`${reportId}   |   Page ${i + 1} of ${range.count}`, M, H - 30, { w: CW, size: 7, color: C.muted, align: 'right' });
   }
 
