@@ -142,6 +142,19 @@ export async function buildStreetViewEngine(opts: {
   }
   const allPanos = await searchGooglePanoramasMulti(searchPoints, opts.aimLat, opts.aimLng);
   if (allPanos.length === 0) {
+    // Google turned down the undocumented pano-list service (2026), so this is
+    // the normal path now. Fall back to the documented metadata API: it gives
+    // the nearest current pano, enough for a current front view (no timeline).
+    const current = await currentFrameFromOfficialMetadata(opts.aimLat, opts.aimLng, size, fov);
+    if (current) {
+      return {
+        current: [current],
+        historicalSides: [],
+        allFrames: [],
+        source: 'Google Street View',
+        failureReason: 'Google no longer provides a Street View capture history, so only the current view is shown (no historical timeline).',
+      };
+    }
     return emptyResult('No Google Street View panos near this location.');
   }
 
@@ -728,4 +741,38 @@ export async function getStreetViewMeta(lat: number, lng: number, radiusM = 80):
 export async function hasStreetView(lat: number, lng: number, radiusM = 50): Promise<boolean> {
   const meta = await getStreetViewMeta(lat, lng, radiusM);
   return meta.ok;
+}
+
+// Current front view from the documented Street View Static metadata API.
+// Returns null when Google has no outdoor pano within MAX_PANO_DIST_M of the aim.
+async function currentFrameFromOfficialMetadata(
+  aimLat: number,
+  aimLng: number,
+  size: { w: number; h: number },
+  fov: number,
+): Promise<StreetViewImage | null> {
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) return null;
+  const u = new URL('https://maps.googleapis.com/maps/api/streetview/metadata');
+  u.searchParams.set('location', `${aimLat},${aimLng}`);
+  u.searchParams.set('radius', String(MAX_PANO_DIST_M));
+  u.searchParams.set('source', 'outdoor');
+  u.searchParams.set('key', key);
+  try {
+    const res = await fetch(u.toString(), { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const panoId = data?.pano_id;
+    const pl = data?.location;
+    if (data?.status !== 'OK' || typeof panoId !== 'string' || typeof pl?.lat !== 'number' || typeof pl?.lng !== 'number') {
+      return null;
+    }
+    const heading = bearingFromTo(pl.lat, pl.lng, aimLat, aimLng);
+    const url = buildHistoricalStaticUrl(panoId, heading, size, fov, DEFAULT_PITCH);
+    return url
+      ? { heading: Math.round(heading), label: `Street View, front of subject (${heading.toFixed(0)}°)`, imageUrl: url }
+      : null;
+  } catch {
+    return null;
+  }
 }
