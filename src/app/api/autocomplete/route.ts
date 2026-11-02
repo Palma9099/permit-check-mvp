@@ -22,9 +22,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ suggestions: [] as Suggestion[] });
   }
 
+  const wantDebug = req.nextUrl.searchParams.get('debug') === '1';
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) {
-    return NextResponse.json({ suggestions: [] as Suggestion[] });
+    console.error('[autocomplete] GOOGLE_MAPS_API_KEY is not set');
+    return NextResponse.json({ suggestions: [] as Suggestion[], ...(wantDebug && { debug: 'no key' }) });
   }
 
   const url =
@@ -39,10 +41,20 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) return NextResponse.json({ suggestions: [] as Suggestion[] });
+    if (!res.ok) {
+      console.error(`[autocomplete] Google HTTP ${res.status}`);
+      return NextResponse.json({ suggestions: [] as Suggestion[], ...(wantDebug && { debug: `http ${res.status}` }) });
+    }
     const data: any = await res.json();
     if (data.status !== 'OK' || !Array.isArray(data.predictions)) {
-      return NextResponse.json({ suggestions: [] as Suggestion[] });
+      // ZERO_RESULTS is normal; anything else (REQUEST_DENIED, OVER_QUERY_LIMIT...) is a config problem.
+      if (data.status !== 'ZERO_RESULTS') {
+        console.error(`[autocomplete] Google status ${data.status}: ${data.error_message ?? ''}`);
+      }
+      return NextResponse.json({
+        suggestions: [] as Suggestion[],
+        ...(wantDebug && { debug: { status: data.status, error: data.error_message ?? null } }),
+      });
     }
     const suggestions: Suggestion[] = data.predictions
       .map((p: any) => ({
@@ -53,7 +65,8 @@ export async function GET(req: NextRequest) {
       .filter((s: Suggestion) => s.description && /,\s*FL\b/i.test(s.description))
       .slice(0, 6);
     return NextResponse.json({ suggestions });
-  } catch {
-    return NextResponse.json({ suggestions: [] as Suggestion[] });
+  } catch (e) {
+    console.error('[autocomplete] fetch failed', e);
+    return NextResponse.json({ suggestions: [] as Suggestion[], ...(wantDebug && { debug: 'fetch failed' }) });
   }
 }
