@@ -17,3 +17,12 @@
 export function browserMapsKey(): string | undefined {
   return process.env.GOOGLE_MAPS_BROWSER_KEY || process.env.GOOGLE_MAPS_API_KEY;
 }
+
+// Server-side fetches of Google image URLs (PDF export, AI image comparison)
+// send no Referer, so a referrer-restricted browser key would reject them.
+// Send the site's own address, which the key's referrer allow-list includes.
+export function googleImageFetchHeaders(url: string): Record<string, string> {
+  return /^https:\/\/maps\.googleapis\.com\//.test(url)
+    ? { Referer: 'https://permit-check-mvp.vercel.app/' }
+    : {};
+}

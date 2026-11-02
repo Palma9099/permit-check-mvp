@@ -5,6 +5,7 @@
 // Esri satellite image is fetched server-side and embedded inline so the
 // PDF is self-contained — no missing-image icons when viewed offline.
 
+import { googleImageFetchHeaders } from './images/keys';
 import PDFDocument from 'pdfkit';
 import type { DiagnosticReport, Flag, VisionObservation } from './types';
 
@@ -69,7 +70,7 @@ async function fetchImageBuffer(url: string, timeoutMs = 8000): Promise<Buffer |
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetch(url, { signal: ctrl.signal, headers: googleImageFetchHeaders(url) });
     if (!res.ok) return null;
     const ab = await res.arrayBuffer();
     return Buffer.from(ab);

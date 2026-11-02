@@ -21,6 +21,7 @@
 // primary current satellite URL is missing. Historical aerial is optional —
 // if absent, we still run a current-only analysis and say so in the output.
 
+import { googleImageFetchHeaders } from './images/keys';
 import type {
   ExtraFeature,
   HistoricalAerialFrame,
@@ -51,7 +52,7 @@ async function fetchImageBase64(url: string, timeoutMs = 10000): Promise<string 
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   const urlForLog = url.length > 120 ? url.slice(0, 120) + '...' : url;
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    const res = await fetch(url, { signal: ctrl.signal, headers: googleImageFetchHeaders(url) });
     if (!res.ok) {
       const bodyPreview = await res.text().catch(() => '').then((b) => b.slice(0, 200));
       console.error(`[vision-compare] fetchImageBase64 non-OK: status=${res.status} url=${urlForLog} body=${bodyPreview}`);
