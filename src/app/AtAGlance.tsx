@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { DiagnosticReport } from '@/lib/types';
-import { buildGlance, glanceNextSteps, glanceVerdict, type Tone } from '@/lib/glance';
-import { personaCopy, type Persona } from '@/lib/persona';
+import { buildGlance, glanceNextSteps, glanceVerdict, tipSections, type Tone } from '@/lib/glance';
+import type { Persona } from '@/lib/persona';
 
 const TONE: Record<Tone, { bar: string; text: string; ring: string }> = {
   red: { bar: 'bg-red-600', text: 'text-red-700', ring: 'ring-red-200' },
@@ -16,7 +16,6 @@ const TONE: Record<Tone, { bar: string; text: string; ring: string }> = {
 // focus (desktop) and on tap (phones), and closes on Esc or an outside click.
 export default function AtAGlance({ report, role = null }: { report: DiagnosticReport; role?: Persona | null }) {
   const items = buildGlance(report);
-  const copy = personaCopy(role);
   const [open, setOpen] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
@@ -77,13 +76,13 @@ export default function AtAGlance({ report, role = null }: { report: DiagnosticR
                 >
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-1">What it is</div>
                   <p className="!text-sm !leading-snug !mb-3">{b.info.what}</p>
-                  {(copy.tipFirst === 'owner' ? (['owner', 'buyer'] as const) : (['buyer', 'owner'] as const)).map((k, idx) => (
-                    <div key={k}>
+                  {tipSections(role, b.info).map((t, idx, arr) => (
+                    <div key={t.label}>
                       <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1f3864] mb-1">
-                        {copy.tipLabels[k]}
-                        {idx === 0 && role ? <span className="ml-1 rounded bg-[#1f3864] px-1 py-px text-[9px] text-white">for you</span> : null}
+                        {t.label}
+                        {t.forYou ? <span className="ml-1 rounded bg-[#1f3864] px-1 py-px text-[9px] text-white">for you</span> : null}
                       </div>
-                      <p className={`!text-sm !leading-snug ${idx === 0 ? '!mb-3' : '!mb-0'}`}>{b.info[k]}</p>
+                      <p className={`!text-sm !leading-snug ${idx < arr.length - 1 ? '!mb-3' : '!mb-0'}`}>{t.text}</p>
                     </div>
                   ))}
                 </div>

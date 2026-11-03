@@ -214,7 +214,7 @@ function assessConfidence(args: {
   if (partialMatch) {
     return {
       confidence: 'low',
-      confidenceReason: 'The address could not be matched exactly — this is the geocoder’s best approximation.',
+      confidenceReason: 'The address could not be matched exactly - this is the geocoder’s best approximation.',
     };
   }
   if (locationType === 'APPROXIMATE') {

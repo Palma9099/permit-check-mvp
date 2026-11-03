@@ -74,10 +74,10 @@ export function computeReadiness(r: DiagnosticReport): Readiness {
     permitReason = `No permits for a ${age}-year-old home. Repairs may be unpermitted, or records may be on paper.`;
   } else if (ph && ph.noInspection > 0) {
     permitPenalty = 6;
-    permitReason = 'A permit has no inspection on record. Ask the seller for the final.';
+    permitReason = 'A permit has no inspection on record. The final should be on file.';
   } else if (ph && ph.inspectedNoCloseout > 0) {
     permitPenalty = 2;
-    permitReason = 'Permits were inspected but show no close-out date. Ask for the final paperwork.';
+    permitReason = 'Permits were inspected but show no close-out date. The final paperwork should be on file.';
   }
   factors.push({ key: 'permits', label: 'Permits', penalty: permitPenalty, max: permitMax, tone: toneFor(permitPenalty, permitMax), reason: permitReason });
 

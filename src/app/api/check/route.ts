@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          "Something went wrong pulling the records for this property. This is usually temporary — please try again in a moment, or call 305-393-0690 and we'll run it for you.",
+          "Something went wrong pulling the records for this property. This is usually temporary - please try again in a moment, or call 305-393-0690 and we'll run it for you.",
       },
       { status: 500 },
     );

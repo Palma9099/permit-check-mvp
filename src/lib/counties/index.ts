@@ -38,7 +38,7 @@ const STATEWIDE_TIER_A: string[] = [
 // exactly where to confirm permits and code cases for that jurisdiction.
 const STATEWIDE_GUIDANCE: Record<string, string[]> = {
   'broward': [
-    'Permits: most Broward work is permitted by the CITY — check the municipality’s portal first; Broward County ePermits (broward.org/building) covers unincorporated areas.',
+    'Permits: most Broward work is permitted by the CITY - check the municipality’s portal first; Broward County ePermits (broward.org/building) covers unincorporated areas.',
     'Code cases: broward.org/CodeEnforcement, plus the city code office for incorporated addresses.',
   ],
   'palm-beach': [
@@ -58,7 +58,7 @@ const STATEWIDE_GUIDANCE: Record<string, string[]> = {
     'Code cases: Pinellas County Code Enforcement; city code office for incorporated addresses.',
   ],
   'duval': [
-    'Permits: Jacksonville is consolidated — use the City of Jacksonville permitting portal for the whole county.',
+    'Permits: Jacksonville is consolidated - use the City of Jacksonville permitting portal for the whole county.',
     'Code cases: City of Jacksonville Municipal Code Compliance.',
   ],
   'lee': [
@@ -76,7 +76,7 @@ const STATEWIDE_GUIDANCE: Record<string, string[]> = {
   'monroe': [
     'Permits: Monroe County (monroecounty-fl.gov) covers the unincorporated Keys; Key West, Marathon, Islamorada, Layton, and Key Colony Beach each permit their own areas.',
     'Code cases: Monroe County Code Compliance; the city code office for incorporated Keys municipalities.',
-    'Note: much of the Keys sits in a FEMA Special Flood Hazard Area, and Monroe carries some of Florida\'s highest design wind speeds within the wind-borne debris region (though it is not the code-defined HVHZ, which is only Miami-Dade and Broward) — flood elevation, the cumulative 50% substantial-improvement rule, and wind-load/opening-protection compliance are common permit triggers here.',
+    'Note: much of the Keys sits in a FEMA Special Flood Hazard Area, and Monroe carries some of Florida\'s highest design wind speeds within the wind-borne debris region (though it is not the code-defined HVHZ, which is only Miami-Dade and Broward) - flood elevation, the cumulative 50% substantial-improvement rule, and wind-load/opening-protection compliance are common permit triggers here.',
   ],
 };
 
@@ -127,7 +127,7 @@ export function toCountyInfo(countyKey: string | null): CountyInfo {
           ? countyKey === 'miami-dade'
             ? `Live data active for ${dir.name}: property/appraiser records, permits, and code cases.`
             : `Live property/appraiser records and recent sales active for ${dir.name} (FL DOR certified roll). Permits and code cases are surfaced as county portal links for manual confirmation.`
-          : `${dir.name} is on the links-only tier — we surface portal URLs but don't currently pull permit/appraiser data automatically.`,
+          : `${dir.name} is on the links-only tier - we surface portal URLs but don't currently pull permit/appraiser data automatically.`,
       };
     }
   }

@@ -15,7 +15,7 @@ import { computeReadiness } from './readiness';
 import { buildFixIts, buildInsurancePacket } from './fix-it';
 import { SITE_ORIGIN } from './record-token';
 import { PERSONAS, personaCopy, type Persona } from './persona';
-import { buildGlance, glanceNextSteps, glanceVerdict } from './glance';
+import { buildGlance, glanceNextSteps, glanceVerdict, tipSections } from './glance';
 
 const W = 612;
 const H = 792;
@@ -254,7 +254,7 @@ export async function buildPdfV2(
     const ix = x + bw - 22;
     doc.circle(ix + 5, y + 20, 7).lineWidth(0.8).stroke(C.muted);
     doc.font('Times-BoldItalic').fontSize(9).fillColor(C.muted).text('i', ix + 3.2, y + 15.5, { lineBreak: false });
-    doc.note(ix - 2, y + 11, 14, 14, clean(`${b.label}\n\nWhat it is: ${b.info.what}\n\nIf you are buying: ${b.info.buyer}\n\nIf you own it: ${b.info.owner}`), { Name: 'Comment', Open: false } as any);
+    doc.note(ix - 2, y + 11, 14, 14, clean(`${b.label}\n\nWhat it is: ${b.info.what}${tipSections(role, b.info).map((t) => `\n\n${t.label}: ${t.text}`).join('')}`), { Name: 'Comment', Open: false } as any);
     const vh = text(b.value, x + 12, y + 32, { w: bw - 24, size: 16, font: 'Times-Bold', color: t.fg, gap: 0 });
     text(b.detail, x + 12, y + 38 + vh, { w: bw - 24, size: 9, color: C.soft });
   });
@@ -398,7 +398,7 @@ export async function buildPdfV2(
       label: 'Permit status',
       title: `${h.closedOut} closed out${h.inspectedNoCloseout ? `, ${h.inspectedNoCloseout} inspected` : ''}${h.noInspection ? `, ${h.noInspection} not inspected` : ''}`,
       body: h.items.slice(0, 3).map((p) => `${p.appType ?? 'Permit'} ${p.issueDate?.slice(0, 4) ?? ''}: ${p.status}`).join('. '),
-      note: 'Inspected means an approved inspection is logged but no close-out date. Ask the seller for the final paperwork.',
+      note: 'Inspected means an approved inspection is logged but no close-out date. The final paperwork should be on file.',
     });
   }
   if (xt?.evacuation) {
@@ -448,10 +448,10 @@ export async function buildPdfV2(
     'Permit and records contingency.',
     'Budget for sealed engineering if work is flagged.',
   ];
-  const leftTitle = role === 'seller' ? 'Fix before you list' : role === 'owner' ? 'Look after' : role === 'pro' ? 'Questions for the seller' : 'Ask the seller';
+  const leftTitle = role === 'seller' ? 'Fix before you list' : role === 'owner' ? 'Look after' : role === 'pro' ? 'Questions for the seller' : role === 'other' ? 'Ask the owner or seller' : 'Ask the seller';
   const leftItems = role === 'seller' || role === 'owner' ? (glanceFixes.length ? glanceFixes : ['Nothing urgent found in the records.']) : asks;
-  const rightTitle = role === 'seller' ? 'Have ready for buyers' : role === 'owner' ? 'Papers to keep' : role === 'pro' ? 'Terms to put in the offer' : 'Put in the offer';
-  const rightItems = role === 'seller' || role === 'owner' ? (packetNames.length ? packetNames : ['Permit finals and inspection reports.']) : offers;
+  const rightTitle = role === 'seller' ? 'Have ready for buyers' : role === 'owner' ? 'Papers to keep' : role === 'pro' ? 'Terms to put in the offer' : role === 'other' ? 'Worth getting in writing' : 'Put in the offer';
+  const rightItems = role === 'seller' || role === 'owner' ? (packetNames.length ? packetNames : ['Permit finals and inspection reports.']) : role === 'other' ? ['Inspection and insurance-quote results.', 'Permit finals and records.', 'A written list of known repairs.'] : offers;
   const col = (title: string, items: string[], x: number, y: number) => {
     let cy = y;
     doc.roundedRect(x, y, colW, 154, 8).fill(C.paper);

@@ -311,6 +311,8 @@ Rules:
   - Include at least one "match" or skip-worthy item when relevant, so
     the realtor knows what DID line up with the permit log.
 
+STYLE: In every text field you return, never use em dashes or en dashes. Use commas, periods or a plain hyphen instead.
+
 Return ONLY valid JSON matching this schema — no preamble, no code fences:
 {
   "summary": "one-sentence plain-English takeaway about what changed THEN→NOW and whether permits explain it (max 30 words)",

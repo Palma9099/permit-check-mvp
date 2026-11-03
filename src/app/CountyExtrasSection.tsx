@@ -64,7 +64,7 @@ export default function CountyExtrasSection({ report }: { report: DiagnosticRepo
               ))}
             </ul>
             <p className="!text-xs !text-ink-muted !mt-2 !mb-0">
-              'Inspected' means the county logged an approved inspection but no close-out date. Ask the seller for the final paperwork.
+              'Inspected' means the county logged an approved inspection but no close-out date. The final paperwork should be on file.
             </p>
           </Card>
         )}

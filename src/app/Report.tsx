@@ -694,16 +694,32 @@ export default function Report({
             {r.thenVsNow.historicalStreetView && !r.thenVsNow.historicalStreetView.then && r.thenVsNow.historicalStreetView.failureReason && (
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
                 <p className="text-xs text-amber-800">
-                  <span className="font-semibold">No automatic historical Street View for this property.</span>{' '}
-                  {friendlyFailure(r.thenVsNow.historicalStreetView.failureReason, 'streetview')}
+                  <span className="font-semibold">Older Street View photos can&apos;t be pulled into this report.</span>{' '}
+                  Google keeps older photos of most streets, but it does not let reports like this one list them, and no
+                  matching older street-level photos from other sources were found for this address. The current photo
+                  is shown below.
                 </p>
+                {(r.thenVsNow.streetViewTimelineUrl || r.thenVsNow.streetViewUrl) && (
+                  <p className="text-xs text-amber-800 mt-1.5">
+                    To see the past yourself, open Street View, then click{' '}
+                    <span className="font-semibold">&ldquo;See more dates&rdquo;</span> (the clock icon) and scrub through the years.{' '}
+                    <a
+                      href={r.thenVsNow.streetViewTimelineUrl || r.thenVsNow.streetViewUrl || '#'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold underline"
+                    >
+                      Open Street View for this address
+                    </a>
+                    .
+                  </p>
+                )}
                 {!r.thenVsNow.userUploadedThen?.dataUrl && (
                   <p className="text-xs text-amber-800 mt-1.5">
-                    To still get an old-vs-new comparison, re-run the check and attach an older
-                    photo - an old MLS listing photo or a field photo - in the{' '}
-                    <span className="font-semibold">“Upload a historical photo”</span> slot. The AI
-                    will compare it against the current Street View and flag changes to the roof,
-                    windows, doors, fence, and driveway.
+                    Or attach an older photo (an old MLS listing photo or a field photo) in the{' '}
+                    <span className="font-semibold">&ldquo;Upload a historical photo&rdquo;</span> slot when you re-run the
+                    check. The AI will compare it against the current Street View and flag changes to the roof, windows,
+                    doors, fence and driveway.
                   </p>
                 )}
               </div>
@@ -1079,7 +1095,7 @@ export default function Report({
         <section>
           <h2>Next steps</h2>
           <ul>
-            {(role === 'owner' || role === 'seller' || role === 'pro'
+            {(role && role !== 'buyer'
               ? glanceNextSteps(buildGlance(r), role, r)
               : r.nextSteps
             ).map((n, i) => (

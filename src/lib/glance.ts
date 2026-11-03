@@ -9,8 +9,10 @@ export type Tone = 'red' | 'amber' | 'green' | 'grey';
 
 export interface GlanceInfo {
   what: string;
-  buyer: string;
-  owner: string;
+  buyer: string; // advice to someone buying
+  owner: string; // advice to someone who owns and keeps it
+  seen?: string; // what a buyer, lender or insurer will see (third person)
+  seller?: string; // advice to someone about to sell
 }
 
 export interface GlanceItem {
@@ -146,6 +148,53 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
     },
   };
 
+  // Extra voices: what a third party will see, and advice for a seller.
+  permits.info.seen = noPermitOld
+    ? 'A buyer, lender or insurer who pulls the county record will see no permits for a home this old, and will ask what was repaired and whether it was permitted.'
+    : n === 0
+    ? 'A buyer will see no permits on file.'
+    : 'A buyer will see the permits on file and may ask for the final inspections.';
+  permits.info.seller = noPermitOld
+    ? 'Pull your permit file and close the gaps before you list. An after-the-fact permit is usually the fix.'
+    : 'Gather your permit finals and inspection reports so you can hand them over when asked.';
+
+  roof.info.seen = roofRisk
+    ? 'An insurer checks roof age first. With no recent roof permit it will likely assume an original roof and may decline the policy or add a surcharge.'
+    : 'An insurer will see a recent roof permit, which helps it approve coverage.';
+  roof.info.seller = roofRisk
+    ? 'Order a 4-point and wind-mitigation inspection before you list, and gather the roof permit and any warranty. If the roof is near the end of its life, price a replacement or plan a credit.'
+    : 'Have the roof permit, final inspection and any warranty ready for buyers and their insurers.';
+
+  flood.info.seen = r.flood.inSFHA
+    ? "A buyer's lender will see a high-risk flood zone and require flood insurance, which adds monthly cost."
+    : "A buyer's lender will see a low-risk zone and usually will not require flood insurance.";
+  flood.info.seller = r.flood.inSFHA
+    ? 'Have an elevation certificate ready if you have one. Buyers will want to price flood insurance before they commit.'
+    : 'Nothing to fix. Be ready to say the zone if a buyer asks.';
+
+  recert.info.seen = recertNA
+    ? 'A buyer will see a single-family home, where milestone rules usually do not apply.'
+    : 'A buyer will ask about the inspection status and any special assessments.';
+  recert.info.seller = recertNA
+    ? 'Nothing to do for a single-family home.'
+    : 'Have the inspection status, reserve study and any assessments ready for buyers.';
+
+  code.info.seen =
+    open === 0
+      ? 'A buyer will find no open county violations.'
+      : 'A buyer will find the open case, and fines or liens can follow the property to them.';
+  code.info.seller =
+    open === 0
+      ? 'Keep it clean until closing. A new case can delay a sale.'
+      : 'Close open cases before you list so fines and liens do not reach the buyer.';
+
+  aerial.info.seen = changes
+    ? 'A buyer or inspector comparing older and newer aerials will spot visible changes and ask whether they were permitted.'
+    : 'A buyer comparing aerials will see nothing notable changed.';
+  aerial.info.seller = changes
+    ? 'Be ready to explain the visible changes, and permit them if needed, before a buyer asks.'
+    : 'Nothing to fix. Keep records of any future work.';
+
   return [permits, roof, flood, recert, code, aerial];
 }
 
@@ -190,6 +239,11 @@ export function glanceNextSteps(items: GlanceItem[], role: Persona | null = null
     if (by.roof.tone === 'red') out.push('Order roof, 4-point and wind-mitigation inspections for your client.');
     if (by.aerial.tone === 'amber') out.push('Flag the aerial changes to your client and confirm with the county.');
     out.push('Send your client the dated property record and the fix quotes.');
+  } else if (role === 'other' || role === null) {
+    if (by.permits.tone === 'amber') out.push('Pull the certified permit file from the county, by address.');
+    if (by.roof.tone === 'red') out.push('Order a roof, 4-point and wind-mitigation inspection.');
+    if (by.aerial.tone === 'amber') out.push('Ask the owner, or the county, about the changes seen from the air.');
+    out.push('Get an insurance quote to see what the roof and age do to the price.');
   } else {
     if (by.permits.tone === 'amber') out.push('Pull the certified permit file from the county, by address.');
     if (by.roof.tone === 'red') out.push('Order a roof, 4-point and wind-mitigation inspection.');
@@ -197,4 +251,42 @@ export function glanceNextSteps(items: GlanceItem[], role: Persona | null = null
     out.push('Get an insurance quote before your contingency ends.');
   }
   return out.slice(0, 5);
+}
+
+
+export interface TipSection {
+  label: string;
+  text: string;
+  forYou: boolean; // true only when this paragraph is the one written for the reader
+}
+
+// The paragraphs shown in a metric's "i" popup, chosen for the reader. Only a
+// paragraph written for the reader's own role carries the "for you" tag.
+export function tipSections(role: Persona | null | undefined, info: GlanceInfo): TipSection[] {
+  const seen = info.seen ?? info.buyer;
+  const seller = info.seller ?? info.owner;
+  switch (role) {
+    case 'buyer':
+      return [{ label: 'If you are buying', text: info.buyer, forYou: true }];
+    case 'owner':
+      return [
+        { label: 'What to do about it', text: info.owner, forYou: true },
+        { label: 'What a buyer or insurer would see', text: seen, forYou: false },
+      ];
+    case 'seller':
+      return [
+        { label: 'What a buyer will see', text: seen, forYou: false },
+        { label: 'What to do before you list', text: seller, forYou: true },
+      ];
+    case 'pro':
+      return [
+        { label: 'For a buyer client', text: info.buyer, forYou: false },
+        { label: 'For an owner client', text: info.owner, forYou: false },
+      ];
+    default:
+      return [
+        { label: 'If you are buying', text: info.buyer, forYou: false },
+        { label: 'If you own it', text: info.owner, forYou: false },
+      ];
+  }
 }

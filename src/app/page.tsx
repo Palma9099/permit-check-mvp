@@ -663,7 +663,7 @@ export default function HomePage() {
             <p className="text-sm text-ink-soft leading-relaxed">
               An addition, enclosure, or pool with no matching permit on file can
               become the next owner&apos;s responsibility. Seeing it early means you
-              can ask the right questions while you still have room to negotiate.
+              can ask the right questions while you still have time to act.
             </p>
           </div>
           <div className="bg-card rounded-xl border border-black/5 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">

@@ -30,11 +30,11 @@ export function buildEnhancedLinksAdapter(
     tier: 'B',
     async run(): Promise<AdapterResult> {
       const sources = [
-        `${dir.name} — full satellite + Street View imagery comparison performed; permit/appraiser data via county portals (links below).`,
+        `${dir.name} - full satellite + Street View imagery comparison performed; permit/appraiser data via county portals (links below).`,
         ...portalLines,
       ];
       const notes = [
-        `${dir.name} is a priority county on the records-link tier. This diagnostic ran the imagery comparison, but unlike Miami-Dade we do not yet auto-pull permit and property-appraiser records here — confirm those through the county portals below before drawing conclusions.`,
+        `${dir.name} is a priority county on the records-link tier. This diagnostic ran the imagery comparison, but unlike Miami-Dade we do not yet auto-pull permit and property-appraiser records here - confirm those through the county portals below before drawing conclusions.`,
         ...guidance,
       ];
       return emptyResult(sources, notes);

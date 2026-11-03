@@ -35,9 +35,6 @@ export interface PersonaCopy {
   shareIntro: string;
   // The deal-negotiation section only makes sense to someone on the buying side.
   showNegotiation: boolean;
-  // How the popup text on each scorecard metric is labelled and ordered.
-  tipFirst: 'buyer' | 'owner';
-  tipLabels: { buyer: string; owner: string };
   // Word for "you" in the PDF negotiate page heading.
   dealPageTitle: string;
   dealPageKicker: string;
@@ -56,8 +53,6 @@ const COPY: Record<Persona, PersonaCopy> = {
     shareTitle: 'Share this record',
     shareIntro: 'A dated, shareable summary of this property\'s records check. Send it to your agent, lender or partner. It is valid for 30 days.',
     showNegotiation: true,
-    tipFirst: 'buyer',
-    tipLabels: { buyer: 'If you are buying', owner: 'If you own it' },
     dealPageTitle: 'Use it in the deal',
     dealPageKicker: 'Negotiate',
   },
@@ -73,8 +68,6 @@ const COPY: Record<Persona, PersonaCopy> = {
     shareTitle: 'Keep a dated record',
     shareIntro: 'A dated summary of where your property stands. Keep it for your files or hand it to your insurance agent. It is valid for 30 days.',
     showNegotiation: false,
-    tipFirst: 'owner',
-    tipLabels: { buyer: 'What a buyer or insurer would see', owner: 'What to do about it' },
     dealPageTitle: 'Keep it in good standing',
     dealPageKicker: 'Your home',
   },
@@ -90,8 +83,6 @@ const COPY: Record<Persona, PersonaCopy> = {
     shareTitle: 'Show buyers a clean record',
     shareIntro: 'Send this dated record to buyers and agents up front. It builds trust and cuts surprises late in the deal. It is valid for 30 days.',
     showNegotiation: false,
-    tipFirst: 'buyer',
-    tipLabels: { buyer: 'What a buyer will see', owner: 'What to do about it' },
     dealPageTitle: 'Before you list',
     dealPageKicker: 'Sell with fewer surprises',
   },
@@ -107,8 +98,6 @@ const COPY: Record<Persona, PersonaCopy> = {
     shareTitle: 'Send this to your client',
     shareIntro: 'A dated, shareable summary for your client or file. It is valid for 30 days.',
     showNegotiation: true,
-    tipFirst: 'buyer',
-    tipLabels: { buyer: 'For a buyer client', owner: 'For an owner client' },
     dealPageTitle: 'Client talking points',
     dealPageKicker: 'For your client',
   },
@@ -123,11 +112,9 @@ const COPY: Record<Persona, PersonaCopy> = {
     packetIntro: 'The papers an insurance agent or lender will ask for.',
     shareTitle: 'Share this record',
     shareIntro: 'A dated, shareable summary of this property\'s records check. It is valid for 30 days.',
-    showNegotiation: true,
-    tipFirst: 'buyer',
-    tipLabels: { buyer: 'If you are buying', owner: 'If you own it' },
-    dealPageTitle: 'Use it in the deal',
-    dealPageKicker: 'Negotiate',
+    showNegotiation: false,
+    dealPageTitle: 'Questions worth asking',
+    dealPageKicker: 'Next steps',
   },
 };
 
@@ -197,6 +184,14 @@ export function insuranceTips(role: Persona | null | undefined): string[] | null
       'Gather the roof permit, final inspection and any warranty. Buyers will ask for them.',
       'If the roof is near the end of its life, price a replacement or plan a credit before you list.',
       'Know what your insurance costs today. Buyers will ask.',
+    ];
+  }
+  if (role === 'other') {
+    return [
+      'Get a bindable insurance quote before committing to anything. Insurability, not price alone, can end a Florida deal.',
+      'A 4-point and wind-mitigation inspection tell an insurer what it needs, and earn premium credits.',
+      'Find the roof\'s age, permit and any warranty, and plan for a possible replacement.',
+      'Opening protection and roof-deck attachment drive the biggest premium credits.',
     ];
   }
   if (role === 'pro') {

@@ -95,7 +95,7 @@ export function assessInsurance(
     : 'No opening-protection permit (impact windows/doors or shutters) is on file. A wind-mitigation inspection determines any credits.';
 
   const recommendations: string[] = [
-    'Get a quote bound before your inspection contingency ends — insurability, not price alone, can end a Florida deal.',
+    'Get a quote bound before your inspection contingency ends - insurability, not price alone, can end a Florida deal.',
     'Order a 4-point inspection and a wind-mitigation inspection; these, not records, set the premium.',
   ];
   if (band === 'aging' || band === 'old' || band === 'unknown') {
@@ -105,7 +105,7 @@ export function assessInsurance(
   }
   if (!openingProtection) {
     recommendations.push(
-      'Confirm opening protection and roof-deck attachment on the wind-mit form — they drive the biggest premium credits.',
+      'Confirm opening protection and roof-deck attachment on the wind-mit form - they drive the biggest premium credits.',
     );
   }
 

@@ -179,7 +179,7 @@ export function buildInsurancePacket(r: DiagnosticReport, rd: Readiness): Packet
   }
   const ph = r.countyExtras?.permitHealth;
   if (ph && (ph.noInspection > 0 || ph.inspectedNoCloseout > 0)) {
-    out.push({ item: 'Permit close-out papers', status: 'recommended', note: 'Some permits show no close-out date. Ask the seller for finals.' });
+    out.push({ item: 'Permit close-out papers', status: 'recommended', note: 'Some permits show no close-out date. Have the finals on hand.' });
   }
   if (r.countyExtras?.sewer?.septicOrWellFlag) {
     out.push({ item: 'Septic inspection', status: 'needed', note: 'The county lists the parcel as possibly on septic or a well.' });

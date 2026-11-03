@@ -80,11 +80,11 @@ export function assessRecert(
   if (age == null) {
     timing = 'unknown (year built not on record)';
   } else if (age >= 30) {
-    timing = `about ${age} years old — at or past the initial ~30-year trigger (25 near salt water); confirm current status`;
+    timing = `about ${age} years old - at or past the initial ~30-year trigger (25 near salt water); confirm current status`;
   } else if (age >= 25) {
-    timing = `about ${age} years old — near the 25-year coastal trigger; confirm whether the salt-water rule applies`;
+    timing = `about ${age} years old - near the 25-year coastal trigger; confirm whether the salt-water rule applies`;
   } else {
-    timing = `about ${age} years old — roughly ${30 - age} years from the initial ~30-year trigger`;
+    timing = `about ${age} years old - roughly ${30 - age} years from the initial ~30-year trigger`;
   }
 
   if (programs.length === 0) {
@@ -98,7 +98,7 @@ export function assessRecert(
       detail:
         klass === 'unknown'
           ? 'The building class could not be read from the tax roll. If this is a 3+ story condo or a multi-family or commercial building, milestone or recertification requirements may apply; confirm with the county.'
-          : `This reads as a ${label}. Statewide milestone rules target 3+ story condos and co-ops, and this county has no countywide recertification program, so an inspection mandate is less likely here — but confirm with the local building department.`,
+          : `This reads as a ${label}. Statewide milestone rules target 3+ story condos and co-ops, and this county has no countywide recertification program, so an inspection mandate is less likely here - but confirm with the local building department.`,
       recommendation: null,
     };
   }
@@ -117,7 +117,7 @@ export function assessRecert(
     `It is ${timing}.`;
 
   const recommendation = overdue
-    ? 'Confirm the milestone / recertification status and any deadline with the county now — an overdue inspection can bring fines and assessments. We perform the structural inspection and sealed report.'
+    ? 'Confirm the milestone / recertification status and any deadline with the county now - an overdue inspection can bring fines and assessments. We perform the structural inspection and sealed report.'
     : 'Ask the association or seller for the most recent milestone or recertification report and reserve study before you commit. We can perform the structural inspection and sealed report when one is due.';
 
   return { applies, buildingClass: label, programs, timing, detail, recommendation };

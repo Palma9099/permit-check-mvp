@@ -75,18 +75,32 @@ export async function assessFlood(
     '&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects' +
     '&outFields=FLD_ZONE%2CZONE_SUBTY%2CSFHA_TF%2CSTATIC_BFE&returnGeometry=false&f=json';
 
-  let data: any;
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12_000);
-    const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
-    clearTimeout(t);
-    if (!res.ok) return fail(`HTTP ${res.status}`);
-    data = await res.json();
-  } catch (err: any) {
-    return fail(String(err?.message ?? err).slice(0, 120));
+  // FEMA's server is slow and flaky at times, and one hiccup would otherwise
+  // show a confident-looking "Unknown". Try up to three times before giving up.
+  let data: any = null;
+  let lastReason = 'no response';
+  for (let attempt = 0; attempt < 3 && !data; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 600 * attempt));
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8_000);
+      const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+      clearTimeout(t);
+      if (!res.ok) {
+        lastReason = `HTTP ${res.status}`;
+        continue;
+      }
+      const j = await res.json();
+      if (j?.error) {
+        lastReason = `NFHL error: ${j.error?.message ?? 'unknown'}`;
+        continue;
+      }
+      data = j;
+    } catch (err: any) {
+      lastReason = String(err?.message ?? err).slice(0, 120);
+    }
   }
-  if (data?.error) return fail(`NFHL error: ${data.error?.message ?? 'unknown'}`);
+  if (!data) return fail(lastReason);
 
   const feat = Array.isArray(data?.features) ? data.features[0] : null;
   const attrs = feat?.attributes ?? null;
@@ -122,7 +136,7 @@ export async function assessFlood(
   if (baseFloodElevationFt != null) summary += ` Mapped base flood elevation is about ${baseFloodElevationFt} ft.`;
 
   const insuranceNote = inSFHA
-    ? 'A federally-backed mortgage will require flood insurance in this zone. Budget for it, and ask the seller for the current premium and any elevation certificate, which can lower it.'
+    ? 'A federally-backed mortgage will require flood insurance in this zone. Budget for it, and get the current premium and any elevation certificate, which can lower it.'
     : 'Flood insurance is likely not federally required here, but roughly a quarter of flood claims come from outside high-risk zones, so a low-cost preferred-risk policy is worth pricing.';
 
   const fiftyPercentNote = inSFHA
