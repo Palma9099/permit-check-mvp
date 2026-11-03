@@ -89,7 +89,7 @@ async function fetchImage(url: string | null | undefined, timeoutMs = 25000): Pr
 
 export async function buildPdfV2(
   r: DiagnosticReport,
-  opts: { liveUrl?: string; phone?: string; role?: Persona | null } = {},
+  opts: { liveUrl?: string; phone?: string; role?: Persona | null; streetHistory?: Array<{ imageUrl: string; label: string }> } = {},
 ): Promise<Buffer> {
   const phone = opts.phone ?? '305-393-0690';
   const role = opts.role ?? null;
@@ -108,7 +108,9 @@ export async function buildPdfV2(
   const ring = (th.parcelPolygon as Ring | null) ?? null;
   const frames = pickDisplayFrames(th.historicalAerials?.allFrames ?? []).slice(0, 3);
   const hsv = th.historicalStreetView;
-  const hasStreetPair = !!(hsv?.then && hsv?.now);
+  const googleHistory = (opts.streetHistory ?? []).slice(0, 4);
+  const hasGoogleHistory = googleHistory.length >= 2;
+  const hasStreetPair = !hasGoogleHistory && !!(hsv?.then && hsv?.now);
   const [sat, ctxSat, street, qr, svThen, svNow, ...frameImgs] = await Promise.all([
     fetchImage(th.satelliteImageUrl),
     fetchImage(th.contextSatelliteImageUrl),
@@ -118,6 +120,7 @@ export async function buildPdfV2(
     hasStreetPair ? fetchImage(hsv!.now!.imageUrl) : Promise.resolve(null),
     ...frames.map((f) => fetchImage(f.displayImageUrl)),
   ]);
+  const googleHistoryImgs = hasGoogleHistory ? await Promise.all(googleHistory.map((f) => fetchImage(f.imageUrl))) : [];
 
   const doc = new PDFDocument({ size: 'LETTER', margin: 0, autoFirstPage: false, bufferPages: true });
   const chunks: Buffer[] = [];
@@ -358,6 +361,22 @@ export async function buildPdfV2(
     outline(c.bbox, x, y, hw, hw);
   });
   text('Older public aerials are softer than today. They are a starting point for questions, not a record. Confirm with the county.', M, 122 + 2 * (hw + 34) - 6, { w: CW, size: 8.5, color: C.muted });
+
+  // ===== STREET VIEW HISTORY (Google, read in the browser) ================
+  if (hasGoogleHistory) {
+    doc.addPage({ size: 'LETTER', margin: 0 });
+    header('Street view, then and now', 'Same spot, same direction');
+    const sw = (CW - 14) / 2;
+    const sh = 190;
+    googleHistory.forEach((f, i) => {
+      const x = M + (i % 2) * (sw + 14);
+      const y = 122 + Math.floor(i / 2) * (sh + 38);
+      image(googleHistoryImgs[i] ?? null, x, y, sw, sh, `${f.label}${i === 0 ? ', earliest' : i === googleHistory.length - 1 ? ', latest' : ''}`.toUpperCase());
+    });
+    const yy = 122 + Math.ceil(googleHistory.length / 2) * (sh + 38);
+    text('Each photo is from the same street position, looking at the property. Compare paint, the roof, doors, gates and windows. A visible difference is a question to ask, not proof of unpermitted work.', M, yy, { w: CW, size: 9.5, color: C.soft });
+    text('Street View imagery (c) Google.', M, yy + 42, { w: CW, size: 8, color: C.muted });
+  }
 
   // ===== STREET PHOTOS, THEN AND NOW (when matching older photos exist) ====
   if (hasStreetPair) {

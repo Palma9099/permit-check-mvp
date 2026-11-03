@@ -1,6 +1,7 @@
 'use client';
 
 import { PERSONAS, PERSONA_ORDER, parsePersona, type Persona } from '@/lib/persona';
+import { fetchStreetHistory, type StreetFrame } from '@/lib/street-history';
 import { ClipboardCheckIcon, HomeSearchIcon, IconTile, KeyIcon } from './icons';
 import { useState, useEffect, useRef } from 'react';
 import type { DiagnosticReport, UserUploadedThen } from '@/lib/types';
@@ -64,6 +65,9 @@ export default function HomePage() {
   // Who is asking? The report re-words itself around the answer. Remembered on
   // this device and settable from the link (?role=owner), so a realtor can send
   // a client a link that opens already tailored.
+  // Dated Street View photos of this property, read in the browser from Google.
+  // null = still loading or not attempted; [] = none found.
+  const [streetHistory, setStreetHistory] = useState<StreetFrame[] | null>(null);
   const [role, setRoleState] = useState<Persona | null>(null);
   const [roleError, setRoleError] = useState(false);
   function setRole(p: Persona) {
@@ -93,6 +97,32 @@ export default function HomePage() {
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    setStreetHistory(null);
+    const t = report?.thenVsNow;
+    if (!report) return;
+    if (!t?.mapsJsKey || !t.coordinates) {
+      setStreetHistory([]);
+      return;
+    }
+    let cancelled = false;
+    // Aim at the parcel centre when we have it; the geocoded point can sit on the lot line.
+    const ring = (t.parcelPolygon as Array<[number, number]> | null) ?? null;
+    const aim =
+      ring && ring.length >= 3
+        ? { lat: (Math.min(...ring.map((p) => p[0])) + Math.max(...ring.map((p) => p[0]))) / 2, lng: (Math.min(...ring.map((p) => p[1])) + Math.max(...ring.map((p) => p[1]))) / 2 }
+        : t.coordinates;
+    fetchStreetHistory({ key: t.mapsJsKey, lat: aim.lat, lng: aim.lng })
+      .then((f) => !cancelled && setStreetHistory(f))
+      .catch((err) => {
+        console.debug('street history unavailable', err);
+        if (!cancelled) setStreetHistory([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [report]);
 
   // Prefill + auto-run from ?address= / ?folio= query params. This is how the
   // palma.llc homepage and location pages hand a typed address off to the tool
@@ -330,7 +360,7 @@ export default function HomePage() {
       const res = await fetch('/api/check/pdf', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...report, role }),
+        body: JSON.stringify({ ...report, role, streetHistory: (streetHistory ?? []).map((f) => ({ imageUrl: f.imageUrl, label: f.label, date: f.date })) }),
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
@@ -704,7 +734,7 @@ export default function HomePage() {
 
       {report && (
         <div className="mt-8">
-          <Report report={report} role={role} onRoleChange={setRole} />
+          <Report report={report} role={role} onRoleChange={setRole} streetHistory={streetHistory} />
         </div>
       )}
 

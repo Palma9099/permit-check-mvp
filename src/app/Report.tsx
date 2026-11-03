@@ -4,6 +4,8 @@ import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 import LeadCapture from './LeadCapture';
 import AtAGlance from './AtAGlance';
 import ReadinessAndFixIt from './ReadinessAndFixIt';
+import StreetHistory from './StreetHistory';
+import type { StreetFrame } from '@/lib/street-history';
 import { PERSONAS, PERSONA_ORDER, insuranceTips, personaCopy, takeaways, type Persona } from '@/lib/persona';
 import { buildGlance, glanceNextSteps } from '@/lib/glance';
 import AerialTimeline from './AerialTimeline';
@@ -297,11 +299,14 @@ export default function Report({
   report,
   role = null,
   onRoleChange,
+  streetHistory = null,
 }: {
   report: DiagnosticReport;
   role?: Persona | null;
   onRoleChange?: (p: Persona) => void;
+  streetHistory?: StreetFrame[] | null;
 }) {
+  const haveStreetHistory = !!streetHistory && streetHistory.length >= 2;
   const pc = personaCopy(role);
   const r = report;
   const vc = r.thenVsNow?.visualComparison;
@@ -636,6 +641,8 @@ export default function Report({
               </div>
             )}
 
+            <StreetHistory frames={streetHistory ?? []} timelineUrl={r.thenVsNow.streetViewTimelineUrl || r.thenVsNow.streetViewUrl} />
+
             {/* Street View - Then vs Now (Mapillary), one row per fronting
                 street so corner lots show all sides. */}
             {(() => {
@@ -691,7 +698,7 @@ export default function Report({
                 </div>
               );
             })()}
-            {r.thenVsNow.historicalStreetView && !r.thenVsNow.historicalStreetView.then && r.thenVsNow.historicalStreetView.failureReason && (
+            {!haveStreetHistory && streetHistory !== null && r.thenVsNow.historicalStreetView && !r.thenVsNow.historicalStreetView.then && r.thenVsNow.historicalStreetView.failureReason && (
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
                 <p className="text-xs text-amber-800">
                   <span className="font-semibold">Older Street View photos can&apos;t be pulled into this report.</span>{' '}

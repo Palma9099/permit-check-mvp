@@ -241,6 +241,8 @@ export interface ThenVsNow {
   // capture cul-de-sacs). Echoed back from the input so the report can
   // render it as the THEN frame and confirm the AI used it.
   userUploadedThen: UserUploadedThen | null;
+  // Browser-restricted Google key the page uses to read dated Street View history.
+  mapsJsKey?: string | null;
 }
 
 export type CountyTier = 'A' | 'B';

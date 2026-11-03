@@ -9,6 +9,7 @@
 //   6. Run vision comparison (polygon-aware prompt).
 //   7. Assemble the DiagnosticReport the UI expects.
 
+import { browserMapsKey } from './images/keys';
 import { computeReadiness } from './readiness';
 import { createRecordToken } from './record-token';
 import { mapillarySidesForReport } from './images/mapillary';
@@ -747,6 +748,7 @@ export async function runDiagnostic(input: {
     streetViewImages,
     streetViewUrl: `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${geo.lat},${geo.lng}`,
     streetViewTimelineUrl: `https://www.google.com/maps?q=&layer=c&cbll=${geo.lat},${geo.lng}&cbp=11,0,0,0,0`,
+    mapsJsKey: browserMapsKey() ?? null,
     historicalAerialUrl: countyInfo.portals.historicalAerial,
     satelliteUrl: `https://www.google.com/maps/@${geo.lat},${geo.lng},20z/data=!3m1!1e3`,
     parcelPolygon: polygon.polygon,

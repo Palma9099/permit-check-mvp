@@ -9,6 +9,19 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+// Older Street View photos the browser found. Only Google's Street View image
+// address is accepted, so this cannot be used to make the server fetch anything else.
+function cleanStreetHistory(v: unknown): Array<{ imageUrl: string; label: string }> {
+  if (!Array.isArray(v)) return [];
+  return v
+    .slice(0, 6)
+    .filter(
+      (f): f is { imageUrl: string; label: string } =>
+        !!f && typeof f.imageUrl === 'string' && typeof f.label === 'string' && f.imageUrl.startsWith('https://maps.googleapis.com/maps/api/streetview?'),
+    )
+    .map((f) => ({ imageUrl: f.imageUrl, label: f.label.slice(0, 40) }));
+}
+
 export async function POST(req: NextRequest) {
   let body: Partial<DiagnosticReport> & { address?: string; folio?: string };
   try {
@@ -40,7 +53,10 @@ export async function POST(req: NextRequest) {
     // download never fails because of the new layout.
     let buf: Buffer;
     try {
-      buf = await buildPdfV2(report, { role: parsePersona((body as { role?: unknown }).role) });
+      buf = await buildPdfV2(report, {
+        role: parsePersona((body as { role?: unknown }).role),
+        streetHistory: cleanStreetHistory((body as { streetHistory?: unknown }).streetHistory),
+      });
     } catch (err) {
       console.error('[pdf] v2 failed, falling back to v1', err);
       buf = await buildPdf(report);
