@@ -9,6 +9,7 @@
 //   6. Run vision comparison (polygon-aware prompt).
 //   7. Assemble the DiagnosticReport the UI expects.
 
+import { mapillarySidesForReport } from './images/mapillary';
 import { fetchMiamiDadeExtras } from './counties/miami-dade-extras';
 import type {
   DiagnosticReport,
@@ -514,7 +515,7 @@ export async function runDiagnostic(input: {
   //    historical THEN/NOW pairs from one Google pano-list call, all
   //    rendered with bearing-to-aim so the camera points at the building
   //    rather than at the parcel-line geocode.
-  const [svEngine, historicalAerials, floodResult, countyExtras] = await Promise.all([
+  const [svEngine, historicalAerials, floodResult, countyExtras, mapillary] = await Promise.all([
     buildStreetViewEngine({
       searchLat: geo.lat,
       searchLng: geo.lng,
@@ -541,22 +542,34 @@ export async function runDiagnostic(input: {
           permits: adapterResult.permits,
         }).catch(() => null)
       : Promise.resolve(null),
+    // Older street-level photos with matching angle. Google no longer lists
+    // Street View history, so Mapillary is the source. Never throws.
+    mapillarySidesForReport(aim.lat, aim.lng).catch(() => ({
+      sides: [],
+      allFrames: [],
+      failureReason: 'Mapillary lookup failed.' as string | null,
+    })),
   ]);
   const streetViewImages = svEngine.current;
 
   // Reshape engine output into the HistoricalStreetViewPair the report and
   // vision-compare expect.
+  // Google history first (when it exists); otherwise Mapillary's same-angle pair.
+  const useMapillary = svEngine.historicalSides.length === 0 && mapillary.sides.length > 0;
+  const historicalSides = useMapillary ? mapillary.sides : svEngine.historicalSides;
   const primarySide =
-    svEngine.historicalSides.find((s) => s.then && s.now) ??
-    svEngine.historicalSides[0] ??
+    historicalSides.find((s) => s.then && s.now) ??
+    historicalSides[0] ??
     null;
   const historicalStreetView = {
     then: primarySide?.then ?? null,
     now: primarySide?.now ?? null,
-    sides: svEngine.historicalSides,
-    allFrames: svEngine.allFrames,
-    source: svEngine.source,
-    failureReason: svEngine.failureReason,
+    sides: historicalSides,
+    allFrames: useMapillary ? mapillary.allFrames : svEngine.allFrames,
+    source: useMapillary ? 'Mapillary (CC BY-SA, Mapillary contributors)' : svEngine.source,
+    failureReason: useMapillary
+      ? null
+      : `${svEngine.failureReason ?? ''}${svEngine.failureReason && mapillary.failureReason ? ' ' : ''}${mapillary.failureReason ?? ''}`.trim() || null,
   };
 
   // 6. Vision comparison - THEN (historical NAIP + historical Street View)

@@ -609,7 +609,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
-                            Then · {side.then!.captureDate.slice(0, 10)}
+                            Then · {side.then!.label || side.then!.captureDate.slice(0, 10)}
                           </div>
                           <img
                             src={side.then!.imageUrl}
@@ -620,7 +620,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                         </div>
                         <div>
                           <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
-                            Now · {side.now!.captureDate.slice(0, 10)}
+                            Now · {side.now!.label || side.now!.captureDate.slice(0, 10)}
                           </div>
                           <img
                             src={side.now!.imageUrl}
@@ -634,6 +634,9 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                   ))}
                   <p className="text-[11px] text-ink-muted mt-2">
                     Compare facade paint, front door, gates, garage door, windows on each side.
+                    {/Mapillary/i.test(r.thenVsNow.historicalStreetView?.source ?? '') && (
+                      <> Street photos &copy; Mapillary contributors, licensed CC BY-SA 4.0.</>
+                    )}
                   </p>
                 </div>
               );

@@ -100,11 +100,15 @@ export async function buildPdfV2(
   const th = r.thenVsNow;
   const ring = (th.parcelPolygon as Ring | null) ?? null;
   const frames = pickDisplayFrames(th.historicalAerials?.allFrames ?? []).slice(0, 3);
-  const [sat, ctxSat, street, qr, ...frameImgs] = await Promise.all([
+  const hsv = th.historicalStreetView;
+  const hasStreetPair = !!(hsv?.then && hsv?.now);
+  const [sat, ctxSat, street, qr, svThen, svNow, ...frameImgs] = await Promise.all([
     fetchImage(th.satelliteImageUrl),
     fetchImage(th.contextSatelliteImageUrl),
     fetchImage(th.streetViewImages?.[0]?.imageUrl),
     QRCode.toBuffer(liveUrl, { margin: 1, width: 240, color: { dark: '#0f2547', light: '#ffffff' } }),
+    hasStreetPair ? fetchImage(hsv!.then!.imageUrl) : Promise.resolve(null),
+    hasStreetPair ? fetchImage(hsv!.now!.imageUrl) : Promise.resolve(null),
     ...frames.map((f) => fetchImage(f.displayImageUrl)),
   ]);
 
@@ -276,6 +280,17 @@ export async function buildPdfV2(
     outline(c.bbox, x, y, hw, hw);
   });
   text('Older public aerials are softer than today. They are a starting point for questions, not a record. Confirm with the county.', M, 122 + 2 * (hw + 34) - 6, { w: CW, size: 8.5, color: C.muted });
+
+  // ===== STREET PHOTOS, THEN AND NOW (when matching older photos exist) ====
+  if (hasStreetPair) {
+    doc.addPage({ size: 'LETTER', margin: 0 });
+    header('Street view, then and now', 'Same spot, same direction');
+    const ph = 250;
+    image(svThen, M, 122, hw, ph, clean(hsv!.then!.label).toUpperCase());
+    image(svNow, M + hw + 14, 122, hw, ph, clean(hsv!.now!.label).toUpperCase());
+    text('Compare paint, the front door, gates, the garage door and windows. Photos are a starting point for questions, not a record. Confirm with the county.', M, 122 + ph + 36, { w: CW, size: 9.5, color: C.soft });
+    text('Street photos (c) Mapillary contributors, licensed CC BY-SA 4.0. Photos are matched by camera position and direction.', M, 122 + ph + 70, { w: CW, size: 8, color: C.muted });
+  }
 
   // ===== PAGE 4: STREET VIEW + COUNTY FACTS ================================
   doc.addPage({ size: 'LETTER', margin: 0 });

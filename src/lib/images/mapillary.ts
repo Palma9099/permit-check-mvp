@@ -99,6 +99,7 @@ function bboxAround(lat: number, lng: number, meters: number): {
 
 interface MapillaryRawImage {
   id: string;
+  is_pano?: boolean;
   captured_at: number;
   thumb_2048_url?: string;
   compass_angle?: number;
@@ -111,12 +112,12 @@ async function searchImages(
   token: string,
   searchRadiusMeters: number,
   timeoutMs = 8000,
-): Promise<MapillaryRawImage[]> {
+): Promise<{ images: MapillaryRawImage[]; error: string | null }> {
   const bbox = bboxAround(parcelLat, parcelLng, searchRadiusMeters);
   const u = new URL(MAPILLARY_GRAPH);
   u.searchParams.set(
     'fields',
-    'id,captured_at,thumb_2048_url,compass_angle,computed_geometry',
+    'id,captured_at,thumb_2048_url,compass_angle,computed_geometry,is_pano',
   );
   u.searchParams.set('bbox', `${bbox.west},${bbox.south},${bbox.east},${bbox.north}`);
   u.searchParams.set('limit', '200');
@@ -132,13 +133,13 @@ async function searchImages(
     if (!res.ok) {
       const body = await res.text().catch(() => '');
       console.error(`[mapillary] HTTP ${res.status}: ${body.slice(0, 200)}`);
-      return [];
+      return { images: [], error: `Mapillary answered HTTP ${res.status}${res.status === 401 || res.status === 403 ? ' (token missing, expired or not allowed)' : ''}.` };
     }
     const data: any = await res.json();
-    return Array.isArray(data?.data) ? data.data : [];
+    return { images: Array.isArray(data?.data) ? data.data : [], error: null };
   } catch (err: any) {
     console.error(`[mapillary] threw: ${String(err?.message ?? err).slice(0, 200)}`);
-    return [];
+    return { images: [], error: 'Mapillary could not be reached in time.' };
   } finally {
     clearTimeout(t);
   }
@@ -164,7 +165,13 @@ export async function fetchMapillaryHistorical(
   // 50m radius around the parcel center. That captures all images on the
   // street directly fronting the parcel and one neighbor's frontage on each
   // side, without pulling in a whole block of unrelated panos.
-  const raw = await searchImages(parcelLat, parcelLng, token, 50);
+  const found = await searchImages(parcelLat, parcelLng, token, 60);
+  if (found.error) {
+    return { then: null, now: null, sides: [], allFrames: [], source, failureReason: found.error };
+  }
+  // 360 panoramas come back as stretched equirectangular frames, not a view
+  // of the house, so they are skipped.
+  const raw = found.images.filter((r) => !r.is_pano);
   if (raw.length === 0) {
     return {
       then: null,
@@ -172,7 +179,7 @@ export async function fetchMapillaryHistorical(
       sides: [],
       allFrames: [],
       source,
-      failureReason: 'No Mapillary panos within 50m of this parcel.',
+      failureReason: 'No Mapillary street photos within 60m of this parcel.',
     };
   }
 
@@ -202,7 +209,7 @@ export async function fetchMapillaryHistorical(
         alignmentDeg: alignment,
       };
     })
-    .filter((x): x is MapillaryImage => x !== null && x.alignmentDeg <= 45)
+    .filter((x): x is MapillaryImage => x !== null && x.alignmentDeg <= 40)
     .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
 
   if (scored.length === 0) {
@@ -242,16 +249,12 @@ export async function fetchMapillaryHistorical(
 
   const sidePairs: MapillarySidePair[] = sides.map((s, i) => {
     s.frames.sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
-    const earliest = s.frames[0];
-    const latest = s.frames[s.frames.length - 1];
-    const sameId = earliest.id === latest.id;
-    const yearsApart = latest.capturedYear - earliest.capturedYear;
-    const then = sameId || yearsApart < 2 ? null : earliest;
+    const pair = pickSameAnglePair(s.frames);
     return {
       sideLabel: i === 0 ? 'Primary front' : `Side ${i + 1}`,
       approxBearingFromCenter: s.centerBearing,
-      then,
-      now: latest,
+      then: pair?.then ?? null,
+      now: pair?.now ?? s.frames[s.frames.length - 1],
     };
   });
 
@@ -302,5 +305,92 @@ export async function fetchMapillaryHistorical(
     allFrames: scored,
     source,
     failureReason: null,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Same-angle pairing
+// ---------------------------------------------------------------------------
+
+function metersBetween(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const dLat = (bLat - aLat) * 111_320;
+  const dLng = (bLng - aLng) * 111_320 * Math.cos(((aLat + bLat) / 2 * Math.PI) / 180);
+  return Math.hypot(dLat, dLng);
+}
+
+const YEAR_MS = 365.25 * 86_400_000;
+
+// Pick the THEN and NOW photos that look most alike except for the date:
+// at least two years apart, the camera looking the same way (heading within
+// 25 degrees) from nearly the same spot (within 25 m). If nothing meets that,
+// accept a looser match (40 degrees, 40 m) so the report can still show change,
+// and let the label say the angle differs. Returns null when there is no pair
+// two or more years apart at all.
+export function pickSameAnglePair(frames: MapillaryImage[]): { then: MapillaryImage; now: MapillaryImage; tight: boolean } | null {
+  const newestYear = Math.max(...frames.map((f) => f.capturedYear));
+  let best: { then: MapillaryImage; now: MapillaryImage; score: number; tight: boolean } | null = null;
+  for (const a of frames) {
+    for (const b of frames) {
+      const gapYears = (Date.parse(b.capturedAt) - Date.parse(a.capturedAt)) / YEAR_MS;
+      if (gapYears < 2) continue;
+      const headingDiff = angularDelta(a.compassAngle, b.compassAngle);
+      const dist = metersBetween(a.imageLat, a.imageLng, b.imageLat, b.imageLng);
+      if (headingDiff > 40 || dist > 40) continue;
+      const tight = headingDiff <= 25 && dist <= 25;
+      const score =
+        Math.min(gapYears, 12) * 2 +
+        (b.capturedYear >= newestYear - 2 ? 3 : 0) -
+        headingDiff / 5 -
+        dist / 5 -
+        (a.alignmentDeg + b.alignmentDeg) / 20 +
+        (tight ? 6 : 0);
+      if (!best || score > best.score) best = { then: a, now: b, score, tight };
+    }
+  }
+  return best ? { then: best.then, now: best.now, tight: best.tight } : null;
+}
+
+import type { StreetViewSidePair, StreetViewHistoricalFrame } from './streetview';
+
+function monthYear(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+function toFrame(f: MapillaryImage, headingNote: string): StreetViewHistoricalFrame {
+  return {
+    captureDate: f.capturedAt,
+    captureYear: f.capturedYear,
+    imageUrl: f.imageUrl,
+    heading: Math.round(f.compassAngle),
+    label: `Street photo, ${monthYear(f.capturedAt)} (Mapillary)${headingNote}`,
+  };
+}
+
+// Mapillary result shaped for the report's Street View history slot.
+export async function mapillarySidesForReport(
+  lat: number,
+  lng: number,
+): Promise<{ sides: StreetViewSidePair[]; allFrames: StreetViewHistoricalFrame[]; failureReason: string | null }> {
+  const r = await fetchMapillaryHistorical(lat, lng);
+  const sides: StreetViewSidePair[] = [];
+  for (const sp of r.sides) {
+    if (!sp.then || !sp.now) continue;
+    const diff = angularDelta(sp.then.compassAngle, sp.now.compassAngle);
+    const note = diff > 12 ? `, angle differs ${Math.round(diff)} degrees` : '';
+    const thenF = toFrame(sp.then, '');
+    const nowF = toFrame(sp.now, note);
+    sides.push({
+      sideLabel: sp.sideLabel,
+      approxBearingFromCenter: sp.approxBearingFromCenter,
+      then: thenF,
+      now: nowF,
+      frames: [thenF, nowF],
+    });
+  }
+  const allFrames = sides.flatMap((s) => s.frames);
+  return {
+    sides,
+    allFrames,
+    failureReason: sides.length ? null : r.failureReason ?? 'Mapillary has no matching older and newer photos of this property.',
   };
 }
