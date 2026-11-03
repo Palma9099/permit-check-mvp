@@ -2,6 +2,7 @@
 
 import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 import LeadCapture from './LeadCapture';
+import AtAGlance from './AtAGlance';
 
 // Translate internal/developer failure strings (e.g. "ANTHROPIC_API_KEY not
 // set", "HTTP 502: ...", "json parse failed", "timeout after 12000ms") into
@@ -381,6 +382,8 @@ export default function Report({ report }: { report: DiagnosticReport }) {
       </div>
 
       <div className="px-6 sm:px-10 py-8 prose-section">
+        <AtAGlance report={r} />
+
         {/* Top flags */}
         {(r.flags.strong.length > 0 || r.flags.medium.length > 0) && (
           <section>

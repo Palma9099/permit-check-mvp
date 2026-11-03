@@ -10,6 +10,7 @@ import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { googleImageFetchHeaders } from './images/keys';
 import type { DiagnosticReport } from './types';
+import { buildGlance, glanceNextSteps, glanceVerdict } from './glance';
 
 const W = 612;
 const H = 792;
@@ -93,81 +94,6 @@ async function fetchImage(url: string | null | undefined, timeoutMs = 25000): Pr
   } finally {
     clearTimeout(t);
   }
-}
-
-interface Badge {
-  label: string;
-  value: string;
-  detail: string;
-  tone: Tone;
-}
-
-function buildBadges(r: DiagnosticReport): Badge[] {
-  const age = r.property.yearBuilt ? new Date().getFullYear() - r.property.yearBuilt : null;
-  const nPermits = r.permitHistory.totalSubjectPermits;
-  const permits: Badge =
-    nPermits === 0
-      ? {
-          label: 'Permits',
-          value: 'None found',
-          detail: r.property.yearBuilt ? `Built ${r.property.yearBuilt}. Nothing in county records.` : 'Nothing in county records.',
-          tone: age && age > 15 ? 'amber' : 'grey',
-        }
-      : { label: 'Permits', value: `${nPermits} on file`, detail: 'Listed in county records.', tone: 'green' };
-
-  const roofRisk = r.insurance.band === 'old' || r.insurance.band === 'unknown';
-  const roof: Badge = {
-    label: 'Roof and insurance',
-    value: roofRisk ? 'Likely original' : 'No concern',
-    detail: roofRisk ? 'No roof permit. Insurers may balk.' : 'Roof permit on record.',
-    tone: roofRisk ? 'red' : 'green',
-  };
-
-  const flood: Badge = {
-    label: 'Flood zone',
-    value: r.flood.zone ? `Zone ${r.flood.zone}` : 'Unknown',
-    detail: r.flood.zone ? (r.flood.inSFHA ? 'High-risk area. Insurance likely required.' : 'Low risk. Not required.') : 'Check FEMA map.',
-    tone: r.flood.zone ? (r.flood.inSFHA ? 'red' : 'green') : 'grey',
-  };
-
-  const recertNA = /no|unlikely|not/i.test(String(r.recert.applies));
-  const recert: Badge = {
-    label: 'Milestone / recert',
-    value: recertNA ? 'Not expected' : 'May apply',
-    detail: recertNA ? 'Condos and large buildings only.' : 'Check county deadline.',
-    tone: recertNA ? 'grey' : 'amber',
-  };
-
-  const openCases = r.codeEnforcement.openCount;
-  const code: Badge = {
-    label: 'Code cases',
-    value: openCases === 0 ? 'None open' : `${openCases} open`,
-    detail: openCases === 0 ? 'Clean in county records.' : 'See county code portal.',
-    tone: openCases === 0 ? 'green' : 'red',
-  };
-
-  const vc = r.thenVsNow.visualComparison;
-  const flags = vc?.performed ? vc.observations.filter((o) => o.severity === 'flag').length : 0;
-  const imagery: Badge = vc?.performed
-    ? {
-        label: 'Aerial photos',
-        value: flags ? `${flags} to check` : 'No changes',
-        detail: flags ? '2010 vs 2022, for review.' : '2010 vs 2022 look alike.',
-        tone: flags ? 'amber' : 'green',
-      }
-    : { label: 'Aerial photos', value: 'Not compared', detail: 'No historical photos.', tone: 'grey' };
-
-  return [permits, roof, flood, recert, code, imagery];
-}
-
-function nextSteps(r: DiagnosticReport, badges: Badge[]): string[] {
-  const out: string[] = [];
-  const [permits, roof, , , , imagery] = badges;
-  if (permits.tone === 'amber') out.push('Pull the certified permit file from the county, by address.');
-  if (roof.tone === 'red') out.push('Order a roof, 4-point and wind-mitigation inspection.');
-  if (imagery.tone === 'amber') out.push('Ask the seller about the changes seen from the air.');
-  out.push('Get an insurance quote before your contingency ends.');
-  return out.slice(0, 4);
 }
 
 export async function buildPdfV2(
@@ -318,7 +244,7 @@ export async function buildPdfV2(
   // ===== PAGE 2: AT A GLANCE ==============================================
   doc.addPage({ size: 'LETTER', margin: 0 });
   header('At a glance', 'Scorecard');
-  const badges = buildBadges(r);
+  const badges = buildGlance(r);
   const bw = (CW - 24) / 3;
   const bh = 104;
   badges.forEach((b, i) => {
@@ -327,20 +253,21 @@ export async function buildPdfV2(
     const t = TONE[b.tone];
     doc.roundedRect(x, y, bw, bh, 8).fill(C.white).lineWidth(0.8).stroke(C.line);
     doc.roundedRect(x, y, bw, 5, 2.5).fill(t.fg);
-    text(b.label.toUpperCase(), x + 12, y + 16, { w: bw - 24, size: 7, font: 'Helvetica-Bold', color: C.muted, spacing: 0.8 });
+    text(b.label.toUpperCase(), x + 12, y + 16, { w: bw - 40, size: 7, font: 'Helvetica-Bold', color: C.muted, spacing: 0.8 });
+    // "i" marker. The note opens on hover or click in most PDF viewers.
+    const ix = x + bw - 22;
+    doc.circle(ix + 5, y + 20, 7).lineWidth(0.8).stroke(C.muted);
+    doc.font('Times-BoldItalic').fontSize(9).fillColor(C.muted).text('i', ix + 3.2, y + 15.5, { lineBreak: false });
+    doc.note(ix - 2, y + 11, 14, 14, clean(`${b.label}\n\nWhat it is: ${b.info.what}\n\nIf you are buying: ${b.info.buyer}\n\nIf you own it: ${b.info.owner}`), { Name: 'Comment', Open: false } as any);
     const vh = text(b.value, x + 12, y + 32, { w: bw - 24, size: 16, font: 'Times-Bold', color: t.fg, gap: 0 });
     text(b.detail, x + 12, y + 38 + vh, { w: bw - 24, size: 9, color: C.soft });
   });
   let y2 = 122 + 2 * (bh + 12) + 10;
-  const attention = badges.filter((b) => b.tone === 'red' || b.tone === 'amber').length;
   doc.roundedRect(M, y2, CW, 64, 10).fill(C.navy);
-  text(
-    attention ? `${attention} thing${attention > 1 ? 's' : ''} to check before you make an offer.` : 'Nothing alarming in county records.',
-    M + 22, y2 + 20, { w: CW - 44, size: 19, font: 'Times-Bold', color: C.white },
-  );
+  text(glanceVerdict(badges), M + 22, y2 + 20, { w: CW - 44, size: 19, font: 'Times-Bold', color: C.white });
   y2 += 64 + 26;
   y2 = sectionTitle('Do this next', y2);
-  for (const step of nextSteps(r, badges)) {
+  for (const step of glanceNextSteps(badges)) {
     doc.roundedRect(M, y2 + 1, 12, 12, 3).lineWidth(1.2).stroke(C.gold);
     y2 += text(step, M + 24, y2, { w: CW - 24, size: 12, color: C.ink }) + 12;
   }
