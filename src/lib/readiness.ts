@@ -85,7 +85,9 @@ export function computeReadiness(r: DiagnosticReport): Readiness {
   const aerialMax = 12;
   const vc = r.thenVsNow?.visualComparison;
   const flagged = vc?.performed ? vc.observations.filter((o) => o.severity === 'flag').length : 0;
-  const aerialPenalty = Math.min(aerialMax, flagged * 4);
+  // The AI check can flag one more or one fewer item from run to run, so the
+  // score reacts to whether anything was flagged, not to how many items.
+  const aerialPenalty = flagged >= 4 ? aerialMax : flagged >= 1 ? 8 : 0;
   factors.push({
     key: 'aerial',
     label: 'Aerial changes',
@@ -95,7 +97,7 @@ export function computeReadiness(r: DiagnosticReport): Readiness {
     reason: !vc?.performed
       ? 'Older aerial photos were not available to compare.'
       : flagged
-      ? `${flagged} change${flagged > 1 ? 's' : ''} seen between older and newer aerials. Confirm whether permits exist.`
+      ? 'Changes seen between older and newer aerials. Confirm whether permits exist.'
       : 'Older and newer aerials look alike.',
   });
 

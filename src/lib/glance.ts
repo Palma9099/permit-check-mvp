@@ -134,7 +134,7 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
   const aerial: GlanceItem = {
     key: 'aerial',
     label: 'Aerial photos',
-    value: vc?.performed ? (changes ? `${changes} to check` : 'No changes') : 'Not compared',
+    value: vc?.performed ? (changes ? 'Changes seen' : 'No changes') : 'Not compared',
     detail: vc?.performed ? (changes ? '2010 vs 2022, for review.' : '2010 vs 2022 look alike.') : 'No historical photos.',
     tone: vc?.performed ? (changes ? 'amber' : 'green') : 'grey',
     info: {
