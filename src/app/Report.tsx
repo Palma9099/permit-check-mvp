@@ -3,6 +3,7 @@
 import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 import LeadCapture from './LeadCapture';
 import AtAGlance from './AtAGlance';
+import ReadinessAndFixIt from './ReadinessAndFixIt';
 import AerialTimeline from './AerialTimeline';
 import CountyExtrasSection from './CountyExtrasSection';
 
@@ -385,6 +386,8 @@ export default function Report({ report }: { report: DiagnosticReport }) {
 
       <div className="px-6 sm:px-10 py-8 prose-section">
         <AtAGlance report={r} />
+
+        <ReadinessAndFixIt report={r} />
 
         {/* Top flags */}
         {(r.flags.strong.length > 0 || r.flags.medium.length > 0) && (
@@ -1044,6 +1047,8 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               `${r.flags.strong.length} strong / ${r.flags.medium.length} medium flag(s)`,
               `${r.codeEnforcement.openCount} open code case(s)`,
               `${r.permitHistory.totalSubjectPermits} permit(s) on file`,
+              r.readiness ? `Closing readiness ${r.readiness.score}/100 (${r.readiness.bandLabel})` : '',
+              r.property.folio ? `Folio ${r.property.folio}` : '',
             ]
               .filter(Boolean)
               .join(' · ')}

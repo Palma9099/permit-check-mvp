@@ -11,6 +11,9 @@ import QRCode from 'qrcode';
 import { googleImageFetchHeaders } from './images/keys';
 import type { DiagnosticReport } from './types';
 import { pickDisplayFrames } from './images/historical-aerial';
+import { computeReadiness } from './readiness';
+import { buildFixIts, buildInsurancePacket } from './fix-it';
+import { SITE_ORIGIN } from './record-token';
 import { buildGlance, glanceNextSteps, glanceVerdict } from './glance';
 
 const W = 612;
@@ -95,7 +98,8 @@ export async function buildPdfV2(
   const reportId =
     'PBS-' + createHash('sha1').update(`${r.property.folio}|${r.generatedAt}`).digest('hex').slice(0, 8).toUpperCase();
   const liveUrl =
-    opts.liveUrl ?? `https://permit-check-mvp.vercel.app/?address=${encodeURIComponent(r.query.address ?? siteAddr)}`;
+    opts.liveUrl ??
+    (r.record?.path ? `${SITE_ORIGIN}${r.record.path}` : `${SITE_ORIGIN}/?address=${encodeURIComponent(r.query.address ?? siteAddr)}`);
 
   const th = r.thenVsNow;
   const ring = (th.parcelPolygon as Ring | null) ?? null;
@@ -227,7 +231,7 @@ export async function buildPdfV2(
   doc.rect(0, fy - 20, W, H - (fy - 20)).fill('#0b1c38');
   doc.image(qr, W - M - 70, fy - 4, { width: 70 });
   text(`Report ID  ${reportId}`, M, fy, { size: 9, font: 'Helvetica-Bold', color: C.white });
-  text('Scan to open this report online.', M, fy + 14, { size: 8, color: '#9fb3d6', w: 360 });
+  text(r.record?.path ? 'Scan to open the shareable property record.' : 'Scan to open this report online.', M, fy + 14, { size: 8, color: '#9fb3d6', w: 360 });
   text('Records review. Not an inspection or official determination.', M, fy + 34, { size: 7.5, color: '#9fb3d6', w: 400 });
 
   // ===== PAGE 2: AT A GLANCE ==============================================
@@ -259,6 +263,77 @@ export async function buildPdfV2(
   for (const step of glanceNextSteps(badges)) {
     doc.roundedRect(M, y2 + 1, 12, 12, 3).lineWidth(1.2).stroke(C.gold);
     y2 += text(step, M + 24, y2, { w: CW - 24, size: 12, color: C.ink }) + 12;
+  }
+
+  // ===== PAGE: CLOSING READINESS ==========================================
+  const rd = r.readiness ?? computeReadiness(r);
+  const RINGC: Record<string, string> = { ready: '#059669', 'fix-first': '#d97706', hard: '#ea580c', 'high-risk': '#b91c1c' };
+  doc.addPage({ size: 'LETTER', margin: 0 });
+  header('Closing readiness', 'Can it close and be insured?');
+  {
+    const cx = M + 52;
+    const cy = 190;
+    doc.circle(cx, cy, 42).lineWidth(9).stroke('#e5e7eb');
+    const steps = Math.max(2, Math.round((rd.score / 100) * 90));
+    doc.lineWidth(9).lineCap('round').strokeColor(RINGC[rd.band]);
+    for (let k = 0; k <= steps; k++) {
+      const ang = -Math.PI / 2 + (k / 90) * 2 * Math.PI;
+      const px = cx + 42 * Math.cos(ang);
+      const py = cy + 42 * Math.sin(ang);
+      if (k === 0) doc.moveTo(px, py);
+      else doc.lineTo(px, py);
+    }
+    doc.stroke();
+    doc.lineCap('butt');
+    text(String(rd.score), cx - 40, cy - 17, { w: 80, size: 30, font: 'Times-Bold', color: C.navy, align: 'center' });
+    text('out of 100', cx - 40, cy + 17, { w: 80, size: 7.5, color: C.muted, align: 'center' });
+    text(rd.bandLabel, M + 124, 160, { w: CW - 124, size: 20, font: 'Times-Bold', color: RINGC[rd.band] });
+    text(rd.bandSummary, M + 124, 188, { w: CW - 124, size: 10, color: C.soft });
+    text('A records-based indicator. It is not an insurer or lender decision.', M + 124, 222, { w: CW - 124, size: 8, color: C.muted });
+  }
+  let yr = 262;
+  yr = sectionTitle('What moved the score', yr);
+  for (const f of rd.factors) {
+    const col = f.tone === 'red' ? C.red : f.tone === 'amber' ? C.amber : f.tone === 'green' ? C.green : C.grey;
+    text(f.label, M, yr, { w: 220, size: 9.5, font: 'Helvetica-Bold', color: C.ink });
+    text(f.penalty === 0 ? 'No points lost' : `-${f.penalty} of ${f.max}`, M, yr, { w: CW, size: 8.5, font: 'Helvetica-Bold', color: col, align: 'right' });
+    doc.roundedRect(M, yr + 14, CW, 4, 2).fill('#eef1f5');
+    if (f.penalty > 0) doc.roundedRect(M, yr + 14, Math.max(8, (f.penalty / f.max) * CW), 4, 2).fill(col);
+    text(f.reason, M, yr + 22, { w: CW, size: 8, color: C.soft });
+    yr += 40;
+  }
+  yr += 6;
+  yr = sectionTitle('Insurance packet', yr);
+  for (const pk of buildInsurancePacket(r, rd).slice(0, 5)) {
+    const tone: Tone = pk.status === 'needed' ? 'red' : pk.status === 'recommended' ? 'amber' : 'green';
+    pill(pk.status === 'ok' ? 'have' : pk.status, M, yr - 1, tone);
+    text(pk.item, M + 82, yr, { w: 170, size: 9, font: 'Helvetica-Bold' });
+    text(pk.note, M + 255, yr, { w: CW - 255, size: 8, color: C.soft });
+    yr += 28;
+  }
+
+  // ===== PAGE: FIX IT =====================================================
+  const fixes = buildFixIts(r, rd);
+  if (fixes.length) {
+    doc.addPage({ size: 'LETTER', margin: 0 });
+    header('Fix it', 'A real route for each problem');
+    let yf = 124;
+    const fw = (CW - 14) / 2;
+    for (let i = 0; i < fixes.length; i += 2) {
+      let rowH = 0;
+      fixes.slice(i, i + 2).forEach((f, k) => {
+        const x = M + k * (fw + 14);
+        const tone: Tone = f.tone === 'red' ? 'red' : 'amber';
+        const steps = f.steps.map((st, n) => `${n + 1}. ${st}`).join('\n');
+        const meta = `Done by: ${f.owner}${f.cost ? `. Typical cost: ${f.cost}` : ''}${f.timeline ? `. Typical time: ${f.timeline}` : ''}`;
+        const h = toneCard(x, yf, fw, tone, tone === 'red' ? 'Fix first' : 'Worth fixing', f.title, `${f.why}\n\n${steps}`, meta);
+        rowH = Math.max(rowH, h);
+      });
+      yf += rowH + 12;
+      if (yf > 600 && i + 2 < fixes.length) break; // keep within the page
+    }
+    doc.roundedRect(M, 690, CW, 46, 8).fill(C.navy);
+    text(`Get a fixed quote on any of these: call ${phone}, or request it from the live report.`, M + 18, 706, { w: CW - 36, size: 10.5, font: 'Helvetica-Bold', color: C.white });
   }
 
   // ===== PAGE 3: AERIAL TIMELINE ==========================================

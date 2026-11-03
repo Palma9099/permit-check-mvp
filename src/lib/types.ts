@@ -261,10 +261,15 @@ export interface CountyInfo {
 }
 
 import type { CountyExtras } from './counties/miami-dade-extras';
+import type { Readiness } from './readiness';
 
 export interface DiagnosticReport {
   // Miami-Dade only: tax reset, permit health, evacuation zone, sewer or septic.
   countyExtras?: CountyExtras | null;
+  // Closing readiness score and its factors (shared by web, PDF and record).
+  readiness?: Readiness;
+  // Signed, shareable record link (null when signing is not configured).
+  record?: { token: string; path: string; expiresAt: string } | null;
   generatedAt: string;
   query: {
     address: string;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // In-tool lead capture. Turns an anonymous report view into a contact by
 // emailing office@palma.llc (via /api/lead → Resend). Non-blocking: the whole
@@ -20,6 +20,21 @@ export default function LeadCapture({
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<'idle' | 'sending' | 'ok' | 'err'>('idle');
   const [errMsg, setErrMsg] = useState('');
+  const box = useRef<HTMLDivElement>(null);
+
+  // "Get a fixed quote" buttons elsewhere on the page fill in what they want
+  // quoted and bring this form into view.
+  useEffect(() => {
+    const onQuote = (e: Event) => {
+      const topic = (e as CustomEvent).detail?.topic as string | undefined;
+      if (!topic) return;
+      setStatus('idle');
+      setMessage(`Quote request: ${topic}`);
+      box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+    window.addEventListener('palma:quote', onQuote);
+    return () => window.removeEventListener('palma:quote', onQuote);
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -65,7 +80,7 @@ export default function LeadCapture({
 
   if (status === 'ok') {
     return (
-      <div className="rounded-lg bg-gradient-to-br from-[#1f3864] to-[#102447] text-white px-6 py-7 sm:px-8">
+      <div ref={box} className="rounded-lg bg-gradient-to-br from-[#1f3864] to-[#102447] text-white px-6 py-7 sm:px-8">
         <h3 className="font-serif text-xl sm:text-2xl font-semibold !text-white">Thanks - we've got it.</h3>
         <p className="mt-2 text-sm !text-white/90 max-w-2xl">
           A Palma specialist will review your results and reach out shortly. Need us sooner? Call{' '}
@@ -76,7 +91,7 @@ export default function LeadCapture({
   }
 
   return (
-    <div className="rounded-lg bg-gradient-to-br from-[#1f3864] to-[#102447] text-white px-6 py-6 sm:px-8 sm:py-7">
+    <div ref={box} className="rounded-lg bg-gradient-to-br from-[#1f3864] to-[#102447] text-white px-6 py-6 sm:px-8 sm:py-7">
       <h3 className="font-serif text-xl sm:text-2xl font-semibold leading-snug !text-white">
         Want a second set of eyes on this property?
       </h3>

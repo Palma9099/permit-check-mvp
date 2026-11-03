@@ -9,6 +9,8 @@
 //   6. Run vision comparison (polygon-aware prompt).
 //   7. Assemble the DiagnosticReport the UI expects.
 
+import { computeReadiness } from './readiness';
+import { createRecordToken } from './record-token';
 import { mapillarySidesForReport } from './images/mapillary';
 import { fetchMiamiDadeExtras } from './counties/miami-dade-extras';
 import type {
@@ -868,6 +870,15 @@ export async function runDiagnostic(input: {
   // ledger failures NEVER block the user response. Skipped silently for
   // counties not yet in scope (Miami-Dade / Broward / Palm Beach in Phase 1).
   await recordToLedger(countyKey, { lat: geo.lat, lng: geo.lng }, finalReport);
+
+  // Closing readiness + shareable record link. Pure computation; if anything
+  // here fails the report still ships without them.
+  try {
+    finalReport.readiness = computeReadiness(finalReport);
+    finalReport.record = createRecordToken(finalReport);
+  } catch (err) {
+    console.error('[orchestrator] readiness/record failed', err);
+  }
 
   return finalReport;
 }
