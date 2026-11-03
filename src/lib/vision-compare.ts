@@ -643,6 +643,10 @@ export async function compareImagery(opts: {
     const reqBody = JSON.stringify({
       model: MODEL,
       max_tokens: 1800,
+      // Zero randomness: the same photos must give the same findings every run.
+      // At the default (1.0) one address flipped between "roof unchanged" and
+      // "roof re-covered" from run to run, which moved the readiness score.
+      temperature: 0,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
     });
