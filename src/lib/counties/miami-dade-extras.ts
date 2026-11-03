@@ -39,16 +39,15 @@ export interface SewerInfo {
 }
 
 export interface PermitHealth {
-  open: number;
-  expired: number;
-  finaled: number;
-  other: number;
+  closedOut: number;          // county shows a close-out (certificate of completion or occupancy) date
+  inspectedNoCloseout: number; // inspected but no close-out date on record
+  noInspection: number;       // issued, but no inspection on record
   items: Array<{
     permitNumber: string | null;
     appType: string | null;
     issueDate: string | null;
     status: string | null;
-    bucket: 'open' | 'expired' | 'finaled' | 'other';
+    bucket: 'closedOut' | 'inspected' | 'noInspection';
     ageYears: number | null;
   }>;
 }
@@ -124,13 +123,11 @@ function taxFrom(pa: any): TaxImpact | null {
   };
 }
 
-function bucketOf(status: string | null): 'open' | 'expired' | 'finaled' | 'other' {
+function bucketOf(status: string | null): 'closedOut' | 'inspected' | 'noInspection' {
   const s = (status ?? '').toLowerCase();
-  if (!s) return 'other';
-  if (/expire|void|cancel|withdraw|revok|denied/.test(s)) return 'expired';
-  if (/final|closed|complete|c\.?o\.?\b|certificate of (occupancy|completion)|approved/.test(s)) return 'finaled';
-  if (/open|active|issued|pending|in progress|review|inspection|ready/.test(s)) return 'open';
-  return 'other';
+  if (s.startsWith('closed out')) return 'closedOut';
+  if (s.startsWith('inspected')) return 'inspected';
+  return 'noInspection';
 }
 
 function permitHealthFrom(permits: Permit[]): PermitHealth | null {
@@ -149,10 +146,9 @@ function permitHealthFrom(permits: Permit[]): PermitHealth | null {
   });
   const count = (b: string) => items.filter((i) => i.bucket === b).length;
   return {
-    open: count('open'),
-    expired: count('expired'),
-    finaled: count('finaled'),
-    other: count('other'),
+    closedOut: count('closedOut'),
+    inspectedNoCloseout: count('inspected'),
+    noInspection: count('noInspection'),
     items: items.slice(0, 8),
   };
 }

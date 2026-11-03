@@ -238,3 +238,16 @@ export async function fetchHistoricalAerials(
 
   return { then, now, allFrames, source, failureReason: null };
 }
+
+// Earliest, a middle year, and latest frame that have a tight display crop.
+export function pickDisplayFrames<T extends { captureYear: number; displayImageUrl?: string }>(all: T[]): T[] {
+  const usable = all.filter((f) => f.displayImageUrl);
+  if (usable.length <= 3) return usable;
+  const first = usable[0];
+  const last = usable[usable.length - 1];
+  const mid = (first.captureYear + last.captureYear) / 2;
+  const middle = [...usable.slice(1, -1)].sort(
+    (a, b) => Math.abs(a.captureYear - mid) - Math.abs(b.captureYear - mid),
+  )[0];
+  return [first, middle, last].filter(Boolean) as T[];
+}

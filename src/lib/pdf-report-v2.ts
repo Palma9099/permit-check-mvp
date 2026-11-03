@@ -10,6 +10,7 @@ import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { googleImageFetchHeaders } from './images/keys';
 import type { DiagnosticReport } from './types';
+import { pickDisplayFrames } from './images/historical-aerial';
 import { buildGlance, glanceNextSteps, glanceVerdict } from './glance';
 
 const W = 612;
@@ -67,20 +68,6 @@ function firstSentence(s: unknown, max = 110): string {
 type Ring = Array<[number, number]>; // [lat, lng]
 interface Bbox { lon1: number; lat1: number; lon2: number; lat2: number }
 
-// Re-aim a Planetary Computer NAIP bbox URL at the parcel (tighter, centred).
-function tightNaipUrl(url: string | null | undefined, ring: Ring | null | undefined): { url: string; bbox: Bbox } | null {
-  if (!url || !ring || ring.length < 3) return null;
-  const lats = ring.map((p) => p[0]);
-  const lngs = ring.map((p) => p[1]);
-  const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-  const cLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
-  const halfLat = 0.00042; // about 47 m
-  const halfLng = halfLat / Math.cos((cLat * Math.PI) / 180);
-  const bbox = { lon1: cLng - halfLng, lat1: cLat - halfLat, lon2: cLng + halfLng, lat2: cLat + halfLat };
-  const next = url.replace(/\/bbox\/[^/]+\//, `/bbox/${bbox.lon1},${bbox.lat1},${bbox.lon2},${bbox.lat2}/`);
-  return next === url ? null : { url: next, bbox };
-}
-
 async function fetchImage(url: string | null | undefined, timeoutMs = 25000): Promise<Buffer | null> {
   if (!url) return null;
   const ctrl = new AbortController();
@@ -112,15 +99,13 @@ export async function buildPdfV2(
 
   const th = r.thenVsNow;
   const ring = (th.parcelPolygon as Ring | null) ?? null;
-  const thenTight = tightNaipUrl(th.historicalAerials?.then?.imageUrl, ring);
-  const nowTight = tightNaipUrl(th.historicalAerials?.now?.imageUrl, ring);
-  const [sat, ctxSat, thenImg, nowImg, street, qr] = await Promise.all([
+  const frames = pickDisplayFrames(th.historicalAerials?.allFrames ?? []).slice(0, 3);
+  const [sat, ctxSat, street, qr, ...frameImgs] = await Promise.all([
     fetchImage(th.satelliteImageUrl),
     fetchImage(th.contextSatelliteImageUrl),
-    fetchImage(thenTight?.url ?? th.historicalAerials?.then?.imageUrl),
-    fetchImage(nowTight?.url ?? th.historicalAerials?.now?.imageUrl),
     fetchImage(th.streetViewImages?.[0]?.imageUrl),
     QRCode.toBuffer(liveUrl, { margin: 1, width: 240, color: { dark: '#0f2547', light: '#ffffff' } }),
+    ...frames.map((f) => fetchImage(f.displayImageUrl)),
   ]);
 
   const doc = new PDFDocument({ size: 'LETTER', margin: 0, autoFirstPage: false, bufferPages: true });
@@ -272,21 +257,85 @@ export async function buildPdfV2(
     y2 += text(step, M + 24, y2, { w: CW - 24, size: 12, color: C.ink }) + 12;
   }
 
-  // ===== PAGE 3: IMAGERY ===================================================
+  // ===== PAGE 3: AERIAL TIMELINE ==========================================
   doc.addPage({ size: 'LETTER', margin: 0 });
-  header('Then and now', 'Aerial and street imagery');
+  header('Then and now', 'Aerial timeline');
   const hw = (CW - 14) / 2;
-  const thenYear = th.historicalAerials?.then?.captureYear;
-  const nowYear = th.historicalAerials?.now?.captureYear;
-  const imgH = hw; // square, so the outline maps exactly
-  image(thenImg, M, 122, hw, imgH, `THEN, ${thenYear ?? ''}`);
-  outline(thenTight?.bbox, M, 122, hw, imgH);
-  image(nowImg, M + hw + 14, 122, hw, imgH, `NOW, ${nowYear ?? ''}`);
-  outline(nowTight?.bbox, M + hw + 14, 122, hw, imgH);
-  const y3 = 122 + imgH + 36;
-  image(street, M, y3, hw, 200, 'STREET VIEW TODAY');
-  image(ctxSat, M + hw + 14, y3, hw, 200, 'SUBJECT VS NEIGHBORS');
-  text('Photos are a starting point for questions, not a finding. Confirm with the county.', M, y3 + 222, { w: CW, size: 8.5, color: C.muted });
+  const cells: Array<{ buf: Buffer | null; caption: string; bbox?: Bbox }> = [
+    ...frames.map((f, i) => ({
+      buf: frameImgs[i] ?? null,
+      caption: `${f.captureYear}${f.gsdMeters ? (f.gsdMeters < 1 ? ', about 2 ft per pixel' : ', about 3 ft per pixel') : ''}`,
+      bbox: f.displayBbox,
+    })),
+    { buf: sat, caption: 'TODAY, Google (sharpest available)' },
+  ];
+  cells.slice(0, 4).forEach((c, i) => {
+    const x = M + (i % 2) * (hw + 14);
+    const y = 122 + Math.floor(i / 2) * (hw + 34);
+    image(c.buf, x, y, hw, hw, c.caption.toUpperCase());
+    outline(c.bbox, x, y, hw, hw);
+  });
+  text('Older public aerials are softer than today. They are a starting point for questions, not a record. Confirm with the county.', M, 122 + 2 * (hw + 34) - 6, { w: CW, size: 8.5, color: C.muted });
+
+  // ===== PAGE 4: STREET VIEW + COUNTY FACTS ================================
+  doc.addPage({ size: 'LETTER', margin: 0 });
+  header('Street level, money and safety', 'On the ground');
+  const sv = th.streetViewImages?.[0];
+  const svWhen = sv?.captureDate
+    ? new Date(`${sv.captureDate}-01T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    : null;
+  image(street, M, 122, hw, 170, `STREET VIEW${svWhen ? `, ${svWhen}`.toUpperCase() : ''}`);
+  image(ctxSat, M + hw + 14, 122, hw, 170, 'SUBJECT VS NEIGHBORS');
+  let y4x = 122 + 170 + 38;
+  const xt = r.countyExtras;
+  const money = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+  const cards: Array<{ tone: Tone; label: string; title: string; body: string; note?: string }> = [];
+  if (xt?.tax) {
+    const t = xt.tax;
+    cards.push(
+      t.increase > 0
+        ? { tone: t.increase > t.currentTaxable * 0.1 ? 'amber' : 'green', label: 'Property tax after a sale', title: `+${money(t.increase)} taxable, about ${money(t.estAnnualIncrease)} a year`, body: `Taxes today use ${money(t.currentTaxable)}. The county values the home at ${money(t.marketValue)}. A sale resets the cap.`, note: `Assumes about ${(t.rateAssumed * 100).toFixed(1)}%. Your tax bill sets the exact amount.` }
+        : { tone: 'green', label: 'Property tax after a sale', title: 'Little change expected', body: `Taxed value is already near the county value of ${money(t.marketValue)}.` },
+    );
+  }
+  if (xt?.permitHealth) {
+    const h = xt.permitHealth;
+    cards.push({
+      tone: h.noInspection > 0 ? 'amber' : 'green',
+      label: 'Permit status',
+      title: `${h.closedOut} closed out${h.inspectedNoCloseout ? `, ${h.inspectedNoCloseout} inspected` : ''}${h.noInspection ? `, ${h.noInspection} not inspected` : ''}`,
+      body: h.items.slice(0, 3).map((p) => `${p.appType ?? 'Permit'} ${p.issueDate?.slice(0, 4) ?? ''}: ${p.status}`).join('. '),
+      note: 'Inspected means an approved inspection is logged but no close-out date. Ask the seller for the final paperwork.',
+    });
+  }
+  if (xt?.evacuation) {
+    const e = xt.evacuation;
+    cards.push({
+      tone: 'grey',
+      label: 'Hurricane zone',
+      title: e.zone ? `Evacuation Zone ${e.zone}` : 'No evacuation zone',
+      body: `${e.zone ? `Evacuation is ordered here for Category ${e.category ?? '?'} storms and stronger. ` : ''}Miami-Dade is a High-Velocity Hurricane Zone: roofs, windows and doors need Miami-Dade product approval.`,
+    });
+  }
+  if (xt?.sewer) {
+    const w = xt.sewer;
+    cards.push({
+      tone: w.septicOrWellFlag || !w.inServiceArea ? 'amber' : 'green',
+      label: 'Sewer or septic',
+      title: w.septicOrWellFlag ? 'Possibly septic or well' : w.inServiceArea ? 'County sewer area' : 'Outside county sewer',
+      body: w.summary,
+    });
+  }
+  for (let i = 0; i < cards.length; i += 2) {
+    const pair = cards.slice(i, i + 2);
+    let rowH = 0;
+    pair.forEach((c, k) => {
+      const h = toneCard(M + k * (hw + 14), y4x, hw, c.tone, c.label, c.title, c.body, c.note);
+      rowH = Math.max(rowH, h);
+    });
+    y4x += rowH + 12;
+  }
+  if (!cards.length) text('County tax, permit status, hurricane zone and sewer details are available for Miami-Dade properties.', M, y4x, { w: CW, size: 10, color: C.muted });
 
   // ===== PAGE 4: NEGOTIATE + FACTS =========================================
   doc.addPage({ size: 'LETTER', margin: 0 });
@@ -325,6 +374,7 @@ export async function buildPdfV2(
     ['Beds / baths', `${p.bedrooms ?? '-'} / ${p.bathrooms ?? '-'}`],
     ['Last sale', r.sales.length ? `$${(r.sales[r.sales.length - 1].price || 0).toLocaleString('en-US')}` : '-'],
     ['Folio', clean(p.folio)],
+    ...(xt?.replacementCostNew ? ([['Rebuild cost (county)', money(xt.replacementCostNew)]] as Array<[string, string]>) : []),
   ];
   facts.forEach((f, i) => {
     const x = M + (i % 3) * (bw + 12);
@@ -332,7 +382,7 @@ export async function buildPdfV2(
     text(f[0].toUpperCase(), x, y, { w: bw, size: 7, font: 'Helvetica-Bold', color: C.muted, spacing: 0.8 });
     text(f[1], x, y + 12, { w: bw, size: 12, font: 'Helvetica-Bold', color: C.ink });
   });
-  y4 += 2 * 42 + 14;
+  y4 += Math.ceil(facts.length / 3) * 42 + 14;
   y4 = sectionTitle('Where this came from', y4);
   y4 += text(
     'County property appraiser, county permit and code records, FEMA flood map, USDA aerial photos (2010, 2022) and Google imagery. Records are digital only. Older paper permits may not appear.',

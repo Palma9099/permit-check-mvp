@@ -3,6 +3,8 @@
 import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 import LeadCapture from './LeadCapture';
 import AtAGlance from './AtAGlance';
+import AerialTimeline from './AerialTimeline';
+import CountyExtrasSection from './CountyExtrasSection';
 
 // Translate internal/developer failure strings (e.g. "ANTHROPIC_API_KEY not
 // set", "HTTP 502: ...", "json parse failed", "timeout after 12000ms") into
@@ -423,6 +425,8 @@ export default function Report({ report }: { report: DiagnosticReport }) {
           </section>
         )}
 
+        <CountyExtrasSection report={r} />
+
         {/* Milestone / recertification exposure */}
         {r.recert && (
           <section>
@@ -507,52 +511,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
                 Google Static Maps at zoom 20 is sub-meter and crisp. The AI
                 still receives both NAIP frames internally for like-for-like
                 change detection - this is just for the human reader. */}
-            {r.thenVsNow.historicalAerials?.then && r.thenVsNow.satelliteImageUrl && (
-              <div className="mt-5">
-                <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
-                  Then vs Now - aerial comparison
-                </div>
-                <div className="mb-3 rounded-md border border-[#1f3864]/15 bg-[#1f3864]/5 px-3 py-2 text-xs text-ink-soft">
-                  <span className="font-semibold text-ink">Timeline view.</span>{' '}
-                  Historical aerials compared against current imagery for visual
-                  context - a starting point for questions, not an official record.
-                  Confirm anything notable with the county.
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
-                      Then · {r.thenVsNow.historicalAerials.then.captureDate.slice(0, 10)} · USDA NAIP
-                    </div>
-                    <img
-                      src={r.thenVsNow.historicalAerials.then.imageUrl}
-                      alt={`Historical NAIP aerial, ${r.thenVsNow.historicalAerials.then.captureYear}`}
-                      className="w-full rounded-md border border-black/10"
-                      loading="lazy"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">
-                      Now · current · Google satellite
-                    </div>
-                    <img
-                      src={r.thenVsNow.satelliteImageUrl}
-                      alt="Current Google satellite view"
-                      className="w-full rounded-md border border-black/10"
-                      loading="lazy"
-                    />
-                  </div>
-                </div>
-                {r.thenVsNow.historicalAerials.allFrames.length > 2 && (
-                  <p className="text-[11px] text-ink-muted mt-2">
-                    {r.thenVsNow.historicalAerials.allFrames.length} total NAIP captures
-                    available for this parcel ({r.thenVsNow.historicalAerials.allFrames[0].captureYear}
-                    {' '}through{' '}
-                    {r.thenVsNow.historicalAerials.allFrames[r.thenVsNow.historicalAerials.allFrames.length - 1].captureYear}
-                    ). The AI compared the earliest NAIP against the latest plus current Google imagery.
-                  </p>
-                )}
-              </div>
-            )}
+            <AerialTimeline report={r} />
             {r.thenVsNow.historicalAerials && !r.thenVsNow.historicalAerials.then && r.thenVsNow.historicalAerials.failureReason && (
               <p className="text-xs text-ink-muted italic mt-3">
                 {friendlyFailure(r.thenVsNow.historicalAerials.failureReason, 'aerial')}
