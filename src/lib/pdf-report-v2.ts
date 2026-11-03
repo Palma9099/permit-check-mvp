@@ -14,6 +14,7 @@ import { pickDisplayFrames } from './images/historical-aerial';
 import { computeReadiness } from './readiness';
 import { buildFixIts, buildInsurancePacket } from './fix-it';
 import { SITE_ORIGIN } from './record-token';
+import { PERSONAS, personaCopy, type Persona } from './persona';
 import { buildGlance, glanceNextSteps, glanceVerdict } from './glance';
 
 const W = 612;
@@ -88,9 +89,11 @@ async function fetchImage(url: string | null | undefined, timeoutMs = 25000): Pr
 
 export async function buildPdfV2(
   r: DiagnosticReport,
-  opts: { liveUrl?: string; phone?: string } = {},
+  opts: { liveUrl?: string; phone?: string; role?: Persona | null } = {},
 ): Promise<Buffer> {
   const phone = opts.phone ?? '305-393-0690';
+  const role = opts.role ?? null;
+  const pc = personaCopy(role);
   const siteAddr = clean(r.property.siteAddress ?? r.query.address);
   const [streetPart, ...restParts] = siteAddr.split(',');
   const cityLine = restParts.join(',').trim();
@@ -215,7 +218,7 @@ export async function buildPdfV2(
   const tH = text(streetPart, M, 168, { size: 40, font: 'Times-Bold', color: C.white, gap: 0 });
   text(cityLine, M, 168 + tH + 4, { size: 14, color: '#c8d5ee' });
   const metaY = 168 + tH + 34;
-  text(`Folio ${r.property.folio ?? '-'}   |   ${clean(r.county.name)}   |   ${reportDate}`, M, metaY, { size: 9, color: '#9fb3d6' });
+  text(`Folio ${r.property.folio ?? '-'}   |   ${clean(r.county.name)}   |   ${reportDate}${role && role !== 'other' ? `   |   Prepared for: ${PERSONAS[role].short}` : ''}`, M, metaY, { size: 9, color: '#9fb3d6' });
   // Hero image
   const heroY = metaY + 30;
   const heroH = 330;
@@ -257,10 +260,10 @@ export async function buildPdfV2(
   });
   let y2 = 122 + 2 * (bh + 12) + 10;
   doc.roundedRect(M, y2, CW, 64, 10).fill(C.navy);
-  text(glanceVerdict(badges), M + 22, y2 + 20, { w: CW - 44, size: 19, font: 'Times-Bold', color: C.white });
+  text(glanceVerdict(badges, role), M + 22, y2 + 20, { w: CW - 44, size: 19, font: 'Times-Bold', color: C.white });
   y2 += 64 + 26;
   y2 = sectionTitle('Do this next', y2);
-  for (const step of glanceNextSteps(badges)) {
+  for (const step of glanceNextSteps(badges, role, r)) {
     doc.roundedRect(M, y2 + 1, 12, 12, 3).lineWidth(1.2).stroke(C.gold);
     y2 += text(step, M + 24, y2, { w: CW - 24, size: 12, color: C.ink }) + 12;
   }
@@ -269,7 +272,7 @@ export async function buildPdfV2(
   const rd = r.readiness ?? computeReadiness(r);
   const RINGC: Record<string, string> = { ready: '#059669', 'fix-first': '#d97706', hard: '#ea580c', 'high-risk': '#b91c1c' };
   doc.addPage({ size: 'LETTER', margin: 0 });
-  header('Closing readiness', 'Can it close and be insured?');
+  header(pc.readinessTitle, pc.readinessAsk);
   {
     const cx = M + 52;
     const cy = 190;
@@ -303,7 +306,7 @@ export async function buildPdfV2(
     yr += 40;
   }
   yr += 6;
-  yr = sectionTitle('Insurance packet', yr);
+  yr = sectionTitle(pc.packetTitle, yr);
   for (const pk of buildInsurancePacket(r, rd).slice(0, 5)) {
     const tone: Tone = pk.status === 'needed' ? 'red' : pk.status === 'recommended' ? 'amber' : 'green';
     pill(pk.status === 'ok' ? 'have' : pk.status, M, yr - 1, tone);
@@ -316,7 +319,7 @@ export async function buildPdfV2(
   const fixes = buildFixIts(r, rd);
   if (fixes.length) {
     doc.addPage({ size: 'LETTER', margin: 0 });
-    header('Fix it', 'A real route for each problem');
+    header(pc.fixTitle, 'A real route for each problem');
     let yf = 124;
     const fw = (CW - 14) / 2;
     for (let i = 0; i < fixes.length; i += 2) {
@@ -429,8 +432,12 @@ export async function buildPdfV2(
 
   // ===== PAGE 4: NEGOTIATE + FACTS =========================================
   doc.addPage({ size: 'LETTER', margin: 0 });
-  header('Use it in the deal', 'Negotiate');
+  header(pc.dealPageTitle, pc.dealPageKicker);
   const colW = (CW - 18) / 2;
+  const glanceFixes = buildFixIts(r, r.readiness ?? computeReadiness(r)).map((f) => f.title);
+  const packetNames = buildInsurancePacket(r, r.readiness ?? computeReadiness(r))
+    .filter((p) => p.status !== 'ok')
+    .map((p) => p.item);
   const asks: string[] = [];
   if (badges[1].tone === 'red') asks.push('How old is the roof? Is there a permit?');
   if (badges[0].tone === 'amber') asks.push('Were any repairs or additions permitted?');
@@ -441,6 +448,10 @@ export async function buildPdfV2(
     'Permit and records contingency.',
     'Budget for sealed engineering if work is flagged.',
   ];
+  const leftTitle = role === 'seller' ? 'Fix before you list' : role === 'owner' ? 'Look after' : role === 'pro' ? 'Questions for the seller' : 'Ask the seller';
+  const leftItems = role === 'seller' || role === 'owner' ? (glanceFixes.length ? glanceFixes : ['Nothing urgent found in the records.']) : asks;
+  const rightTitle = role === 'seller' ? 'Have ready for buyers' : role === 'owner' ? 'Papers to keep' : role === 'pro' ? 'Terms to put in the offer' : 'Put in the offer';
+  const rightItems = role === 'seller' || role === 'owner' ? (packetNames.length ? packetNames : ['Permit finals and inspection reports.']) : offers;
   const col = (title: string, items: string[], x: number, y: number) => {
     let cy = y;
     doc.roundedRect(x, y, colW, 154, 8).fill(C.paper);
@@ -451,8 +462,8 @@ export async function buildPdfV2(
       cy += text(it, x + 28, cy, { w: colW - 42, size: 10.5, color: C.ink }) + 8;
     }
   };
-  col('Ask the seller', asks, M, 122);
-  col('Put in the offer', offers, M + colW + 18, 122);
+  col(leftTitle, leftItems, M, 122);
+  col(rightTitle, rightItems, M + colW + 18, 122);
 
   let y4 = 122 + 154 + 28;
   y4 = sectionTitle('The property', y4);

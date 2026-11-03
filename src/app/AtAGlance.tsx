@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DiagnosticReport } from '@/lib/types';
 import { buildGlance, glanceNextSteps, glanceVerdict, type Tone } from '@/lib/glance';
+import { personaCopy, type Persona } from '@/lib/persona';
 
 const TONE: Record<Tone, { bar: string; text: string; ring: string }> = {
   red: { bar: 'bg-red-600', text: 'text-red-700', ring: 'ring-red-200' },
@@ -13,8 +14,9 @@ const TONE: Record<Tone, { bar: string; text: string; ring: string }> = {
 
 // Scorecard with an "i" on every metric. The popup opens on hover or keyboard
 // focus (desktop) and on tap (phones), and closes on Esc or an outside click.
-export default function AtAGlance({ report }: { report: DiagnosticReport }) {
+export default function AtAGlance({ report, role = null }: { report: DiagnosticReport; role?: Persona | null }) {
   const items = buildGlance(report);
+  const copy = personaCopy(role);
   const [open, setOpen] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
 
@@ -75,10 +77,15 @@ export default function AtAGlance({ report }: { report: DiagnosticReport }) {
                 >
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-1">What it is</div>
                   <p className="!text-sm !leading-snug !mb-3">{b.info.what}</p>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1f3864] mb-1">If you are buying</div>
-                  <p className="!text-sm !leading-snug !mb-3">{b.info.buyer}</p>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1f3864] mb-1">If you own it</div>
-                  <p className="!text-sm !leading-snug !mb-0">{b.info.owner}</p>
+                  {(copy.tipFirst === 'owner' ? (['owner', 'buyer'] as const) : (['buyer', 'owner'] as const)).map((k, idx) => (
+                    <div key={k}>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1f3864] mb-1">
+                        {copy.tipLabels[k]}
+                        {idx === 0 && role ? <span className="ml-1 rounded bg-[#1f3864] px-1 py-px text-[9px] text-white">for you</span> : null}
+                      </div>
+                      <p className={`!text-sm !leading-snug ${idx === 0 ? '!mb-3' : '!mb-0'}`}>{b.info[k]}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -87,10 +94,10 @@ export default function AtAGlance({ report }: { report: DiagnosticReport }) {
       </div>
 
       <div className="mt-4 rounded-lg bg-[#102447] px-5 py-4 text-white">
-        <div className="font-serif text-xl font-semibold">{glanceVerdict(items)}</div>
+        <div className="font-serif text-xl font-semibold">{glanceVerdict(items, role)}</div>
       </div>
       <ul className="mt-4 !list-none !ml-0 space-y-2">
-        {glanceNextSteps(items).map((s) => (
+        {glanceNextSteps(items, role, report).map((s) => (
           <li key={s} className="flex items-start gap-3 !mb-0">
             <span aria-hidden className="mt-1 h-3.5 w-3.5 shrink-0 rounded-[3px] border-2 border-[#b8893b]" />
             <span className="text-[15px] text-ink">{s}</span>

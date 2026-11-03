@@ -3,6 +3,7 @@
 // explanation: what it is, what it means for a buyer, and for an owner.
 
 import type { DiagnosticReport } from './types';
+import type { Persona } from './persona';
 
 export type Tone = 'red' | 'amber' | 'green' | 'grey';
 
@@ -148,17 +149,52 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
   return [permits, roof, flood, recert, code, aerial];
 }
 
-export function glanceVerdict(items: GlanceItem[]): string {
+export function glanceVerdict(items: GlanceItem[], role: Persona | null = null): string {
   const k = items.filter((b) => b.tone === 'red' || b.tone === 'amber').length;
-  return k ? `${k} thing${k > 1 ? 's' : ''} to check before you make an offer.` : 'Nothing alarming in county records.';
+  const n = `${k} thing${k > 1 ? 's' : ''}`;
+  switch (role) {
+    case 'seller':
+      return k ? `${n} a buyer will find. Fix ${k > 1 ? 'them' : 'it'} before you list.` : 'Nothing alarming for a buyer to find in county records.';
+    case 'owner':
+      return k ? `${n} to look after.` : 'Your home looks in good standing in county records.';
+    case 'pro':
+      return k ? `${n} to flag for your client.` : 'Nothing alarming in county records for your client.';
+    case 'other':
+    case null:
+      return k ? `${n} worth checking.` : 'Nothing alarming in county records.';
+    default:
+      return k ? `${n} to check before you make an offer.` : 'Nothing alarming in county records.';
+  }
 }
 
-export function glanceNextSteps(items: GlanceItem[]): string[] {
+export function glanceNextSteps(items: GlanceItem[], role: Persona | null = null, r?: DiagnosticReport): string[] {
   const by = Object.fromEntries(items.map((i) => [i.key, i])) as Record<GlanceItem['key'], GlanceItem>;
   const out: string[] = [];
-  if (by.permits.tone === 'amber') out.push('Pull the certified permit file from the county, by address.');
-  if (by.roof.tone === 'red') out.push('Order a roof, 4-point and wind-mitigation inspection.');
-  if (by.aerial.tone === 'amber') out.push('Ask the seller about the changes seen from the air.');
-  out.push('Get an insurance quote before your contingency ends.');
-  return out.slice(0, 4);
+  const noHomestead = !!r && (r.property.homesteadPercent ?? 0) === 0 && /no homestead/i.test(r.property.homesteadStatusText ?? '');
+
+  if (role === 'seller') {
+    if (by.permits.tone === 'amber') out.push('Pull your permit file and close any gaps before you list.');
+    if (by.roof.tone === 'red') out.push('Get a roof, 4-point and wind-mitigation inspection before you list.');
+    if (by.aerial.tone === 'amber') out.push('Be ready to explain changes visible from the air, and permit them if needed.');
+    if (by.code.tone === 'red') out.push('Close open code cases so they do not reach the buyer.');
+    out.push('Send buyers the dated property record up front to build trust.');
+  } else if (role === 'owner') {
+    if (by.roof.tone === 'red' || by.roof.tone === 'amber') out.push('Get a wind-mitigation inspection. It can cut your insurance premium.');
+    if (by.permits.tone === 'amber') out.push('Close permit gaps now so they never surprise you at a sale or a claim.');
+    if (by.flood.tone === 'red') out.push('Get an elevation certificate to lower your flood premium.');
+    if (by.code.tone === 'red') out.push('Resolve the open code case before fines grow.');
+    if (noHomestead) out.push('If this is your primary home and you have no homestead exemption, apply with the county property appraiser (deadline March 1).');
+    out.push('Keep the dated property record with your insurance and closing papers.');
+  } else if (role === 'pro') {
+    if (by.permits.tone === 'amber') out.push('Request the certified permit file from the county, by address.');
+    if (by.roof.tone === 'red') out.push('Order roof, 4-point and wind-mitigation inspections for your client.');
+    if (by.aerial.tone === 'amber') out.push('Flag the aerial changes to your client and confirm with the county.');
+    out.push('Send your client the dated property record and the fix quotes.');
+  } else {
+    if (by.permits.tone === 'amber') out.push('Pull the certified permit file from the county, by address.');
+    if (by.roof.tone === 'red') out.push('Order a roof, 4-point and wind-mitigation inspection.');
+    if (by.aerial.tone === 'amber') out.push('Ask the seller about the changes seen from the air.');
+    out.push('Get an insurance quote before your contingency ends.');
+  }
+  return out.slice(0, 5);
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { PERSONAS, PERSONA_ORDER, parsePersona, type Persona } from '@/lib/persona';
 import { ClipboardCheckIcon, HomeSearchIcon, IconTile, KeyIcon } from './icons';
 import { useState, useEffect, useRef } from 'react';
 import type { DiagnosticReport, UserUploadedThen } from '@/lib/types';
@@ -60,6 +61,39 @@ export default function HomePage() {
   const [showSuggest, setShowSuggest] = useState(false);
   const suppressNextSuggest = useRef(false);
 
+  // Who is asking? The report re-words itself around the answer. Remembered on
+  // this device and settable from the link (?role=owner), so a realtor can send
+  // a client a link that opens already tailored.
+  const [role, setRoleState] = useState<Persona | null>(null);
+  const [roleError, setRoleError] = useState(false);
+  function setRole(p: Persona) {
+    setRoleState(p);
+    setRoleError(false);
+    try {
+      window.localStorage.setItem('palma_role', p);
+    } catch {
+      /* private mode: fine, it just will not be remembered */
+    }
+  }
+  useEffect(() => {
+    let fromUrl: Persona | null = null;
+    try {
+      fromUrl = parsePersona(new URLSearchParams(window.location.search).get('role'));
+    } catch {
+      /* ignore */
+    }
+    if (fromUrl) {
+      setRoleState(fromUrl);
+      return;
+    }
+    try {
+      const saved = parsePersona(window.localStorage.getItem('palma_role'));
+      if (saved) setRoleState(saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   // Prefill + auto-run from ?address= / ?folio= query params. This is how the
   // palma.llc homepage and location pages hand a typed address off to the tool
   // (window.open(".../?address=..."). Without this the field lands blank.
@@ -85,11 +119,17 @@ export default function HomePage() {
   useEffect(() => {
     if (!pendingAutoRun) return;
     if (!address.trim() && !folio.trim()) return;
+    if (!role) {
+      // Handed off from another page with no role: use the neutral view. The
+      // reader can switch with "Viewing as" on the report.
+      setRoleState('other');
+      return;
+    }
     setPendingAutoRun(false);
     // Fire the same check the button triggers (no event needed).
     onSubmit({ preventDefault() {} } as unknown as React.FormEvent);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingAutoRun, address, folio]);
+  }, [pendingAutoRun, address, folio, role]);
 
   useEffect(() => {
     if (suppressNextSuggest.current) {
@@ -214,6 +254,11 @@ export default function HomePage() {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!role) {
+      setRoleError(true);
+      document.getElementById('role-question')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     setError(null);
     setReport(null);
     setLoading(true);
@@ -285,7 +330,7 @@ export default function HomePage() {
       const res = await fetch('/api/check/pdf', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(report),
+        body: JSON.stringify({ ...report, role }),
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
@@ -332,11 +377,26 @@ export default function HomePage() {
               Palma Property Intelligence
             </div>
             <h1 className="font-serif text-4xl sm:text-5xl font-semibold leading-tight">
-              Check a Florida home&apos;s records before you buy.
+              {role === 'owner'
+                ? "See where your Florida home stands."
+                : role === 'seller'
+                ? "See what a buyer will find, before you list."
+                : role === 'pro'
+                ? "Check a Florida home's records for your client."
+                : role === 'buyer'
+                ? "Check a Florida home's records before you buy."
+                : "Check a Florida home's records."}
             </h1>
             <p className="mt-4 max-w-2xl text-base sm:text-lg text-white/80">
-              A plain-English look at county permit records and aerial photos, so you
-              know what to ask before you make an offer.
+              {role === 'owner'
+                ? 'A plain-English look at your permits, roof, flood zone and county standing, and what to fix first.'
+                : role === 'seller'
+                ? 'Find the gaps buyers and insurers will find, and fix them before they cost you the sale.'
+                : role === 'pro'
+                ? 'A client-ready records check with fix quotes and a record you can send.'
+                : role === 'buyer'
+                ? 'A plain-English look at county permit records and aerial photos, so you know what to ask before you make an offer.'
+                : 'A plain-English look at county permit records and aerial photos. Tell us your situation and we tailor what it means for you.'}
             </p>
             <ul className="mt-6 flex flex-wrap gap-2 text-xs">
               {['Permits', 'Roof and insurance', 'Flood zone', 'Recertification', 'Code cases', 'Aerial photos'].map((label) => (
@@ -393,6 +453,32 @@ export default function HomePage() {
       {showForm && (
       <section className={`bg-card shadow-card rounded-xl p-6 sm:p-8 border border-black/5 ${!report ? 'relative z-10 -mt-10 mx-3 sm:mx-6' : ''}`}>
         <form onSubmit={onSubmit} className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+          <fieldset id="role-question" className="sm:col-span-5">
+            <legend className="block text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+              What is your situation with this property?
+            </legend>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Your situation">
+              {PERSONA_ORDER.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  role="radio"
+                  aria-checked={role === p}
+                  onClick={() => setRole(p)}
+                  className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                    role === p
+                      ? 'border-[#1f3864] bg-[#1f3864] text-white shadow-sm'
+                      : 'border-black/15 bg-white text-ink hover:bg-black/5'
+                  }`}
+                >
+                  {PERSONAS[p].label}
+                </button>
+              ))}
+            </div>
+            <p className={`mt-2 text-xs ${roleError ? 'font-semibold text-red-700' : 'text-ink-muted'}`}>
+              {roleError ? 'Pick one so we can tailor your report.' : role ? PERSONAS[role].hint : 'Your answer changes what the report tells you to do.'}
+            </p>
+          </fieldset>
           <div className="sm:col-span-3 relative">
             <label className="block text-xs font-semibold uppercase tracking-wider text-ink-muted mb-1">
               Address
@@ -618,7 +704,7 @@ export default function HomePage() {
 
       {report && (
         <div className="mt-8">
-          <Report report={report} />
+          <Report report={report} role={role} onRoleChange={setRole} />
         </div>
       )}
 

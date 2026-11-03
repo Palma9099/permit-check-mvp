@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { buildPdf } from '@/lib/pdf-report';
 import { buildPdfV2 } from '@/lib/pdf-report-v2';
+import { parsePersona } from '@/lib/persona';
 import { runDiagnostic } from '@/lib/orchestrator';
 import type { DiagnosticReport } from '@/lib/types';
 
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
     // download never fails because of the new layout.
     let buf: Buffer;
     try {
-      buf = await buildPdfV2(report);
+      buf = await buildPdfV2(report, { role: parsePersona((body as { role?: unknown }).role) });
     } catch (err) {
       console.error('[pdf] v2 failed, falling back to v1', err);
       buf = await buildPdf(report);

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { DiagnosticReport } from '@/lib/types';
 import { computeReadiness, type Tone } from '@/lib/readiness';
 import { buildFixIts, buildInsurancePacket } from '@/lib/fix-it';
+import { bandSummaryFor, personaCopy, type Persona } from '@/lib/persona';
 
 const BAR: Record<Tone, string> = { red: 'bg-red-600', amber: 'bg-amber-500', green: 'bg-emerald-600', grey: 'bg-slate-400' };
 const TXT: Record<Tone, string> = { red: 'text-red-700', amber: 'text-amber-700', green: 'text-emerald-700', grey: 'text-slate-600' };
@@ -38,7 +39,8 @@ function ScoreRing({ score, color }: { score: number; color: string }) {
   );
 }
 
-export default function ReadinessAndFixIt({ report }: { report: DiagnosticReport }) {
+export default function ReadinessAndFixIt({ report, role = null }: { report: DiagnosticReport; role?: Persona | null }) {
+  const copy = personaCopy(role);
   const rd = report.readiness ?? computeReadiness(report);
   const fixes = buildFixIts(report, rd);
   const packet = buildInsurancePacket(report, rd);
@@ -60,15 +62,15 @@ export default function ReadinessAndFixIt({ report }: { report: DiagnosticReport
   return (
     <>
       <section>
-        <h2>Closing readiness</h2>
+        <h2>{copy.readinessTitle}</h2>
         <div className="mt-3 rounded-xl border border-black/10 bg-white p-5">
           <div className="flex flex-wrap items-center gap-5">
             <ScoreRing score={rd.score} color={RING[rd.band]} />
             <div className="min-w-[14rem] flex-1">
               <div className="font-serif text-2xl font-semibold text-ink">{rd.bandLabel}</div>
-              <p className="!text-sm !leading-snug !mb-1 mt-1">{rd.bandSummary}</p>
+              <p className="!text-sm !leading-snug !mb-1 mt-1">{bandSummaryFor(role, rd)}</p>
               <p className="!text-xs !text-ink-muted !mb-0">
-                A records-based indicator of closing and insurance risk. It is not an insurer&apos;s or lender&apos;s decision.
+                {copy.readinessAsk} A records-based indicator, not an insurer&apos;s or lender&apos;s decision.
               </p>
             </div>
           </div>
@@ -103,10 +105,8 @@ export default function ReadinessAndFixIt({ report }: { report: DiagnosticReport
 
       {fixes.length > 0 && (
         <section>
-          <h2>Fix it</h2>
-          <p className="!text-sm !text-ink-soft !mb-0">
-            Each problem above has a real route to closing it. Tap a card for the steps and a fixed quote.
-          </p>
+          <h2>{copy.fixTitle}</h2>
+          <p className="!text-sm !text-ink-soft !mb-0">{copy.fixIntro}</p>
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             {fixes.map((f) => (
               <div key={f.key} className="relative overflow-hidden rounded-lg border border-black/10 bg-white p-4 pl-5">
@@ -128,7 +128,7 @@ export default function ReadinessAndFixIt({ report }: { report: DiagnosticReport
                   onClick={() => requestQuote(f.quoteTopic)}
                   className="mt-3 rounded-md bg-[#1f3864] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#102447]"
                 >
-                  Get a fixed quote
+                  {copy.fixButton}
                 </button>
               </div>
             ))}
@@ -137,8 +137,8 @@ export default function ReadinessAndFixIt({ report }: { report: DiagnosticReport
       )}
 
       <section>
-        <h2>Insurance packet</h2>
-        <p className="!text-sm !text-ink-soft !mb-0">The papers an insurance agent or lender will ask for, so nothing surprises you near closing.</p>
+        <h2>{copy.packetTitle}</h2>
+        <p className="!text-sm !text-ink-soft !mb-0">{copy.packetIntro}</p>
         <ul className="!list-none !ml-0 mt-3 divide-y divide-black/5 rounded-lg border border-black/10 bg-white">
           {packet.map((p) => (
             <li key={p.item} className="!mb-0 flex items-start gap-3 px-4 py-3">
@@ -165,11 +165,9 @@ export default function ReadinessAndFixIt({ report }: { report: DiagnosticReport
 
       {rec && (
         <section>
-          <h2>Share this record</h2>
+          <h2>{copy.shareTitle}</h2>
           <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-black/10 bg-white p-4">
-            <p className="!text-sm !mb-0 min-w-[14rem] flex-1">
-              A dated, shareable summary of this property&apos;s records check. It is valid for 30 days. Send it to your agent, lender or buyer.
-            </p>
+            <p className="!text-sm !mb-0 min-w-[14rem] flex-1">{copy.shareIntro}</p>
             <button type="button" onClick={copyLink} className="rounded-md border border-ink px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
               {copied ? 'Link copied' : 'Copy link'}
             </button>

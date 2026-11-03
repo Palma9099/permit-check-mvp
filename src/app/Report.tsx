@@ -4,6 +4,8 @@ import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 import LeadCapture from './LeadCapture';
 import AtAGlance from './AtAGlance';
 import ReadinessAndFixIt from './ReadinessAndFixIt';
+import { PERSONAS, PERSONA_ORDER, insuranceTips, personaCopy, takeaways, type Persona } from '@/lib/persona';
+import { buildGlance, glanceNextSteps } from '@/lib/glance';
 import AerialTimeline from './AerialTimeline';
 import CountyExtrasSection from './CountyExtrasSection';
 
@@ -119,7 +121,9 @@ function ObservationCard({ obs }: { obs: VisionObservation }) {
   );
 }
 
-function InsuranceCard({ ins }: { ins: DiagnosticReport['insurance'] }) {
+function InsuranceCard({ ins, role }: { ins: DiagnosticReport['insurance']; role?: Persona | null }) {
+  const tips = insuranceTips(role);
+  const recs = tips ?? ins.recommendations;
   const cls =
     ins.band === 'newer'
       ? 'border-green-300 bg-green-50'
@@ -158,9 +162,9 @@ function InsuranceCard({ ins }: { ins: DiagnosticReport['insurance'] }) {
       <p className="text-sm text-ink-soft leading-relaxed">{ins.roofBasis}</p>
       <p className="text-sm text-ink-soft leading-relaxed mt-1">{ins.insurabilityNote}</p>
       <p className="text-sm text-ink-soft leading-relaxed mt-1">{ins.windMitNote}</p>
-      {ins.recommendations.length > 0 && (
+      {recs.length > 0 && (
         <ul className="mt-2">
-          {ins.recommendations.map((rec, i) => (
+          {recs.map((rec, i) => (
             <li key={i} className="text-sm text-ink-soft leading-relaxed">
               {rec}
             </li>
@@ -289,7 +293,16 @@ function FloodCard({ flood }: { flood: DiagnosticReport['flood'] }) {
   );
 }
 
-export default function Report({ report }: { report: DiagnosticReport }) {
+export default function Report({
+  report,
+  role = null,
+  onRoleChange,
+}: {
+  report: DiagnosticReport;
+  role?: Persona | null;
+  onRoleChange?: (p: Persona) => void;
+}) {
+  const pc = personaCopy(role);
   const r = report;
   const vc = r.thenVsNow?.visualComparison;
   // The geocoder prepends this line when the address match is uncertain. Pull it
@@ -385,9 +398,43 @@ export default function Report({ report }: { report: DiagnosticReport }) {
       </div>
 
       <div className="px-6 sm:px-10 py-8 prose-section">
-        <AtAGlance report={r} />
+        {/* Who is reading? Switching re-words the whole report instantly. */}
+        <div className="mb-6 flex flex-wrap items-center gap-2" role="group" aria-label="Viewing as">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Viewing as</span>
+          {PERSONA_ORDER.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onRoleChange?.(p)}
+              aria-pressed={role === p}
+              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                role === p ? 'border-[#1f3864] bg-[#1f3864] text-white' : 'border-black/15 bg-white text-ink hover:bg-black/5'
+              }`}
+            >
+              {PERSONAS[p].short}
+            </button>
+          ))}
+        </div>
 
-        <ReadinessAndFixIt report={r} />
+        {role && (
+          <section>
+            <div className="rounded-xl border border-[#1f3864]/20 bg-[#1f3864]/[0.04] p-5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1f3864]">{pc.forYouTitle}</div>
+              <ul className="!list-none !ml-0 mt-2 space-y-2">
+                {takeaways(role, r).map((t) => (
+                  <li key={t} className="!mb-0 flex gap-2 text-[15px] leading-snug text-ink">
+                    <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#b8893b]" />
+                    <span>{t}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        )}
+
+        <AtAGlance report={r} role={role} />
+
+        <ReadinessAndFixIt report={r} role={role} />
 
         {/* Top flags */}
         {(r.flags.strong.length > 0 || r.flags.medium.length > 0) && (
@@ -412,7 +459,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               In Florida, roof age and wind mitigation decide whether a home can be
               insured and at what price. Here is where this one stands on the records.
             </p>
-            <InsuranceCard ins={r.insurance} />
+            <InsuranceCard ins={r.insurance} role={role} />
           </section>
         )}
 
@@ -444,7 +491,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
         )}
 
         {/* What this means & how to negotiate */}
-        {r.negotiation && r.negotiation.items.length > 0 && (
+        {pc.showNegotiation && r.negotiation && r.negotiation.items.length > 0 && (
           <section>
             <h2>What this means &amp; how to negotiate</h2>
             <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
@@ -1032,7 +1079,10 @@ export default function Report({ report }: { report: DiagnosticReport }) {
         <section>
           <h2>Next steps</h2>
           <ul>
-            {r.nextSteps.map((n, i) => (
+            {(role === 'owner' || role === 'seller' || role === 'pro'
+              ? glanceNextSteps(buildGlance(r), role, r)
+              : r.nextSteps
+            ).map((n, i) => (
               <li key={i}>{n}</li>
             ))}
           </ul>
@@ -1047,6 +1097,7 @@ export default function Report({ report }: { report: DiagnosticReport }) {
               `${r.flags.strong.length} strong / ${r.flags.medium.length} medium flag(s)`,
               `${r.codeEnforcement.openCount} open code case(s)`,
               `${r.permitHistory.totalSubjectPermits} permit(s) on file`,
+              role ? `Role: ${PERSONAS[role].short}` : '',
               r.readiness ? `Closing readiness ${r.readiness.score}/100 (${r.readiness.bandLabel})` : '',
               r.property.folio ? `Folio ${r.property.folio}` : '',
             ]
