@@ -65,8 +65,25 @@ export function buildGoogleSatelliteUrl(opts: SatelliteUrlOpts): string | null {
 
 // Two convenience builders the caller can use directly — tight subject view
 // and wider block-context view — both with the polygon overlay baked in.
+// Zoom 21 is the sharpest Google serves (roof tiles, vents, skylights are
+// legible). Choose the closest zoom that still keeps the whole parcel in frame:
+// the 640px frame at scale 2 spans about 64 m at zoom 21, 128 m at 20, 256 m at 19.
+export function subjectZoomFor(polygon?: ParcelRing | null): number {
+  if (!polygon || polygon.length < 3) return 20;
+  const lats = polygon.map((p) => p[0]);
+  const lngs = polygon.map((p) => p[1]);
+  const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const spanM = Math.max(
+    (Math.max(...lats) - Math.min(...lats)) * 111000,
+    (Math.max(...lngs) - Math.min(...lngs)) * 111000 * Math.cos((midLat * Math.PI) / 180),
+  );
+  if (spanM <= 52) return 21;
+  if (spanM <= 105) return 20;
+  return 19;
+}
+
 export function buildSubjectSatelliteUrl(lat: number, lng: number, polygon?: ParcelRing | null): string | null {
-  return buildGoogleSatelliteUrl({ lat, lng, polygon, zoom: 20, size: { w: 640, h: 640 } });
+  return buildGoogleSatelliteUrl({ lat, lng, polygon, zoom: subjectZoomFor(polygon), size: { w: 640, h: 640 } });
 }
 
 export function buildContextSatelliteUrl(lat: number, lng: number, polygon?: ParcelRing | null): string | null {

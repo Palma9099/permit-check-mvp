@@ -139,6 +139,9 @@ export interface HistoricalAerialFrame {
   captureYear: number;
   itemId: string;
   imageUrl: string;       // PNG URL clipped to parcel bbox
+  gsdMeters?: number;
+  displayImageUrl?: string;
+  displayBbox?: { lon1: number; lat1: number; lon2: number; lat2: number };
 }
 
 export interface HistoricalAerialPair {
@@ -199,6 +202,7 @@ export interface StreetViewImage {
   heading: number;                // 0 = north, 90 = east, 180 = south, 270 = west
   label: string;                  // human-readable, e.g. "Front (facing N)"
   imageUrl: string | null;        // signed Google Street View Static URL (null if no pano)
+  captureDate?: string | null;    // 'YYYY-MM' from Google's metadata, when known
 }
 
 // A parcel polygon, as an ordered ring of [lat, lng] pairs. First and last point
@@ -256,7 +260,11 @@ export interface CountyInfo {
   scraperNote: string;                   // what we actually pulled live vs what needs manual follow-up
 }
 
+import type { CountyExtras } from './counties/miami-dade-extras';
+
 export interface DiagnosticReport {
+  // Miami-Dade only: tax reset, permit health, evacuation zone, sewer or septic.
+  countyExtras?: CountyExtras | null;
   generatedAt: string;
   query: {
     address: string;

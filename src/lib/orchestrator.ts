@@ -9,6 +9,7 @@
 //   6. Run vision comparison (polygon-aware prompt).
 //   7. Assemble the DiagnosticReport the UI expects.
 
+import { fetchMiamiDadeExtras } from './counties/miami-dade-extras';
 import type {
   DiagnosticReport,
   Flag,
@@ -513,7 +514,7 @@ export async function runDiagnostic(input: {
   //    historical THEN/NOW pairs from one Google pano-list call, all
   //    rendered with bearing-to-aim so the camera points at the building
   //    rather than at the parcel-line geocode.
-  const [svEngine, historicalAerials, floodResult] = await Promise.all([
+  const [svEngine, historicalAerials, floodResult, countyExtras] = await Promise.all([
     buildStreetViewEngine({
       searchLat: geo.lat,
       searchLng: geo.lng,
@@ -530,6 +531,16 @@ export async function runDiagnostic(input: {
     // Flood (FEMA NFHL) only needs the point, so run it in parallel with imagery
     // rather than adding its latency to the end of the pipeline.
     assessFlood(geo.lat, geo.lng),
+    // Miami-Dade only: tax reset, permit health, evacuation zone, sewer/septic.
+    // Never throws; a slow county server just leaves this section out.
+    countyKey === 'miami-dade' && adapterResult.propertyBasics.folio
+      ? fetchMiamiDadeExtras({
+          folio: adapterResult.propertyBasics.folio,
+          lat: geo.lat,
+          lng: geo.lng,
+          permits: adapterResult.permits,
+        }).catch(() => null)
+      : Promise.resolve(null),
   ]);
   const streetViewImages = svEngine.current;
 
@@ -815,6 +826,7 @@ export async function runDiagnostic(input: {
     confidenceAssessment: confidence,
     insurance,
     flood,
+    countyExtras,
     recert,
     negotiation,
     nextSteps,

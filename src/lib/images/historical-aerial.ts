@@ -34,6 +34,12 @@ export interface HistoricalAerialFrame {
   captureYear: number;          // e.g. 2015
   itemId: string;               // STAC item id, for debugging
   imageUrl: string;             // PNG URL clipped to the parcel bbox, 640x640
+  // Ground resolution in meters per pixel (NAIP: 1.0 before 2019, 0.6 after).
+  gsdMeters?: number;
+  // Tight crop centred on the parcel, for display (the AI keeps the wider crop
+  // above). displayBbox lets the renderer draw the parcel outline on top.
+  displayImageUrl?: string;
+  displayBbox?: { lon1: number; lat1: number; lon2: number; lat2: number };
 }
 
 export interface HistoricalAerialResult {
@@ -97,6 +103,30 @@ function bboxFromParcel(
   };
 }
 
+// Square (in meters) crop centred on the parcel, about 90 m across for a normal
+// lot. Big lots get a bigger frame so the whole parcel stays inside.
+export function displayBboxFor(
+  lat: number,
+  lng: number,
+  polygon: ParcelRing | null | undefined,
+): { lon1: number; lat1: number; lon2: number; lat2: number } {
+  let cLat = lat;
+  let cLng = lng;
+  let halfM = 45;
+  if (polygon && polygon.length >= 3) {
+    const lats = polygon.map((p) => p[0]);
+    const lngs = polygon.map((p) => p[1]);
+    cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+    cLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+    const spanLatM = (Math.max(...lats) - Math.min(...lats)) * 111000;
+    const spanLngM = (Math.max(...lngs) - Math.min(...lngs)) * 111000 * Math.cos((cLat * Math.PI) / 180);
+    halfM = Math.max(45, Math.max(spanLatM, spanLngM) / 2 + 16);
+  }
+  const dLat = halfM / 111000;
+  const dLng = halfM / (111000 * Math.cos((cLat * Math.PI) / 180));
+  return { lon1: cLng - dLng, lat1: cLat - dLat, lon2: cLng + dLng, lat2: cLat + dLat };
+}
+
 function buildNaipCropUrl(
   itemId: string,
   bbox: { minx: number; miny: number; maxx: number; maxy: number },
@@ -119,7 +149,7 @@ async function stacSearch(
   lng: number,
   lat: number,
   timeoutMs = 10000,
-): Promise<Array<{ id: string; datetime: string }>> {
+): Promise<Array<{ id: string; datetime: string; gsd?: number }>> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -146,6 +176,7 @@ async function stacSearch(
       .map((f: any) => ({
         id: String(f?.id ?? ''),
         datetime: String(f?.properties?.datetime ?? ''),
+        gsd: typeof f?.properties?.gsd === 'number' ? f.properties.gsd : undefined,
       }))
       .filter((f: { id: string; datetime: string }) => f.id && f.datetime);
   } catch {
@@ -162,6 +193,7 @@ export async function fetchHistoricalAerials(
 ): Promise<HistoricalAerialResult> {
   const source = 'Microsoft Planetary Computer / NAIP';
   const bbox = bboxFromParcel(lat, lng, polygon);
+  const disp = displayBboxFor(lat, lng, polygon);
 
   const items = await stacSearch(lng, lat);
   if (items.length === 0) {
@@ -183,6 +215,14 @@ export async function fetchHistoricalAerials(
       captureYear: Number.isFinite(year) ? year : 0,
       itemId: it.id,
       imageUrl: buildNaipCropUrl(it.id, bbox),
+      gsdMeters: it.gsd,
+      displayImageUrl: buildNaipCropUrl(
+        it.id,
+        { minx: disp.lon1, miny: disp.lat1, maxx: disp.lon2, maxy: disp.lat2 },
+        640,
+        640,
+      ),
+      displayBbox: disp,
     };
   });
 

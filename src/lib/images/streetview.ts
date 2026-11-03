@@ -769,8 +769,17 @@ async function currentFrameFromOfficialMetadata(
     }
     const heading = bearingFromTo(pl.lat, pl.lng, aimLat, aimLng);
     const url = buildHistoricalStaticUrl(panoId, heading, size, fov, DEFAULT_PITCH);
+    const date = typeof data?.date === 'string' && /^\d{4}-\d{2}$/.test(data.date) ? data.date : null;
+    const when = date
+      ? new Date(`${date}-01T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+      : null;
     return url
-      ? { heading: Math.round(heading), label: `Street View, front of subject (${heading.toFixed(0)}°)`, imageUrl: url }
+      ? {
+          heading: Math.round(heading),
+          label: `Street View${when ? `, ${when}` : ''}, front of subject (${heading.toFixed(0)}°)`,
+          imageUrl: url,
+          captureDate: date,
+        }
       : null;
   } catch {
     return null;
