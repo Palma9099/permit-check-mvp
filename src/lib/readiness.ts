@@ -103,18 +103,20 @@ export function computeReadiness(r: DiagnosticReport): Readiness {
 
   // 4. Flood: up to 15.
   const floodMax = 15;
-  const floodPenalty = r.flood?.inSFHA ? 12 : r.flood?.zone ? 0 : 4;
+  // An unconfirmed zone is missing information, not a risk finding, so it costs
+  // nothing (and keeps the score from swinging when the lookup is slow).
+  const floodPenalty = r.flood?.inSFHA ? 12 : 0;
   factors.push({
     key: 'flood',
     label: 'Flood zone',
     penalty: floodPenalty,
     max: floodMax,
-    tone: toneFor(floodPenalty, floodMax),
+    tone: r.flood?.zone || floodPenalty > 0 ? toneFor(floodPenalty, floodMax) : 'grey',
     reason: r.flood?.inSFHA
       ? `FEMA Zone ${r.flood.zone}: lenders require flood insurance, which adds monthly cost.`
       : r.flood?.zone
       ? `FEMA Zone ${r.flood.zone}: low risk, flood insurance usually not required.`
-      : 'Flood zone could not be confirmed. Check the FEMA map.',
+      : 'Flood zone could not be confirmed this time and is not counted in the score. Check the FEMA map.',
   });
 
   // 5. Open code cases: up to 10.

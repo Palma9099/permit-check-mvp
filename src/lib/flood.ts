@@ -51,6 +51,28 @@ function zoneEnglish(zone: string | null, coastal: boolean, high: boolean): stri
   return `FEMA Zone ${z}.`;
 }
 
+async function countyFloodFallback(lat: number, lng: number): Promise<any | null> {
+  const url =
+    'https://services.arcgis.com/8Pc9XBTAsYuxx9Ny/ArcGIS/rest/services/FEMAFloodZone_gdb/FeatureServer/0/query' +
+    `?geometry=${lng}%2C${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects` +
+    '&outFields=FZONE%2CZONESUBTY%2CELEV&returnGeometry=false&f=json';
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8_000);
+    const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const j: any = await res.json();
+    const a = Array.isArray(j?.features) ? j.features[0]?.attributes : null;
+    if (!a?.FZONE) return null;
+    const elev = typeof a.ELEV === 'number' && a.ELEV > -999 ? a.ELEV : null;
+    // Same shape as the FEMA answer, so the rest of the function is unchanged.
+    return { features: [{ attributes: { FLD_ZONE: a.FZONE, ZONE_SUBTY: a.ZONESUBTY ?? null, SFHA_TF: '', STATIC_BFE: elev } }] };
+  } catch {
+    return null;
+  }
+}
+
 export async function assessFlood(
   lat: number,
   lng: number,
@@ -100,7 +122,15 @@ export async function assessFlood(
       lastReason = String(err?.message ?? err).slice(0, 120);
     }
   }
-  if (!data) return fail(lastReason);
+  if (!data) {
+    // Backup: Miami-Dade's own copy of the FEMA flood map. Fast and reliable,
+    // but only covers Miami-Dade; elsewhere (or on a miss) we report it as
+    // unconfirmed rather than guessing.
+    const county = await countyFloodFallback(lat, lng);
+    if (county) data = county;
+    else return fail(lastReason);
+  }
+
 
   const feat = Array.isArray(data?.features) ? data.features[0] : null;
   const attrs = feat?.attributes ?? null;
