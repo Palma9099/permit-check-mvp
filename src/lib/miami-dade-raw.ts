@@ -103,27 +103,47 @@ async function arcgisQuery(service: string, where: string, out: string = '*'): P
     `?where=${encodeURIComponent(where)}` +
     `&outFields=${encodeURIComponent(out)}` +
     `&returnGeometry=false&f=json&resultRecordCount=200`;
-  const data = await fetchJson(url).catch(() => null);
+  const data = await fetchJson(url).catch((e) => {
+    throw new Error(`county query failed (${service}): ${e?.message ?? e}`);
+  });
+  // ArcGIS answers HTTP 200 with an {error} body when a layer needs a token or
+  // is gone. Treat that as a failure, never as "no rows" (that once turned a
+  // locked permit layer into "zero permits" in every report).
+  if (data?.error) {
+    throw new Error(`county query rejected (${service}): ${data.error.code} ${data.error.message}`);
+  }
   if (!data || !Array.isArray(data.features)) return [];
   return data.features.map((f: any) => f.attributes ?? {});
+}
+
+// The old BuildingPermit_gdb layer now requires a token. The county's public
+// replacement is the miamidade_permit_data table (same permits, refreshed daily).
+const PERMIT_TABLE = 'miamidade_permit_data';
+
+function permitStatus(r: any): string {
+  const co = fromEpochMs(r.CoCcDate);
+  if (co) return `Closed out ${co}`;
+  const insp = fromEpochMs(r.LastApprovedInspDate);
+  if (insp) return `Inspected ${insp}, no close-out date`;
+  return 'No inspection on record';
 }
 
 export async function permitsByFolio(folio: string): Promise<Permit[]> {
   const f = compactFolio(folio);
   const rows = await arcgisQuery(
-    'BuildingPermit_gdb',
-    `FOLIO='${f}'`,
-    'FOLIO,PROCNUM,APPTYPE,ISSUDATE,BPSTATUS,ESTVALUE,CONTRNAME,DESC1,DESC2'
+    PERMIT_TABLE,
+    `FolioNumber='${f}'`,
+    'FolioNumber,PermitNumber,ProcessNumber,ApplicationTypeDescription,PermitIssuedDate,CoCcDate,LastApprovedInspDate,EstimatedValue,ContractorName,DetailDescriptionComments,CategoryDescription1',
   );
   return rows.map((r) => ({
-    permitNumber: cleanString(r.PROCNUM) || null,
-    processNumber: cleanString(r.PROCNUM) || null,
-    appType: cleanString(r.APPTYPE) || null,
-    issueDate: fromEpochMs(r.ISSUDATE),
-    status: cleanString(r.BPSTATUS) || null,
-    estValue: typeof r.ESTVALUE === 'number' ? r.ESTVALUE : null,
-    contractor: cleanString(r.CONTRNAME) || null,
-    scope: [cleanString(r.DESC1), cleanString(r.DESC2)].filter(Boolean).join(' — ') || null,
+    permitNumber: cleanString(r.PermitNumber) || null,
+    processNumber: cleanString(r.ProcessNumber) || null,
+    appType: cleanString(r.ApplicationTypeDescription) || null,
+    issueDate: cleanString(r.PermitIssuedDate).slice(0, 10) || null,
+    status: permitStatus(r),
+    estValue: Number.isFinite(Number(r.EstimatedValue)) && Number(r.EstimatedValue) > 0 ? Number(r.EstimatedValue) : null,
+    contractor: cleanString(r.ContractorName).replace(/\\/g, '') || null,
+    scope: [cleanString(r.DetailDescriptionComments), cleanString(r.CategoryDescription1)].filter(Boolean).join(' - ') || null,
   }));
 }
 
@@ -146,13 +166,13 @@ export async function neighborPermits(folio: string): Promise<{
   const prefix = f.slice(0, 9);
   if (prefix.length !== 9) return { total: 0, byAddress: [] };
   const rows = await arcgisQuery(
-    'BuildingPermit_gdb',
-    `FOLIO LIKE '${prefix}%' AND FOLIO <> '${f}'`,
-    'FOLIO,ADDRESS,PROCNUM'
+    PERMIT_TABLE,
+    `FolioNumber LIKE '${prefix}%' AND FolioNumber <> '${f}'`,
+    'FolioNumber,PropertyAddress,PermitNumber',
   );
   const by = new Map<string, number>();
   for (const r of rows) {
-    const a = cleanString(r.ADDRESS);
+    const a = cleanString(r.PropertyAddress);
     if (!a) continue;
     by.set(a, (by.get(a) ?? 0) + 1);
   }

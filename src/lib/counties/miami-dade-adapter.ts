@@ -13,7 +13,7 @@ import {
 } from '../miami-dade-raw';
 import type { AdapterResult, CountyAdapter } from './types';
 import { emptyResult } from './types';
-import type { ExtraFeature, Sale } from '../types';
+import type { ExtraFeature, Permit, Sale } from '../types';
 
 function cleanString(s: unknown): string {
   return typeof s === 'string' ? s.replace(/\s+/g, ' ').trim() : '';
@@ -143,12 +143,12 @@ function mailingMatchesSite(pa: any): { matches: boolean | null; mail: string | 
 
 const SOURCE_LINES = [
   'Miami-Dade Property Appraiser public JSON (PaServicesProxy): owner, building, extra features, sales, benefit/taxable',
-  'Miami-Dade Open Data (ArcGIS FeatureServer): BuildingPermit_gdb, Open_Building_Violations, BuildingViolation_gdb, CodeComplianceViolation (Open/Closed past 5y), EnergovCodeCasePublicView, inspectionsData',
+  'Miami-Dade Open Data (ArcGIS FeatureServer): miamidade_permit_data (permits), Open_Building_Violations, BuildingViolation_gdb, CodeComplianceViolation (Open/Closed past 5y), EnergovCodeCasePublicView, inspectionsData',
 ];
 
 const NOTE_LINES = [
   'Records reflect the digital portal only. Paper/microfilm permit archives predating the Miami-Dade digital migration may not appear.',
-  'Miami-Dade v1 covers unincorporated county + folios visible in the countywide BuildingPermit_gdb. City-of-Miami Beach, Coral Gables, and similar city-portal-only permits may be under-represented.',
+  'Miami-Dade v1 covers unincorporated county + folios visible in the countywide miamidade_permit_data table. City-of-Miami Beach, Coral Gables, and similar city-portal-only permits may be under-represented.',
 ];
 
 export const miamiDadeAdapter: CountyAdapter = {
@@ -168,10 +168,18 @@ export const miamiDadeAdapter: CountyAdapter = {
       );
     }
 
+    const lookupFailures: string[] = [];
     const [pa, permits, neighbors, codeEnf, inspectionCount] = await Promise.all([
       paByFolio(folio).catch(() => null),
-      permitsByFolio(folio).catch(() => []),
-      neighborPermits(folio).catch(() => ({ total: 0, byAddress: [] as { address: string; count: number }[] })),
+      permitsByFolio(folio).catch((e) => {
+        console.error('[miami-dade] permit lookup failed', e);
+        lookupFailures.push('The county permit lookup failed for this run, so "no permits" below is NOT confirmed. Re-run, or check the county permit portal directly.');
+        return [] as Permit[];
+      }),
+      neighborPermits(folio).catch((e) => {
+        console.error('[miami-dade] neighbor permit lookup failed', e);
+        return { total: 0, byAddress: [] as { address: string; count: number }[] };
+      }),
       codeEnforcement(folio).catch(() => ({ open: [], closedPast5: [] })),
       inspectionsByAddress(byAddr.candidates[0]?.address ?? address).catch(() => 0),
     ]);
@@ -221,7 +229,7 @@ export const miamiDadeAdapter: CountyAdapter = {
       codeCasesOpen: codeEnf.open,
       codeCasesClosedPast5: codeEnf.closedPast5,
       sourcesTried: SOURCE_LINES,
-      notes: NOTE_LINES,
+      notes: [...lookupFailures, ...NOTE_LINES],
       candidates: byAddr.candidates,
     };
   },
