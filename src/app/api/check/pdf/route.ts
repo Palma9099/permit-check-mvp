@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { buildPdf } from '@/lib/pdf-report';
+import { buildPdfV2 } from '@/lib/pdf-report-v2';
 import { runDiagnostic } from '@/lib/orchestrator';
 import type { DiagnosticReport } from '@/lib/types';
 
@@ -34,7 +35,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const buf = await buildPdf(report);
+    // New designed layout first; the original builder is the safety net so a
+    // download never fails because of the new layout.
+    let buf: Buffer;
+    try {
+      buf = await buildPdfV2(report);
+    } catch (err) {
+      console.error('[pdf] v2 failed, falling back to v1', err);
+      buf = await buildPdf(report);
+    }
     const blob = new Blob([new Uint8Array(buf)], { type: 'application/pdf' });
     const safe =
       (report.property.siteAddress ?? report.query.address ?? 'report')
