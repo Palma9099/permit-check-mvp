@@ -40,6 +40,7 @@ export interface MapillaryImage {
   imageLng: number;
   bearingToSubject: number; // 0-359, bearing from camera point toward parcel
   alignmentDeg: number;     // 0-180, how off-axis camera was from facing parcel (0 = perfect)
+  distToSubjectM?: number;  // meters from the camera to the parcel centre
 }
 
 // A single street's worth of Mapillary coverage: earliest + latest pano
@@ -207,9 +208,10 @@ export async function fetchMapillaryHistorical(
         imageLng: imgLng,
         bearingToSubject: bearing,
         alignmentDeg: alignment,
+        distToSubjectM: metersBetween(imgLat, imgLng, parcelLat, parcelLng),
       };
     })
-    .filter((x): x is MapillaryImage => x !== null && x.alignmentDeg <= 40)
+    .filter((x): x is MapillaryImage => x !== null && x.alignmentDeg <= 30 && (x.distToSubjectM ?? 0) <= 55)
     .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
 
   if (scored.length === 0) {
@@ -220,7 +222,7 @@ export async function fetchMapillaryHistorical(
       allFrames: [],
       source,
       failureReason:
-        'Mapillary has panos near this parcel but none facing the property within 45°.',
+        'Mapillary has photos near this parcel but none pointing at the property from close enough.',
     };
   }
 
@@ -342,7 +344,8 @@ export function pickSameAnglePair(frames: MapillaryImage[]): { then: MapillaryIm
         (b.capturedYear >= newestYear - 2 ? 3 : 0) -
         headingDiff / 5 -
         dist / 5 -
-        (a.alignmentDeg + b.alignmentDeg) / 20 +
+        (a.alignmentDeg + b.alignmentDeg) / 8 -
+        ((a.distToSubjectM ?? 0) + (b.distToSubjectM ?? 0)) / 12 +
         (tight ? 6 : 0);
       if (!best || score > best.score) best = { then: a, now: b, score, tight };
     }
