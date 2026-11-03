@@ -1,5 +1,6 @@
 'use client';
 
+import { ClipboardCheckIcon, HomeSearchIcon, IconTile, KeyIcon } from './icons';
 import { useState, useEffect, useRef } from 'react';
 import type { DiagnosticReport, UserUploadedThen } from '@/lib/types';
 import type { DeepScanResult } from '@/lib/scan-queue';
@@ -325,20 +326,27 @@ export default function HomePage() {
   return (
     <main className="max-w-4xl mx-auto px-4 py-10 sm:py-14 pb-28 sm:pb-14">
       {!report && (
-        <header className="mb-10">
-          <div className="text-xs uppercase tracking-[0.18em] text-ink-muted mb-2">
-            Palma Property Intelligence
+        <header className="mb-0">
+          <div className="rounded-2xl bg-gradient-to-br from-[#1f3864] to-[#0b1c38] px-6 sm:px-10 pt-9 pb-16 sm:pb-20 text-white shadow-card">
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-[#d9b46a]">
+              Palma Property Intelligence
+            </div>
+            <h1 className="font-serif text-4xl sm:text-5xl font-semibold leading-tight">
+              Check a Florida home&apos;s records before you buy.
+            </h1>
+            <p className="mt-4 max-w-2xl text-base sm:text-lg text-white/80">
+              A plain-English look at county permit records and aerial photos, so you
+              know what to ask before you make an offer.
+            </p>
+            <ul className="mt-6 flex flex-wrap gap-2 text-xs">
+              {['Permits', 'Roof and insurance', 'Flood zone', 'Recertification', 'Code cases', 'Aerial photos'].map((label) => (
+                <li key={label} className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-white/90">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#d9b46a]" />
+                  {label}
+                </li>
+              ))}
+            </ul>
           </div>
-          <h1 className="font-serif text-4xl sm:text-5xl font-semibold leading-tight">
-            Check a Florida home&apos;s records before you buy.
-          </h1>
-          <p className="mt-3 text-ink-soft text-base sm:text-lg max-w-2xl">
-            A fast, plain-English look at what public county records and historical
-            satellite imagery show for any Florida property - so you can spot
-            possible unpermitted additions or aging systems worth asking about
-            before you make an offer. This is a records-level review for context,
-            not an official compliance determination.
-          </p>
         </header>
       )}
 
@@ -383,7 +391,7 @@ export default function HomePage() {
       )}
 
       {showForm && (
-      <section className="bg-card shadow-card rounded-lg p-6 sm:p-8 border border-black/5">
+      <section className={`bg-card shadow-card rounded-xl p-6 sm:p-8 border border-black/5 ${!report ? 'relative z-10 -mt-10 mx-3 sm:mx-6' : ''}`}>
         <form onSubmit={onSubmit} className="grid grid-cols-1 sm:grid-cols-5 gap-3">
           <div className="sm:col-span-3 relative">
             <label className="block text-xs font-semibold uppercase tracking-wider text-ink-muted mb-1">
@@ -492,7 +500,7 @@ export default function HomePage() {
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2 rounded-md bg-ink text-white text-sm font-semibold disabled:opacity-50 hover:bg-black transition"
+              className="px-5 py-2 rounded-md bg-[#1f3864] text-white text-sm font-semibold disabled:opacity-50 hover:bg-[#102447] transition shadow-sm"
             >
               {loading ? 'Checking…' : 'Run records check'}
             </button>
@@ -563,27 +571,27 @@ export default function HomePage() {
           verdict. */}
       {!report && (
         <section className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-card rounded-lg border border-black/5 p-5">
-            <div className="text-2xl mb-2" aria-hidden>🔑</div>
-            <h3 className="font-semibold text-ink text-sm mb-1">Know before you close</h3>
+          <div className="bg-card rounded-xl border border-black/5 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <IconTile><KeyIcon /></IconTile>
+            <h3 className="font-serif text-lg font-semibold text-ink mb-1">Know before you close</h3>
             <p className="text-sm text-ink-soft leading-relaxed">
               An addition, enclosure, or pool with no matching permit on file can
               become the next owner&apos;s responsibility. Seeing it early means you
               can ask the right questions while you still have room to negotiate.
             </p>
           </div>
-          <div className="bg-card rounded-lg border border-black/5 p-5">
-            <div className="text-2xl mb-2" aria-hidden>🔍</div>
-            <h3 className="font-semibold text-ink text-sm mb-1">Look past a fresh coat of paint</h3>
+          <div className="bg-card rounded-xl border border-black/5 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <IconTile><HomeSearchIcon /></IconTile>
+            <h3 className="font-serif text-lg font-semibold text-ink mb-1">Look past a fresh coat of paint</h3>
             <p className="text-sm text-ink-soft leading-relaxed">
               Cosmetic updates can hide a home&apos;s age. We surface long-cycle
               systems - roof, AC, water heater - that have no matching permit on
               record and may be worth a closer look with your inspector.
             </p>
           </div>
-          <div className="bg-card rounded-lg border border-black/5 p-5">
-            <div className="text-2xl mb-2" aria-hidden>🗒️</div>
-            <h3 className="font-semibold text-ink text-sm mb-1">Bring facts to the table</h3>
+          <div className="bg-card rounded-xl border border-black/5 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+            <IconTile><ClipboardCheckIcon /></IconTile>
+            <h3 className="font-serif text-lg font-semibold text-ink mb-1">Bring facts to the table</h3>
             <p className="text-sm text-ink-soft leading-relaxed">
               A records gap isn&apos;t a verdict - it&apos;s a starting point for you,
               your agent, and your inspector. Always confirm anything open directly
