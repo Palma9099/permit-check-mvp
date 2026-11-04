@@ -27,15 +27,15 @@ export const VENDOR_NOTE =
 // Edit these to change what the cards show. null shows no price.
 export const FIX_IT_RANGES: Record<string, { cost: string | null; timeline: string | null }> = {
   // Owner's range for a full after-the-fact legalization.
-  legalize: { cost: '$2,500 to $6,000', timeline: '6 to 12 weeks' },
+  legalize: { cost: '$2,500 to $6,000, including engineering, permit handling and our after-the-fact fee', timeline: '6 to 12 weeks' },
   // Price list: wind-mitigation $175, 4-point $350, both $500.
-  roof: { cost: 'Inspections: wind-mitigation $175, 4-point $350, or both for $500', timeline: null },
+  roof: { cost: 'Inspections: wind-mitigation $175, 4-point $350, or both for $500', timeline: '6 to 10 weeks' },
   // No price listed: a licensed surveyor is quoted from the vendor network.
   flood: { cost: null, timeline: null },
   // Price list: engineer letter $399 per covered inspection; single-trade permit management $259.
-  code: { cost: 'Engineer letter $399 per covered inspection, plus permit handling from $259', timeline: null },
+  code: { cost: 'Engineer letter $399 per covered inspection, plus permit handling from $259', timeline: '6 to 10 weeks' },
   // Price list: inspection reports $175 each; single-trade permit management $259.
-  closeout: { cost: 'Inspection reports $175 each, plus permit handling from $259', timeline: null },
+  closeout: { cost: 'Inspection reports $175 each, plus permit handling from $259', timeline: '6 to 10 weeks' },
   // No price listed.
   septic: { cost: null, timeline: null },
   milestone: { cost: null, timeline: null },
@@ -193,6 +193,14 @@ export function buildInsurancePacket(r: DiagnosticReport, rd: Readiness): Packet
     item: 'Roof condition certificate',
     status: roofRisk ? 'needed' : 'ok',
     note: roofRisk ? 'No recent roof permit on record. Many insurers ask for proof of age and remaining life.' : 'A recent roof permit is on record.',
+  });
+  // Price list: $500 for a building up to 3,700 sq ft, $700 above.
+  const area = r.property.totalArea ?? r.property.heatedArea ?? null;
+  out.push({
+    item: 'Home condition inspection',
+    status: 'recommended',
+    note: 'A full inspection of the home\'s condition: roof, structure, systems and visible defects. Buyers order it before closing; sellers use it before listing.',
+    price: area == null ? '$500 to $700' : area <= 3700 ? '$500' : '$700',
   });
   if (r.flood?.inSFHA) {
     out.push({ item: 'Elevation certificate', status: 'needed', note: 'Needed to price flood insurance in a high-risk zone.' });
