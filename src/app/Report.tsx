@@ -5,6 +5,7 @@ import LeadCapture from './LeadCapture';
 import AtAGlance from './AtAGlance';
 import ReadinessAndFixIt from './ReadinessAndFixIt';
 import StreetHistory from './StreetHistory';
+import FoundFirst from './FoundFirst';
 import type { StreetFrame } from '@/lib/street-history';
 import { PERSONAS, PERSONA_ORDER, insuranceTips, personaCopy, takeaways, type Persona } from '@/lib/persona';
 import { buildGlance, glanceNextSteps } from '@/lib/glance';
@@ -300,11 +301,13 @@ export default function Report({
   role = null,
   onRoleChange,
   streetHistory = null,
+  streetFindings = null,
 }: {
   report: DiagnosticReport;
   role?: Persona | null;
   onRoleChange?: (p: Persona) => void;
   streetHistory?: StreetFrame[] | null;
+  streetFindings?: { performed: boolean; observations: VisionObservation[] } | null;
 }) {
   const haveStreetHistory = !!streetHistory && streetHistory.length >= 2;
   const pc = personaCopy(role);
@@ -403,6 +406,8 @@ export default function Report({
       </div>
 
       <div className="px-6 sm:px-10 py-8 prose-section">
+        <FoundFirst report={r} role={role} streetHistory={streetHistory} streetFindings={streetFindings} />
+
         {/* Who is reading? Switching re-words the whole report instantly. */}
         <div className="mb-6 flex flex-wrap items-center gap-2" role="group" aria-label="Viewing as">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Viewing as</span>

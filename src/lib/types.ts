@@ -130,6 +130,8 @@ export interface VisualComparison {
   // Both null means the comparison was current-only (no historical NAIP).
   thenCaptureDate: string | null;
   nowCaptureDate: string | null;
+  // How many independent AI runs were combined (findings need a majority).
+  runsAgreed?: number;
 }
 
 // Historical aerial imagery pair from Planetary Computer NAIP. Null when

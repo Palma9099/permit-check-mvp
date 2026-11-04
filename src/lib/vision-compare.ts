@@ -35,7 +35,7 @@ import type {
 } from './types';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-5-20250929';
+export const MODEL = 'claude-sonnet-4-5-20250929';
 
 // Parse a base64 data URL like "data:image/jpeg;base64,/9j/..." into the
 // media type + raw base64 payload Anthropic's API expects.
@@ -47,7 +47,7 @@ function parseDataUrl(dataUrl: string): { mediaType: 'image/jpeg' | 'image/png' 
   return { mediaType, data: m[2] };
 }
 
-async function fetchImageBase64(url: string, timeoutMs = 10000): Promise<string | null> {
+export async function fetchImageBase64(url: string, timeoutMs = 10000): Promise<string | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   const urlForLog = url.length > 120 ? url.slice(0, 120) + '...' : url;
@@ -330,7 +330,7 @@ Keep observations between 3 and 8. Skip areas with nothing notable, but do
 not skip a facade element (paint, windows, doors, gate) just to stay short —
 if it visibly changed across the timeline, include it.`;
 
-function parseResult(text: string): { summary: string; observations: VisionObservation[] } | null {
+export function parseResult(text: string): { summary: string; observations: VisionObservation[] } | null {
   const cleaned = text
     .replace(/^[^{]*/s, '')
     .replace(/[^}]*$/s, '');
@@ -353,6 +353,56 @@ function parseResult(text: string): { summary: string; observations: VisionObser
   } catch {
     return null;
   }
+}
+
+export type ParsedVision = { summary: string; observations: VisionObservation[] };
+
+const SEVERITY_ORDER: VisionSeverity[] = ['flag', 'note', 'uncertain', 'match'];
+
+// Combine several runs of the same comparison. An area is reported only when a
+// majority of runs mention it. It is a "flag" only when a majority flag it;
+// otherwise it takes the most common remaining severity. The wording comes from
+// a run that agrees with the result. With a single run, that run stands.
+export function mergeVisionRuns(runs: ParsedVision[]): ParsedVision & { runs: number } {
+  const n = runs.length;
+  if (n <= 1) return { ...(runs[0] ?? { summary: '', observations: [] }), runs: n };
+  const need = Math.floor(n / 2) + 1;
+  const key = (a: string) => a.trim().toLowerCase();
+  const areas = new Map<string, VisionObservation[]>();
+  for (const run of runs) {
+    const seen = new Set<string>();
+    for (const o of run.observations) {
+      const k = key(o.area);
+      if (seen.has(k)) continue; // one vote per run per area
+      seen.add(k);
+      areas.set(k, [...(areas.get(k) ?? []), o]);
+    }
+  }
+  const observations: VisionObservation[] = [];
+  for (const list of areas.values()) {
+    if (list.length < need) continue;
+    const count = (sev: VisionSeverity) => list.filter((o) => o.severity === sev).length;
+    let sev: VisionSeverity;
+    if (count('flag') >= need) sev = 'flag';
+    else {
+      const rest = SEVERITY_ORDER.filter((x) => x !== 'flag');
+      sev = rest.reduce((best, x) => (count(x) > count(best) ? x : best), rest[0]);
+      if (count(sev) === 0) sev = 'uncertain';
+    }
+    const pick = list.find((o) => o.severity === sev) ?? list[0];
+    observations.push({ ...pick, severity: sev });
+  }
+  observations.sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
+  // Summary from the run whose flags best match the agreed flags.
+  const agreed = new Set(observations.filter((o) => o.severity === 'flag').map((o) => key(o.area)));
+  const score = (r: ParsedVision) => {
+    const f = new Set(r.observations.filter((o) => o.severity === 'flag').map((o) => key(o.area)));
+    let same = 0;
+    f.forEach((x) => agreed.has(x) && same++);
+    return same - Math.abs(f.size - agreed.size);
+  };
+  const best = [...runs].sort((a, b) => score(b) - score(a))[0];
+  return { summary: best.summary, observations, runs: n };
 }
 
 export async function compareImagery(opts: {
@@ -639,19 +689,20 @@ export async function compareImagery(opts: {
     text: `Permit record for the subject parcel:\n${digest}\n\n${windowText}\n\nReturn the JSON object per the schema in the system prompt. Red polygon on the Google NOW frame = subject boundary — never flag anything outside it.`,
   });
 
-  try {
-    const reqBody = JSON.stringify({
-      model: MODEL,
-      max_tokens: 1800,
-      // Zero randomness: the same photos must give the same findings every run.
-      // At the default (1.0) one address flipped between "roof unchanged" and
-      // "roof re-covered" from run to run, which moved the readiness score.
-      temperature: 0,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userContent }],
-    });
-    // Retry transient overload/rate-limit/5xx a couple times so a momentary
-    // blip doesn't drop the whole report to the static-checklist fallback.
+  const reqBody = JSON.stringify({
+    model: MODEL,
+    max_tokens: 1800,
+    // Zero randomness: the same photos must give the same findings every run.
+    // At the default (1.0) one address flipped between "roof unchanged" and
+    // "roof re-covered" from run to run, which moved the readiness score.
+    temperature: 0,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  // One model call. Retries transient overload/rate-limit/5xx a couple times so
+  // a momentary blip doesn't drop the run.
+  const runOnce = async (): Promise<{ ok: true; parsed: ParsedVision } | { ok: false; reason: string }> => {
     let res!: Response;
     for (let attempt = 1; attempt <= 3; attempt++) {
       res = await fetch(ANTHROPIC_API, {
@@ -666,50 +717,46 @@ export async function compareImagery(opts: {
       if (res.ok || ![429, 500, 502, 503, 504, 529].includes(res.status) || attempt === 3) break;
       await new Promise((r) => setTimeout(r, attempt * 1500));
     }
-
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
       console.error(`[vision-compare] Anthropic non-OK: status=${res.status} body=${errText.slice(0, 400)}`);
-      return {
-        performed: false,
-        modelUsed: MODEL,
-        summary: 'Vision comparison API call failed.',
-        observations: [],
-        failureReason: `HTTP ${res.status}${errText ? `: ${errText.slice(0, 300)}` : ''}`,
-        thenCaptureDate: opts.thenAerial?.captureDate ?? null,
-        nowCaptureDate: opts.nowAerial?.captureDate ?? null,
-      };
+      return { ok: false, reason: `HTTP ${res.status}${errText ? `: ${errText.slice(0, 300)}` : ''}` };
     }
-
     const data: any = await res.json();
-    const textBlock = Array.isArray(data?.content)
-      ? data.content.find((b: any) => b?.type === 'text')
-      : null;
-    const text = typeof textBlock?.text === 'string' ? textBlock.text : '';
-    const parsed = parseResult(text);
-    if (!parsed) {
+    const textBlock = Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === 'text') : null;
+    const parsed = parseResult(typeof textBlock?.text === 'string' ? textBlock.text : '');
+    return parsed ? { ok: true, parsed } : { ok: false, reason: 'json parse failed' };
+  };
+
+  try {
+    // Three independent runs; a finding is reported only when at least two of
+    // them agree, so a single run's guess never reaches the report.
+    const runs = await Promise.all([runOnce(), runOnce(), runOnce()]);
+    const good = runs.filter((r): r is { ok: true; parsed: ParsedVision } => r.ok).map((r) => r.parsed);
+    if (good.length === 0) {
+      const reason = (runs.find((r) => !r.ok) as { ok: false; reason: string } | undefined)?.reason ?? 'unknown';
       return {
         performed: false,
         modelUsed: MODEL,
-        summary: 'Vision model returned an unparseable response.',
+        summary: reason === 'json parse failed' ? 'Vision model returned an unparseable response.' : 'Vision comparison API call failed.',
         observations: [],
-        failureReason: 'json parse failed',
+        failureReason: reason,
         thenCaptureDate: opts.thenAerial?.captureDate ?? null,
         nowCaptureDate: opts.nowAerial?.captureDate ?? null,
       };
     }
+    const merged = mergeVisionRuns(good);
     return {
       performed: true,
       modelUsed: MODEL,
       summary:
-        parsed.summary ||
-        (parsed.observations.length > 0
-          ? 'See observations below.'
-          : 'No notable discrepancies observed.'),
-      observations: parsed.observations,
+        merged.summary ||
+        (merged.observations.length > 0 ? 'See observations below.' : 'No notable discrepancies observed.'),
+      observations: merged.observations,
       failureReason: null,
       thenCaptureDate: opts.thenAerial?.captureDate ?? null,
       nowCaptureDate: opts.nowAerial?.captureDate ?? null,
+      runsAgreed: merged.runs,
     };
   } catch (err: any) {
     console.error(`[vision-compare] threw: ${String(err?.message ?? err).slice(0, 300)}`);

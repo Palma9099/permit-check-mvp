@@ -7,7 +7,7 @@ type Frame = NonNullable<DiagnosticReport['thenVsNow']['historicalAerials']['the
 
 // The parcel outline drawn over a tight crop. displayBbox is the crop's extent,
 // so each polygon vertex maps straight onto the picture.
-function Outline({ frame, ring }: { frame: Frame; ring: Array<[number, number]> }) {
+export function Outline({ frame, ring }: { frame: Frame; ring: Array<[number, number]> }) {
   const b = frame.displayBbox;
   if (!b || ring.length < 3) return null;
   const pts = ring

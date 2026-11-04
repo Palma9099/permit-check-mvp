@@ -9,12 +9,13 @@ import { createHash } from 'node:crypto';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { googleImageFetchHeaders } from './images/keys';
-import type { DiagnosticReport } from './types';
+import type { DiagnosticReport, VisionObservation } from './types';
 import { pickDisplayFrames } from './images/historical-aerial';
 import { computeReadiness } from './readiness';
 import { PACKET_PRICE_NOTE, buildFixIts, buildInsurancePacket } from './fix-it';
 import { SITE_ORIGIN } from './record-token';
 import { PERSONAS, bandSummaryFor, personaCopy, type Persona } from './persona';
+import { FOUND_NOTE, collectFindings, foundHeadline } from './found';
 import { buildGlance, glanceNextSteps, glanceVerdict, tipSections } from './glance';
 
 const W = 612;
@@ -89,7 +90,13 @@ async function fetchImage(url: string | null | undefined, timeoutMs = 25000): Pr
 
 export async function buildPdfV2(
   r: DiagnosticReport,
-  opts: { liveUrl?: string; phone?: string; role?: Persona | null; streetHistory?: Array<{ imageUrl: string; label: string }> } = {},
+  opts: {
+    liveUrl?: string;
+    phone?: string;
+    role?: Persona | null;
+    streetHistory?: Array<{ imageUrl: string; label: string }>;
+    streetFindings?: VisionObservation[];
+  } = {},
 ): Promise<Buffer> {
   const phone = opts.phone ?? '305-393-0690';
   const role = opts.role ?? null;
@@ -228,9 +235,14 @@ export async function buildPdfV2(
   text(cityLine, M, 168 + tH + 4, { size: 14, color: '#c8d5ee' });
   const metaY = 168 + tH + 34;
   text(`Folio ${r.property.folio ?? '-'}   |   ${clean(r.county.name)}   |   ${reportDate}${role && role !== 'other' ? `   |   Prepared for: ${PERSONAS[role].short}` : ''}`, M, metaY, { size: 9, color: '#9fb3d6' });
+  // Visible changes with no permit: stated on the cover, detailed on the next page.
+  const found = r.thenVsNow?.visualComparison?.performed ? collectFindings(r, opts.streetFindings) : null;
+  if (found && found.length) {
+    text(foundHeadline(role, found.length).toUpperCase(), M, metaY + 16, { size: 10, font: 'Helvetica-Bold', color: '#ff9b8f', spacing: 0.6 });
+  }
   // Hero image
-  const heroY = metaY + 30;
-  const heroH = 330;
+  const heroY = metaY + (found && found.length ? 44 : 30);
+  const heroH = found && found.length ? 314 : 330;
   doc.save();
   doc.roundedRect(M, heroY, CW, heroH, 10).clip();
   if (sat) doc.image(sat, M, heroY, { cover: [CW, heroH], align: 'center', valign: 'center' });
@@ -245,6 +257,54 @@ export async function buildPdfV2(
   text(`Report ID  ${reportId}`, M, fy, { size: 9, font: 'Helvetica-Bold', color: C.white });
   text(r.record?.path ? 'Scan to open the shareable property record.' : 'Scan to open this report online.', M, fy + 14, { size: 8, color: '#9fb3d6', w: 360 });
   text('Records review. Not an inspection or official determination.', M, fy + 34, { size: 7.5, color: '#9fb3d6', w: 400 });
+
+  // ===== WHAT WE FOUND (right after the cover) ============================
+  if (found && found.length) {
+    doc.addPage({ size: 'LETTER', margin: 0 });
+    header('What we found', 'Visible changes with no permit');
+    doc.roundedRect(M, 118, CW, 54, 10).fill('#7a1d14');
+    text(foundHeadline(role, found.length), M + 18, 135, { w: CW - 36, size: 17, font: 'Times-Bold', color: C.white });
+    let yw = 186;
+    for (const f of found) {
+      const body = `${f.text}\nNo permit found for it in county records.`;
+      const h = cardHeight(CW, f.area, body);
+      if (yw + h > 720) {
+        doc.addPage({ size: 'LETTER', margin: 0 });
+        header('What we found', 'Continued');
+        yw = 124;
+      }
+      toneCard(M, yw, CW, 'red', f.source === 'street' ? 'Street View' : 'Aerial photos', f.area, body);
+      yw += h + 10;
+    }
+    // Evidence: the photos the changes were read from.
+    const ev: Array<{ buf: Buffer | null; cap: string; bbox?: Bbox }> = [];
+    if (found.some((f) => f.source === 'aerial') && frames.length >= 2) {
+      ev.push({ buf: frameImgs[0] ?? null, cap: `AERIAL ${frames[0].captureYear}`, bbox: frames[0].displayBbox });
+      ev.push({ buf: frameImgs[frames.length - 1] ?? null, cap: `AERIAL ${frames[frames.length - 1].captureYear}`, bbox: frames[frames.length - 1].displayBbox });
+    }
+    if (found.some((f) => f.source === 'street') && hasGoogleHistory) {
+      ev.push({ buf: googleHistoryImgs[0] ?? null, cap: `STREET VIEW ${googleHistory[0].label}`.toUpperCase() });
+      ev.push({ buf: googleHistoryImgs[googleHistory.length - 1] ?? null, cap: `STREET VIEW ${googleHistory[googleHistory.length - 1].label}`.toUpperCase() });
+    }
+    if (ev.length) {
+      // Square tiles, so the parcel outline maps exactly onto the aerial crops.
+      const ew = Math.min((CW - (ev.length - 1) * 10) / ev.length, 180);
+      const eh = ew;
+      if (yw + eh + 70 > 740) {
+        doc.addPage({ size: 'LETTER', margin: 0 });
+        header('What we found', 'The photos');
+        yw = 124;
+      }
+      yw += 6;
+      ev.forEach((e, i) => {
+        const x = M + i * (ew + 10);
+        image(e.buf, x, yw, ew, eh, e.cap);
+        if (e.bbox) outline(e.bbox, x, yw, ew, eh);
+      });
+      yw += eh + 26;
+    }
+    text(FOUND_NOTE, M, yw, { w: CW, size: 8.5, color: C.muted });
+  }
 
   // ===== PAGE 2: AT A GLANCE ==============================================
   doc.addPage({ size: 'LETTER', margin: 0 });

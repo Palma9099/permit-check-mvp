@@ -2,6 +2,7 @@
 
 import { PERSONAS, PERSONA_ORDER, parsePersona, type Persona } from '@/lib/persona';
 import { fetchStreetHistory, type StreetFrame } from '@/lib/street-history';
+import type { VisionObservation } from '@/lib/types';
 import { ClipboardCheckIcon, HomeSearchIcon, IconTile, KeyIcon } from './icons';
 import { useState, useEffect, useRef } from 'react';
 import type { DiagnosticReport, UserUploadedThen } from '@/lib/types';
@@ -68,6 +69,8 @@ export default function HomePage() {
   // Dated Street View photos of this property, read in the browser from Google.
   // null = still loading or not attempted; [] = none found.
   const [streetHistory, setStreetHistory] = useState<StreetFrame[] | null>(null);
+  // AI check on those Street View photos (front changes aerials miss).
+  const [streetFindings, setStreetFindings] = useState<{ performed: boolean; observations: VisionObservation[] } | null>(null);
   const [role, setRoleState] = useState<Persona | null>(null);
   const [roleError, setRoleError] = useState(false);
   function setRole(p: Persona) {
@@ -100,6 +103,7 @@ export default function HomePage() {
 
   useEffect(() => {
     setStreetHistory(null);
+    setStreetFindings(null);
     const t = report?.thenVsNow;
     if (!report) return;
     if (!t?.mapsJsKey || !t.coordinates) {
@@ -123,6 +127,29 @@ export default function HomePage() {
       cancelled = true;
     };
   }, [report]);
+
+  useEffect(() => {
+    if (!report || !streetHistory || streetHistory.length < 2 || !report.record?.token) return;
+    let cancelled = false;
+    fetch('/api/street-compare', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        recordToken: report.record.token,
+        frames: streetHistory.slice(0, 4).map((f) => ({ imageUrl: f.imageUrl, label: f.label })),
+        permits: report.permitHistory.subjectPermits.map((p) => ({ issueDate: p.issueDate, appType: p.appType, scope: p.scope })),
+        yearBuilt: report.property.yearBuilt,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j) setStreetFindings({ performed: !!j.performed, observations: Array.isArray(j.observations) ? j.observations : [] });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [report, streetHistory]);
 
   // Prefill + auto-run from ?address= / ?folio= query params. This is how the
   // palma.llc homepage and location pages hand a typed address off to the tool
@@ -360,7 +387,7 @@ export default function HomePage() {
       const res = await fetch('/api/check/pdf', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...report, role, streetHistory: (streetHistory ?? []).map((f) => ({ imageUrl: f.imageUrl, label: f.label, date: f.date })) }),
+        body: JSON.stringify({ ...report, role, streetHistory: (streetHistory ?? []).map((f) => ({ imageUrl: f.imageUrl, label: f.label, date: f.date })), streetFindings: streetFindings?.performed ? streetFindings.observations : [] }),
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
@@ -734,7 +761,7 @@ export default function HomePage() {
 
       {report && (
         <div className="mt-8">
-          <Report report={report} role={role} onRoleChange={setRole} streetHistory={streetHistory} />
+          <Report report={report} role={role} onRoleChange={setRole} streetHistory={streetHistory} streetFindings={streetFindings} />
         </div>
       )}
 
