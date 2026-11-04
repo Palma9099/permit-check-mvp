@@ -195,6 +195,12 @@ export async function buildPdfV2(
     doc.moveTo(M, y + 19).lineTo(M + CW, y + 19).lineWidth(0.6).stroke(C.line);
     return y + 27;
   };
+  const cardHeight = (w: number, title: string, body: string, note?: string) => {
+    const inner = w - 28;
+    let h = 14 + 16 + hOf(title, inner, 11, 'Helvetica-Bold') + 5 + hOf(body, inner, 9) + 12;
+    if (note) h += 6 + hOf(note, inner, 8, 'Helvetica-Oblique');
+    return h;
+  };
   const toneCard = (x: number, y: number, w: number, tone: Tone, label: string, title: string, body: string, note?: string) => {
     const t = TONE[tone];
     const inner = w - 28;
@@ -310,12 +316,22 @@ export async function buildPdfV2(
   }
   yr += 6;
   yr = sectionTitle(pc.packetTitle, yr);
-  for (const pk of buildInsurancePacket(r, rd).slice(0, 5)) {
+  for (const pk of buildInsurancePacket(r, rd)) {
+    if (yr > 712) {
+      doc.addPage({ size: 'LETTER', margin: 0 });
+      header(pc.packetTitle, 'Continued');
+      yr = 124;
+    }
     const tone: Tone = pk.status === 'needed' ? 'red' : pk.status === 'recommended' ? 'amber' : 'green';
     pill(pk.status === 'ok' ? 'have' : pk.status, M, yr - 1, tone);
     text(pk.price ? `${pk.item}  ${pk.price}` : pk.item, M + 82, yr, { w: 170, size: 9, font: 'Helvetica-Bold' });
     text(pk.note, M + 255, yr, { w: CW - 255, size: 8, color: C.soft });
     yr += 28;
+  }
+  if (yr > 726) {
+    doc.addPage({ size: 'LETTER', margin: 0 });
+    header(pc.packetTitle, 'Continued');
+    yr = 124;
   }
   text(PACKET_PRICE_NOTE, M, yr - 6, { w: CW, size: 8, color: C.muted });
 
@@ -326,18 +342,28 @@ export async function buildPdfV2(
     header(pc.fixTitle, 'A real route for each problem');
     let yf = 124;
     const fw = (CW - 14) / 2;
+    const cardOf = (f: (typeof fixes)[number]) => {
+      const steps = f.steps.map((st, n) => `${n + 1}. ${st}`).join('\n');
+      const meta = `Done by: ${f.owner}${f.cost ? `. Typical cost: ${f.cost}` : ''}${f.timeline ? `. Typical time: ${f.timeline}` : ''}. ${f.vendorNote}`;
+      return { body: `${f.why}\n\n${steps}`, meta };
+    };
     for (let i = 0; i < fixes.length; i += 2) {
-      let rowH = 0;
-      fixes.slice(i, i + 2).forEach((f, k) => {
+      const row = fixes.slice(i, i + 2);
+      const need = Math.max(...row.map((f) => cardHeight(fw, f.title, cardOf(f).body, cardOf(f).meta)));
+      // Leave room for the quote band (y 690) on the page that ends the list.
+      const limit = i + 2 >= fixes.length ? 678 : 740;
+      if (yf + need > limit) {
+        doc.addPage({ size: 'LETTER', margin: 0 });
+        header(pc.fixTitle, 'Continued');
+        yf = 124;
+      }
+      row.forEach((f, k) => {
         const x = M + k * (fw + 14);
         const tone: Tone = f.tone === 'red' ? 'red' : 'amber';
-        const steps = f.steps.map((st, n) => `${n + 1}. ${st}`).join('\n');
-        const meta = `Done by: ${f.owner}${f.cost ? `. Typical cost: ${f.cost}` : ''}${f.timeline ? `. Typical time: ${f.timeline}` : ''}. ${f.vendorNote}`;
-        const h = toneCard(x, yf, fw, tone, tone === 'red' ? 'Fix first' : 'Worth fixing', f.title, `${f.why}\n\n${steps}`, meta);
-        rowH = Math.max(rowH, h);
+        const c = cardOf(f);
+        toneCard(x, yf, fw, tone, tone === 'red' ? 'Fix first' : 'Worth fixing', f.title, c.body, c.meta);
       });
-      yf += rowH + 12;
-      if (yf > 600 && i + 2 < fixes.length) break; // keep within the page
+      yf += need + 12;
     }
     doc.roundedRect(M, 690, CW, 46, 8).fill(C.navy);
     text(`Get a fixed quote on any of these: call ${phone}, or request it from the live report.`, M + 18, 706, { w: CW - 36, size: 10.5, font: 'Helvetica-Bold', color: C.white });

@@ -30,15 +30,14 @@ export const FIX_IT_RANGES: Record<string, { cost: string | null; timeline: stri
   legalize: { cost: '$2,500 to $6,000, including engineering, permit handling and our after-the-fact fee', timeline: '6 to 12 weeks' },
   // Price list: wind-mitigation $175, 4-point $350, both $500.
   roof: { cost: 'Inspections: wind-mitigation $175, 4-point $350, or both for $500', timeline: '6 to 10 weeks' },
-  // No price listed: a licensed surveyor is quoted from the vendor network.
-  flood: { cost: null, timeline: null },
+  // Network rates: averages of 10 published Florida prices, see docs/network-rates-2026-11.md.
+  flood: { cost: 'Network rate about $510 (Florida average $330 to $690)', timeline: null },
   // Price list: engineer letter $399 per covered inspection; single-trade permit management $259.
   code: { cost: 'Engineer letter $399 per covered inspection, plus permit handling from $259', timeline: '6 to 10 weeks' },
   // Price list: inspection reports $175 each; single-trade permit management $259.
   closeout: { cost: 'Inspection reports $175 each, plus permit handling from $259', timeline: '6 to 10 weeks' },
-  // No price listed.
-  septic: { cost: null, timeline: null },
-  milestone: { cost: null, timeline: null },
+  septic: { cost: 'Network rate about $500 (Florida average $340 to $670)', timeline: null },
+  milestone: { cost: 'Network rate about $10,500 for Phase 1 (Florida average $4,800 to $16,200, depends on building size)', timeline: null },
 };
 
 // Price list prices for the papers in the insurance packet. Items not listed
@@ -46,8 +45,12 @@ export const FIX_IT_RANGES: Record<string, { cost: string | null; timeline: stri
 export const PACKET_PRICES: Record<string, string> = {
   '4-point inspection': '$350',
   'Wind-mitigation inspection': '$175',
+  // Network rates (docs/network-rates-2026-11.md).
+  'Elevation certificate': 'about $510',
+  'Septic inspection': 'about $500',
 };
-export const PACKET_PRICE_NOTE = 'Wind-mitigation and 4-point together: $500. 5% off when you book 3 or more services.';
+export const PACKET_PRICE_NOTE =
+  'Wind-mitigation and 4-point together: $500. 5% off when you book 3 or more services. "About" prices are network rates, the average of published Florida prices; your quote confirms the exact price.';
 
 function mk(
   key: string,
