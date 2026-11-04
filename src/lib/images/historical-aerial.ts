@@ -239,6 +239,15 @@ export async function fetchHistoricalAerials(
   return { then, now, allFrames, source, failureReason: null };
 }
 
+// Plain caption for a photo's sharpness.
+export function resolutionLabel(gsdMeters?: number): string {
+  if (!gsdMeters) return '';
+  if (gsdMeters < 0.12) return 'about 3 in per pixel';
+  if (gsdMeters < 0.45) return 'about 1 ft per pixel';
+  if (gsdMeters < 0.8) return 'about 2 ft per pixel';
+  return 'about 3 ft per pixel';
+}
+
 // Earliest, a middle year, and latest frame that have a tight display crop.
 export function pickDisplayFrames<T extends { captureYear: number; displayImageUrl?: string }>(all: T[]): T[] {
   const usable = all.filter((f) => f.displayImageUrl);

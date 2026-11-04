@@ -1,0 +1,190 @@
+[
+ {
+  "kind": "pool",
+  "expectAreas": [
+   "Pool"
+  ],
+  "folio": "3040080052340",
+  "address": "9850 SW 14 ST",
+  "permitYear": 2020,
+  "permit": "NEW POOL"
+ },
+ {
+  "kind": "pool",
+  "expectAreas": [
+   "Pool"
+  ],
+  "folio": "3021270346880",
+  "address": "2273 NW 131 CIR",
+  "permitYear": 2024,
+  "permit": "POOL FIBERGLASS"
+ },
+ {
+  "kind": "pool",
+  "expectAreas": [
+   "Pool"
+  ],
+  "folio": "3059350060580",
+  "address": "17656 SW 135 AVE",
+  "permitYear": 2022,
+  "permit": "NEW POOL"
+ },
+ {
+  "kind": "pool",
+  "expectAreas": [
+   "Pool"
+  ],
+  "folio": "3059130240230",
+  "address": "11990 SW 135 TER",
+  "permitYear": 2023,
+  "permit": "NEW POOL"
+ },
+ {
+  "kind": "pool",
+  "expectAreas": [
+   "Pool"
+  ],
+  "folio": "3059110060110",
+  "address": "10433 SW 133 PL",
+  "permitYear": 2021,
+  "permit": "NEW POOL"
+ },
+ {
+  "kind": "solar",
+  "expectAreas": [
+   "Solar"
+  ],
+  "folio": "3049010290070",
+  "address": "12380 SW 8 ST",
+  "permitYear": 2023,
+  "permit": "SOLAR PV"
+ },
+ {
+  "kind": "solar",
+  "expectAreas": [
+   "Solar"
+  ],
+  "folio": "3060180031650",
+  "address": "11270 SW 219 ST",
+  "permitYear": 2022,
+  "permit": "SOLAR ROOF"
+ },
+ {
+  "kind": "solar",
+  "expectAreas": [
+   "Solar"
+  ],
+  "folio": "3059240250480",
+  "address": "12367 SW 145 ST",
+  "permitYear": 2024,
+  "permit": "SOLAR PANEL"
+ },
+ {
+  "kind": "solar",
+  "expectAreas": [
+   "Solar"
+  ],
+  "folio": "3050100210020",
+  "address": "7920 SW 108 ST",
+  "permitYear": 2021,
+  "permit": "SOLAR PV"
+ },
+ {
+  "kind": "solar",
+  "expectAreas": [
+   "Solar"
+  ],
+  "folio": "3050160470030",
+  "address": "12275 SW 92 AVE",
+  "permitYear": 2020,
+  "permit": "SOLAR PANELS"
+ },
+ {
+  "kind": "shed",
+  "expectAreas": [
+   "Shed / detached"
+  ],
+  "folio": "3079080190240",
+  "address": "29848 SW 159 DR",
+  "permitYear": 2020,
+  "permit": "SHED"
+ },
+ {
+  "kind": "shed",
+  "expectAreas": [
+   "Shed / detached"
+  ],
+  "folio": "3060180040490",
+  "address": "10700 SW 218 ST",
+  "permitYear": 2023,
+  "permit": "SHED"
+ },
+ {
+  "kind": "shed",
+  "expectAreas": [
+   "Shed / detached"
+  ],
+  "folio": "3031030230160",
+  "address": "2169 NW 90 ST",
+  "permitYear": 2021,
+  "permit": "STORAGE SHED"
+ },
+ {
+  "kind": "shed",
+  "expectAreas": [
+   "Shed / detached"
+  ],
+  "folio": "3031150180110",
+  "address": "2295 NW 66 ST",
+  "permitYear": 2022,
+  "permit": "SHED"
+ },
+ {
+  "kind": "addition",
+  "expectAreas": [
+   "Rear addition",
+   "Patio / cover",
+   "Screen enclosure"
+  ],
+  "folio": "3020100100780",
+  "address": "7861 NW 181 ST",
+  "permitYear": 2023,
+  "permit": "ADDITION"
+ },
+ {
+  "kind": "addition",
+  "expectAreas": [
+   "Rear addition",
+   "Patio / cover",
+   "Screen enclosure"
+  ],
+  "folio": "3040300041810",
+  "address": "10951 SW 64 ST",
+  "permitYear": 2021,
+  "permit": "TERRACE"
+ },
+ {
+  "kind": "addition",
+  "expectAreas": [
+   "Rear addition",
+   "Patio / cover",
+   "Screen enclosure"
+  ],
+  "folio": "3040260250030",
+  "address": "7505 SW 60 ST",
+  "permitYear": 2024,
+  "permit": "REMODELING/ADDITION"
+ },
+ {
+  "kind": "addition",
+  "expectAreas": [
+   "Rear addition",
+   "Patio / cover",
+   "Screen enclosure"
+  ],
+  "folio": "3040270240080",
+  "address": "7990 SW 69 TER",
+  "permitYear": 2022,
+  "permit": "GAZEBO"
+ }
+]

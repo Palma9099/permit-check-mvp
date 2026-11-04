@@ -10,7 +10,7 @@ import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { googleImageFetchHeaders } from './images/keys';
 import type { DiagnosticReport, VisionObservation } from './types';
-import { pickDisplayFrames } from './images/historical-aerial';
+import { pickDisplayFrames, resolutionLabel } from './images/historical-aerial';
 import { computeReadiness } from './readiness';
 import { PACKET_PRICE_NOTE, buildFixIts, buildInsurancePacket } from './fix-it';
 import { SITE_ORIGIN } from './record-token';
@@ -443,7 +443,7 @@ export async function buildPdfV2(
   const cells: Array<{ buf: Buffer | null; caption: string; bbox?: Bbox }> = [
     ...frames.map((f, i) => ({
       buf: frameImgs[i] ?? null,
-      caption: `${f.captureYear}${f.gsdMeters ? (f.gsdMeters < 1 ? ', about 2 ft per pixel' : ', about 3 ft per pixel') : ''}`,
+      caption: `${f.captureYear}${f.gsdMeters ? `, ${resolutionLabel(f.gsdMeters)}` : ''}`,
       bbox: f.displayBbox,
     })),
     { buf: sat, caption: 'TODAY, Google (sharpest available)' },

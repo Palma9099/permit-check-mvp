@@ -37,6 +37,8 @@ import {
 } from './images/google-satellite';
 import { buildStreetViewEngine } from './images/streetview';
 import { fetchHistoricalAerials } from './images/historical-aerial';
+import { fetchCountyAerials, spreadFrames } from './images/county-aerials';
+import { compareCountyAerials } from './aerial-series';
 import { compareImagery } from './vision-compare';
 import { assessInsurance } from './risk/insurance';
 import { assessRecert } from './risk/milestone';
@@ -533,7 +535,13 @@ export async function runDiagnostic(input: {
       // points the camera at the building, not into the empty yard.
       aimPolygon: polygon.polygon && !polygon.isFallback ? polygon.polygon : null,
     }),
-    fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
+    // Miami-Dade publishes a 3-inch aerial for nearly every year; elsewhere (or
+    // if the county server is down) fall back to the 2 to 3 ft NAIP photos.
+    (countyKey === 'miami-dade'
+      ? fetchCountyAerials(geo.lat, geo.lng, polygon.polygon).then((r) =>
+          r.allFrames.length >= 2 ? r : fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon),
+        )
+      : fetchHistoricalAerials(geo.lat, geo.lng, polygon.polygon)),
     // Flood (FEMA NFHL) only needs the point, so run it in parallel with imagery
     // rather than adding its latency to the end of the pipeline.
     assessFlood(geo.lat, geo.lng),
@@ -586,9 +594,16 @@ export async function runDiagnostic(input: {
   // Same parcel and same photos: reuse the saved answer so the findings do not
   // change between requests. An uploaded photo is always checked fresh.
   const parcelId = adapterResult.propertyBasics.folio || adapterResult.propertyBasics.siteAddress || rawAddress || '';
+  // County aerials: compare five flights spread from the year built (or 2005)
+  // to today, dated by the series check. Otherwise the older NAIP check runs.
+  const countySeries =
+    historicalAerials.source.startsWith('Miami-Dade') && !input.userThenPhoto && !polygon.isFallback
+      ? spreadFrames(historicalAerials.allFrames, 5, yearBuilt)
+      : null;
   const aerialKey =
     parcelId && !input.userThenPhoto
       ? aiCacheKey('aerial', `${countyKey ?? ''}:${parcelId}`, [
+          ...(countySeries ? countySeries.map((f) => f.itemId) : []),
           historicalAerials.then?.itemId,
           historicalAerials.now?.itemId,
           closeSatUrl,
@@ -598,7 +613,9 @@ export async function runDiagnostic(input: {
         ])
       : null;
   const savedAerial = aerialKey ? await getSavedAnswer<VisualComparison>(aerialKey) : null;
-  const visualComparison = savedAerial ?? await compareImagery({
+  const visualComparison = savedAerial ?? (countySeries && countySeries.length >= 2
+    ? await compareCountyAerials({ frames: countySeries, keyImageUrl: closeSatUrl, permits, yearBuilt })
+    : await compareImagery({
     closeSatelliteUrl: closeSatUrl,
     contextSatelliteUrl: contextSatUrl,
     streetViewImages,
@@ -614,7 +631,7 @@ export async function runDiagnostic(input: {
     features,
     yearBuilt,
     polygonIsFallback: polygon.isFallback,
-  });
+  }));
   if (aerialKey && !savedAerial && visualComparison.performed && visualComparison.observations.length > 0) {
     await saveAnswer(aerialKey, 'aerial', visualComparison);
   }
@@ -795,7 +812,9 @@ export async function runDiagnostic(input: {
   }
   if (historicalAerials.then && historicalAerials.now) {
     dataSources.push(
-      `Microsoft Planetary Computer (USDA NAIP) for historical aerial imagery - compared ${historicalAerials.then.captureYear} vs ${historicalAerials.now.captureYear}`,
+      historicalAerials.source.startsWith('Miami-Dade')
+        ? `Miami-Dade County yearly aerial photography (${historicalAerials.then.captureYear} to ${historicalAerials.now.captureYear})`
+        : `Microsoft Planetary Computer (USDA NAIP) for historical aerial imagery - compared ${historicalAerials.then.captureYear} vs ${historicalAerials.now.captureYear}`,
     );
   }
   if (historicalStreetView.then && historicalStreetView.now) {

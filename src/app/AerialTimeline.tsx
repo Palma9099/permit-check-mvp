@@ -1,7 +1,7 @@
 'use client';
 
 import type { DiagnosticReport } from '@/lib/types';
-import { pickDisplayFrames } from '@/lib/images/historical-aerial';
+import { pickDisplayFrames, resolutionLabel } from '@/lib/images/historical-aerial';
 
 type Frame = NonNullable<DiagnosticReport['thenVsNow']['historicalAerials']['then']>;
 
@@ -51,7 +51,7 @@ export default function AerialTimeline({ report }: { report: DiagnosticReport })
             </div>
             <figcaption className="mt-1 text-[11px] text-ink-muted">
               <span className="font-semibold text-ink">{f.captureYear}</span>
-              {f.gsdMeters ? ` · ${f.gsdMeters < 1 ? 'about 2 ft' : 'about 3 ft'} per pixel` : ''}
+              {f.gsdMeters ? ` · ${resolutionLabel(f.gsdMeters)}` : ''}
             </figcaption>
           </figure>
         ))}
@@ -67,8 +67,9 @@ export default function AerialTimeline({ report }: { report: DiagnosticReport })
         )}
       </div>
       <p className="mt-2 text-[11px] text-ink-muted">
-        Older public aerials are about 2 to 3 feet per pixel, so they look soft next to today&apos;s photo. They
-        are a starting point for questions, not a record. Confirm anything notable with the county.
+        {t.historicalAerials?.source?.startsWith('Miami-Dade')
+          ? 'Miami-Dade County aerial photos, one flight per year. Small shifts between flights are normal. They are a starting point for questions, not a record. Confirm anything notable with the county.'
+          : "Older public aerials are about 2 to 3 feet per pixel, so they look soft next to today's photo. They are a starting point for questions, not a record. Confirm anything notable with the county."}
       </p>
     </div>
   );
