@@ -43,6 +43,8 @@ import { assessRecert } from './risk/milestone';
 import { assessFlood } from './flood';
 import { buildNegotiationPack } from './resolution';
 import { recordToLedger } from './ledger';
+import { aiCacheKey, getSavedAnswer, saveAnswer } from './ai-cache';
+import type { VisualComparison } from './types';
 
 // ---------------------------------------------------------------------------
 // Flag / confidence / next-steps / checklist builders - shared across
@@ -581,7 +583,22 @@ export async function runDiagnostic(input: {
   const permits = adapterResult.permits;
   const yearBuilt = adapterResult.propertyBasics.yearBuilt;
 
-  const visualComparison = await compareImagery({
+  // Same parcel and same photos: reuse the saved answer so the findings do not
+  // change between requests. An uploaded photo is always checked fresh.
+  const parcelId = adapterResult.propertyBasics.folio || adapterResult.propertyBasics.siteAddress || rawAddress || '';
+  const aerialKey =
+    parcelId && !input.userThenPhoto
+      ? aiCacheKey('aerial', `${countyKey ?? ''}:${parcelId}`, [
+          historicalAerials.then?.itemId,
+          historicalAerials.now?.itemId,
+          closeSatUrl,
+          ...streetViewImages.map((s) => s.imageUrl),
+          ...historicalStreetView.sides.flatMap((s: any) => [s?.then?.imageUrl, s?.now?.imageUrl]),
+          permits.length,
+        ])
+      : null;
+  const savedAerial = aerialKey ? await getSavedAnswer<VisualComparison>(aerialKey) : null;
+  const visualComparison = savedAerial ?? await compareImagery({
     closeSatelliteUrl: closeSatUrl,
     contextSatelliteUrl: contextSatUrl,
     streetViewImages,
@@ -598,6 +615,9 @@ export async function runDiagnostic(input: {
     yearBuilt,
     polygonIsFallback: polygon.isFallback,
   });
+  if (aerialKey && !savedAerial && visualComparison.performed && visualComparison.observations.length > 0) {
+    await saveAnswer(aerialKey, 'aerial', visualComparison);
+  }
 
   // 7. Assemble the final DiagnosticReport.
   const buckets = yearBuckets(features);

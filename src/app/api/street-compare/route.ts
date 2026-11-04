@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { compareStreetHistory } from '@/lib/street-compare';
 import { verifyRecordToken } from '@/lib/record-token';
+import { aiCacheKey, getSavedAnswer, saveAnswer } from '@/lib/ai-cache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,14 @@ export async function POST(req: NextRequest) {
   }));
   const yearBuilt = Number.isFinite(Number(body?.yearBuilt)) ? Number(body.yearBuilt) : null;
 
+  // Keyed on the signed report's parcel, so one property's answer can never be
+  // written under another's, plus the exact photos compared.
+  const parcel = v.payload.f || v.payload.a;
+  const key = parcel ? aiCacheKey('street', parcel, [...frames.map((f: any) => f.imageUrl), permits.length]) : null;
+  const saved = key ? await getSavedAnswer<Awaited<ReturnType<typeof compareStreetHistory>>>(key) : null;
+  if (saved) return NextResponse.json(saved);
+
   const result = await compareStreetHistory({ frames, permits, yearBuilt });
+  if (key && result.performed && result.observations.length > 0) await saveAnswer(key, 'street', result);
   return NextResponse.json(result);
 }
