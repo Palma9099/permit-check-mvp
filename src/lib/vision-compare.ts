@@ -42,6 +42,9 @@ const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
 // the saved answers (ai-cache.ts) instead.
 export const MODEL = 'claude-opus-5-5';
 
+// Google sends PNG, the county server JPEG; tell the API which one it is.
+export const imageMediaType = (b64: string): 'image/png' | 'image/jpeg' => (b64.startsWith('iVBOR') ? 'image/png' : 'image/jpeg');
+
 export type VisionCall = { ok: true; text: string } | { ok: false; reason: string };
 
 // One photo-comparison request. Retries overload, rate-limit and 5xx a couple
@@ -600,7 +603,7 @@ export async function compareImagery(opts: {
     });
     userContent.push({
       type: 'image',
-      source: { type: 'base64', media_type: 'image/png', data: thenAerialB64 },
+      source: { type: 'base64', media_type: imageMediaType(thenAerialB64), data: thenAerialB64 },
     });
   }
 
@@ -613,7 +616,7 @@ export async function compareImagery(opts: {
     });
     userContent.push({
       type: 'image',
-      source: { type: 'base64', media_type: 'image/png', data: nowAerialB64 },
+      source: { type: 'base64', media_type: imageMediaType(nowAerialB64), data: nowAerialB64 },
     });
   }
 
@@ -628,7 +631,7 @@ export async function compareImagery(opts: {
   });
   userContent.push({
     type: 'image',
-    source: { type: 'base64', media_type: 'image/png', data: closeB64 },
+    source: { type: 'base64', media_type: imageMediaType(closeB64), data: closeB64 },
   });
 
   // ---- NOW (Google context / block-wide) ----
@@ -640,7 +643,7 @@ export async function compareImagery(opts: {
     });
     userContent.push({
       type: 'image',
-      source: { type: 'base64', media_type: 'image/png', data: contextB64 },
+      source: { type: 'base64', media_type: imageMediaType(contextB64), data: contextB64 },
     });
   }
 

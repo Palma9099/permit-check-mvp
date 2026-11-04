@@ -25,6 +25,8 @@ export const AERIAL_SPEC: SeriesSpec = {
 export async function compareCountyAerials(opts: {
   frames: HistoricalAerialFrame[];
   keyImageUrl: string | null;
+  // No surveyed lot line was found; the red box is centred on the address.
+  outlineApprox?: boolean;
   permits: Permit[];
   yearBuilt: number | null;
 }): Promise<VisualComparison> {
@@ -33,7 +35,12 @@ export async function compareCountyAerials(opts: {
     permits: opts.permits,
     yearBuilt: opts.yearBuilt,
     keyImage: opts.keyImageUrl
-      ? { imageUrl: opts.keyImageUrl, text: "Key image: today's satellite photo, subject lot outlined in red. Use it only to find the lot in the numbered photos." }
+      ? {
+          imageUrl: opts.keyImageUrl,
+          text: opts.outlineApprox
+            ? "Key image: today's satellite photo. The red box is only centred on the address (no surveyed lot line), so judge the one house in the middle and its own yard."
+            : "Key image: today's satellite photo, subject lot outlined in red. Use it only to find the lot in the numbered photos.",
+        }
       : null,
   });
   return {

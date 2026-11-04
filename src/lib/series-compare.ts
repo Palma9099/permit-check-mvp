@@ -9,7 +9,7 @@
 // agrees on.
 
 import type { Permit, VisionObservation } from './types';
-import { callVision, fetchImageBase64, mergeVisionRuns, type ParsedVision } from './vision-compare';
+import { callVision, fetchImageBase64, imageMediaType, mergeVisionRuns, type ParsedVision } from './vision-compare';
 
 export interface SeriesFrame {
   imageUrl: string;
@@ -42,8 +42,6 @@ type PermitLite = Pick<Permit, 'issueDate' | 'appType' | 'scope'>;
 // records request), so "no permit" is only known for changes after that.
 export const PERMITS_ONLINE_FROM = 2020;
 
-// Google sends PNG, the county server JPEG; tell the API which one it is.
-const mediaType = (b64: string) => (b64.startsWith('iVBOR') ? 'image/png' : 'image/jpeg');
 
 function promptFor(spec: SeriesSpec): string {
   return `${spec.intro}
@@ -94,11 +92,11 @@ export async function compareSeries(
   const content: any[] = [];
   if (opts.keyImage && keyB64) {
     content.push({ type: 'text', text: opts.keyImage.text });
-    content.push({ type: 'image', source: { type: 'base64', media_type: mediaType(keyB64), data: keyB64 } });
+    content.push({ type: 'image', source: { type: 'base64', media_type: imageMediaType(keyB64), data: keyB64 } });
   }
   loaded.forEach((f, i) => {
     content.push({ type: 'text', text: `Photo ${i + 1} of ${loaded.length}, taken ${f.label}:` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: mediaType(data[i]), data: data[i] } });
+    content.push({ type: 'image', source: { type: 'base64', media_type: imageMediaType(data[i]), data: data[i] } });
   });
   content.push({ type: 'text', text: `${permitText(opts.permits, opts.yearBuilt)}\n\nReturn the JSON.` });
 

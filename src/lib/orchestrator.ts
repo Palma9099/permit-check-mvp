@@ -597,7 +597,7 @@ export async function runDiagnostic(input: {
   // County aerials: compare five flights spread from the year built (or 2005)
   // to today, dated by the series check. Otherwise the older NAIP check runs.
   const countySeries =
-    historicalAerials.source.startsWith('Miami-Dade') && !input.userThenPhoto && !polygon.isFallback
+    historicalAerials.source.startsWith('Miami-Dade') && !input.userThenPhoto
       ? spreadFrames(historicalAerials.allFrames, 5, yearBuilt)
       : null;
   const aerialKey =
@@ -614,7 +614,7 @@ export async function runDiagnostic(input: {
       : null;
   const savedAerial = aerialKey ? await getSavedAnswer<VisualComparison>(aerialKey) : null;
   const visualComparison = savedAerial ?? (countySeries && countySeries.length >= 2
-    ? await compareCountyAerials({ frames: countySeries, keyImageUrl: closeSatUrl, permits, yearBuilt })
+    ? await compareCountyAerials({ frames: countySeries, keyImageUrl: closeSatUrl, outlineApprox: polygon.isFallback, permits, yearBuilt })
     : await compareImagery({
     closeSatelliteUrl: closeSatUrl,
     contextSatelliteUrl: contextSatUrl,
