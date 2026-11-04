@@ -27,17 +27,17 @@ export const VENDOR_NOTE =
 // Edit these to change what the cards show. null shows no price.
 export const FIX_IT_RANGES: Record<string, { cost: string | null; timeline: string | null }> = {
   // Owner's range for a full after-the-fact legalization.
-  legalize: { cost: '$2,500 to $6,000, including engineering, permit handling and our after-the-fact fee', timeline: '6 to 12 weeks' },
+  legalize: { cost: '$2,500 to $6,000 for most jobs, including engineering, permit handling and our after-the-fact fee; $12,000 and up for additions or large structural work, including contractor sign-on fees', timeline: '6 to 12 weeks' },
   // Price list: wind-mitigation $175, 4-point $350, both $500.
   roof: { cost: 'Inspections: wind-mitigation $175, 4-point $350, or both for $500', timeline: '6 to 10 weeks' },
   // Network rates: averages of 10 published Florida prices, see docs/network-rates-2026-11.md.
-  flood: { cost: 'Network rate about $510 (Florida average $330 to $690)', timeline: null },
+  flood: { cost: 'Network rate about $510 (Florida average $330 to $690)', timeline: '1 to 2 weeks' },
   // Price list: engineer letter $399 per covered inspection; single-trade permit management $259.
   code: { cost: 'Engineer letter $399 per covered inspection, plus permit handling from $259', timeline: '6 to 10 weeks' },
   // Price list: inspection reports $175 each; single-trade permit management $259.
   closeout: { cost: 'Inspection reports $175 each, plus permit handling from $259', timeline: '6 to 10 weeks' },
-  septic: { cost: 'Network rate about $500 (Florida average $340 to $670)', timeline: null },
-  milestone: { cost: 'Network rate about $10,500 for Phase 1 (Florida average $4,800 to $16,200, depends on building size)', timeline: null },
+  septic: { cost: 'Network rate about $500 (Florida average $340 to $670)', timeline: 'within 48 hours' },
+  milestone: { cost: 'Network rate about $10,500 for Phase 1 (Florida average $4,800 to $16,200, depends on building size)', timeline: '2 to 4 weeks' },
 };
 
 // Price list prices for the papers in the insurance packet. Items not listed
