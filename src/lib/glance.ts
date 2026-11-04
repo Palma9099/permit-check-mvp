@@ -212,7 +212,7 @@ export function glanceVerdict(items: GlanceItem[], role: Persona | null = null):
     case null:
       return k ? `${n} worth checking.` : 'Nothing alarming in county records.';
     default:
-      return k ? `${n} to check before you make an offer.` : 'Nothing alarming in county records.';
+      return k ? `${n} flagged. Before you make an offer:` : 'Nothing alarming in county records.';
   }
 }
 

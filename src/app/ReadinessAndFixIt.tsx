@@ -76,7 +76,7 @@ export default function ReadinessAndFixIt({ report, role = null }: { report: Dia
           </div>
 
           <ul className="!list-none !ml-0 mt-5 space-y-3">
-            {rd.factors.map((f) => (
+            {rd.factors.filter((f) => f.penalty > 0).map((f) => (
               <li key={f.key} className="!mb-0">
                 <div className="flex items-baseline justify-between gap-3">
                   <span className="text-sm font-semibold text-ink">{f.label}</span>
@@ -89,16 +89,10 @@ export default function ReadinessAndFixIt({ report, role = null }: { report: Dia
               </li>
             ))}
           </ul>
-
-          {rd.notes.length > 0 && (
-            <div className="mt-4 rounded-md bg-slate-50 px-3 py-2">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Also worth knowing (not scored)</div>
-              <ul className="!list-none !ml-0 mt-1">
-                {rd.notes.map((n) => (
-                  <li key={n} className="!mb-0.5 text-xs text-ink-soft">{n}</li>
-                ))}
-              </ul>
-            </div>
+          {rd.factors.some((f) => f.penalty === 0) && (
+            <p className="!text-xs !text-emerald-700 !mb-0 mt-3">
+              No points lost: {rd.factors.filter((f) => f.penalty === 0).map((f) => f.label).join(', ')}.
+            </p>
           )}
         </div>
       </section>
@@ -123,7 +117,6 @@ export default function ReadinessAndFixIt({ report, role = null }: { report: Dia
                   {f.cost ? <> · Typical cost: {f.cost}</> : null}
                   {f.timeline ? <> · Typical time: {f.timeline}</> : null}
                 </div>
-                <div className="mt-1 text-xs text-ink-muted">{f.vendorNote}</div>
                 <button
                   type="button"
                   onClick={() => requestQuote(f.quoteTopic)}
@@ -134,6 +127,7 @@ export default function ReadinessAndFixIt({ report, role = null }: { report: Dia
               </div>
             ))}
           </div>
+          <p className="!text-xs !text-ink-muted mt-2">{fixes[0].vendorNote}</p>
         </section>
       )}
 

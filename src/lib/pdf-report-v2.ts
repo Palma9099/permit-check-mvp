@@ -365,7 +365,8 @@ export async function buildPdfV2(
   }
   let yr = 262;
   yr = sectionTitle('What moved the score', yr);
-  for (const f of rd.factors) {
+  // Clean items are already on the At a glance page; list them on one line.
+  for (const f of rd.factors.filter((x) => x.penalty > 0)) {
     const col = f.tone === 'red' ? C.red : f.tone === 'amber' ? C.amber : f.tone === 'green' ? C.green : C.grey;
     text(f.label, M, yr, { w: 220, size: 9.5, font: 'Helvetica-Bold', color: C.ink });
     text(f.penalty === 0 ? 'No points lost' : `-${f.penalty} of ${f.max}`, M, yr, { w: CW, size: 8.5, font: 'Helvetica-Bold', color: col, align: 'right' });
@@ -373,6 +374,11 @@ export async function buildPdfV2(
     if (f.penalty > 0) doc.roundedRect(M, yr + 14, Math.max(8, (f.penalty / f.max) * CW), 4, 2).fill(col);
     text(f.reason, M, yr + 22, { w: CW, size: 8, color: C.soft });
     yr += 40;
+  }
+  const cleanItems = rd.factors.filter((x) => x.penalty === 0).map((x) => x.label);
+  if (cleanItems.length) {
+    text(`No points lost: ${cleanItems.join(', ')}.`, M, yr, { w: CW, size: 8.5, color: C.green });
+    yr += 18;
   }
   yr += 6;
   yr = sectionTitle(pc.packetTitle, yr);
@@ -404,7 +410,7 @@ export async function buildPdfV2(
     const fw = (CW - 14) / 2;
     const cardOf = (f: (typeof fixes)[number]) => {
       const steps = f.steps.map((st, n) => `${n + 1}. ${st}`).join('\n');
-      const meta = `Done by: ${f.owner}${f.cost ? `. Typical cost: ${f.cost}` : ''}${f.timeline ? `. Typical time: ${f.timeline}` : ''}. ${f.vendorNote}`;
+      const meta = `Done by: ${f.owner}${f.cost ? `. Typical cost: ${f.cost}` : ''}${f.timeline ? `. Typical time: ${f.timeline}` : ''}.`;
       return { body: `${f.why}\n\n${steps}`, meta };
     };
     for (let i = 0; i < fixes.length; i += 2) {
@@ -426,7 +432,8 @@ export async function buildPdfV2(
       yf += need + 12;
     }
     doc.roundedRect(M, 690, CW, 46, 8).fill(C.navy);
-    text(`Get a fixed quote on any of these: call ${phone}, or request it from the live report.`, M + 18, 706, { w: CW - 36, size: 10.5, font: 'Helvetica-Bold', color: C.white });
+    text(`Get a fixed quote on any of these: call ${phone}, or request it from the live report.`, M + 18, 699, { w: CW - 36, size: 10.5, font: 'Helvetica-Bold', color: C.white });
+    text(fixes[0].vendorNote, M + 18, 716, { w: CW - 36, size: 8, color: C.white });
   }
 
   // ===== PAGE 3: AERIAL TIMELINE ==========================================

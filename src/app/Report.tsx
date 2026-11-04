@@ -7,8 +7,7 @@ import ReadinessAndFixIt from './ReadinessAndFixIt';
 import StreetHistory from './StreetHistory';
 import FoundFirst from './FoundFirst';
 import type { StreetFrame } from '@/lib/street-history';
-import { PERSONAS, PERSONA_ORDER, insuranceTips, personaCopy, takeaways, type Persona } from '@/lib/persona';
-import { buildGlance, glanceNextSteps } from '@/lib/glance';
+import { PERSONAS, PERSONA_ORDER, personaCopy, type Persona } from '@/lib/persona';
 import AerialTimeline from './AerialTimeline';
 import CountyExtrasSection from './CountyExtrasSection';
 
@@ -125,8 +124,6 @@ function ObservationCard({ obs }: { obs: VisionObservation }) {
 }
 
 function InsuranceCard({ ins, role }: { ins: DiagnosticReport['insurance']; role?: Persona | null }) {
-  const tips = insuranceTips(role);
-  const recs = tips ?? ins.recommendations;
   const cls =
     ins.band === 'newer'
       ? 'border-green-300 bg-green-50'
@@ -165,19 +162,7 @@ function InsuranceCard({ ins, role }: { ins: DiagnosticReport['insurance']; role
       <p className="text-sm text-ink-soft leading-relaxed">{ins.roofBasis}</p>
       <p className="text-sm text-ink-soft leading-relaxed mt-1">{ins.insurabilityNote}</p>
       <p className="text-sm text-ink-soft leading-relaxed mt-1">{ins.windMitNote}</p>
-      {recs.length > 0 && (
-        <ul className="mt-2">
-          {recs.map((rec, i) => (
-            <li key={i} className="text-sm text-ink-soft leading-relaxed">
-              {rec}
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="text-xs text-ink-muted italic mt-2">
-        Estimate from the permit record, not an insurance quote. We provide the 4-point
-        and wind-mitigation inspection reports insurers ask for at $175 each.
-      </p>
+      <p className="text-xs text-ink-muted italic mt-2">Estimate from the permit record, not an insurance quote.</p>
     </div>
   );
 }
@@ -229,29 +214,6 @@ function RecertCard({ rc }: { rc: DiagnosticReport['recert'] }) {
   );
 }
 
-function ResolutionCard({ item }: { item: NonNullable<DiagnosticReport['negotiation']>['items'][number] }) {
-  return (
-    <div className="border border-black/10 bg-white rounded-md p-4">
-      <div className="flex items-start justify-between gap-3 mb-1">
-        <h3 className="font-semibold text-ink text-sm">{item.finding}</h3>
-        {item.engineeringLikely && <span className="badge badge-medium">ENGINEERING LIKELY</span>}
-      </div>
-      <p className="text-sm text-ink-soft leading-relaxed">
-        <span className="font-semibold text-ink">What it means:</span> {item.what}
-      </p>
-      <p className="text-sm text-ink-soft leading-relaxed mt-1">
-        <span className="font-semibold text-ink">How it’s resolved:</span> {item.path}
-      </p>
-      <p className="text-sm text-ink-soft leading-relaxed mt-1">
-        <span className="font-semibold text-ink">What drives the cost:</span> {item.costDrivers}
-      </p>
-      <p className="text-sm text-ink-soft leading-relaxed mt-1">
-        <span className="font-semibold text-ink">Ask the seller:</span> {item.askSeller}
-      </p>
-    </div>
-  );
-}
-
 function FloodCard({ flood }: { flood: DiagnosticReport['flood'] }) {
   const coastal = (flood.zone ?? '').toUpperCase().startsWith('V');
   const unknown = flood.failureReason != null || (flood.inSFHA == null && !flood.zone);
@@ -296,6 +258,17 @@ function FloodCard({ flood }: { flood: DiagnosticReport['flood'] }) {
   );
 }
 
+// House style: no long dashes in reader-facing text, even from AI output.
+const noDash = (t: string) => t.replace(/\s*[\u2014\u2013]\s*/g, ', ');
+
+// Limitation lines come from several modules and can say the same thing twice.
+function dedupeLines(lines: string[]): string[] {
+  const key = (t: string) => t.toLowerCase().replace(/[^a-z ]/g, '').split(' ').slice(0, 6).join(' ');
+  const seen = new Set<string>();
+  // The footer already carries the not-a-determination disclaimer.
+  return lines.filter((l) => !/never makes legal/i.test(l) && !seen.has(key(l)) && !!seen.add(key(l)));
+}
+
 export default function Report({
   report,
   role = null,
@@ -316,7 +289,8 @@ export default function Report({
   // The geocoder prepends this line when the address match is uncertain. Pull it
   // out of the bottom-line list and show it as a prominent banner instead.
   const uncertainLine = r.bottomLine.find((l) => l.startsWith('ADDRESS MATCH UNCERTAIN'));
-  const bottomLineRest = r.bottomLine.filter((l) => l !== uncertainLine);
+  // The triage disclaimer already sits under the badge and in the footer.
+  const bottomLineRest = r.bottomLine.filter((l) => l !== uncertainLine && !/^This is a records/i.test(l));
   // Records-status badge, derived from the flags we already computed. Deliberately
   // worded as a records signal (not a verdict): strong flags = worth reviewing,
   // medium = some gaps, none = nothing flagged. Color-coded like a summary chip.
@@ -426,22 +400,6 @@ export default function Report({
           ))}
         </div>
 
-        {role && (
-          <section>
-            <div className="rounded-xl border border-[#1f3864]/20 bg-[#1f3864]/[0.04] p-5">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#1f3864]">{pc.forYouTitle}</div>
-              <ul className="!list-none !ml-0 mt-2 space-y-2">
-                {takeaways(role, r).map((t) => (
-                  <li key={t} className="!mb-0 flex gap-2 text-[15px] leading-snug text-ink">
-                    <span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#b8893b]" />
-                    <span>{t}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-        )}
-
         <AtAGlance report={r} role={role} />
 
         <ReadinessAndFixIt report={r} role={role} />
@@ -465,10 +423,6 @@ export default function Report({
         {r.insurance && (
           <section>
             <h2>Insurance &amp; roof outlook</h2>
-            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
-              In Florida, roof age and wind mitigation decide whether a home can be
-              insured and at what price. Here is where this one stands on the records.
-            </p>
             <InsuranceCard ins={r.insurance} role={role} />
           </section>
         )}
@@ -477,10 +431,6 @@ export default function Report({
         {r.flood && (
           <section>
             <h2>Flood risk</h2>
-            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
-              The FEMA flood zone drives flood-insurance cost and, in a high-risk zone,
-              what you are allowed to renovate without elevating the home.
-            </p>
             <FloodCard flood={r.flood} />
           </section>
         )}
@@ -488,14 +438,9 @@ export default function Report({
         <CountyExtrasSection report={r} />
 
         {/* Milestone / recertification exposure */}
-        {r.recert && (
+        {r.recert && r.recert.applies !== 'unlikely' && (
           <section>
             <h2>Milestone &amp; recertification</h2>
-            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
-              Older condos and larger buildings in Florida can be forced into a
-              structural inspection and a funded reserve study. Here is whether that is
-              likely for this one.
-            </p>
             <RecertCard rc={r.recert} />
           </section>
         )}
@@ -503,18 +448,9 @@ export default function Report({
         {/* What this means & how to negotiate */}
         {pc.showNegotiation && r.negotiation && r.negotiation.items.length > 0 && (
           <section>
-            <h2>What this means &amp; how to negotiate</h2>
-            <p className="text-sm text-ink-soft leading-relaxed mt-1 mb-3">
-              {r.negotiation.exposureSummary}
-            </p>
-            <div className="space-y-3">
-              {r.negotiation.items.map((it, i) => (
-                <ResolutionCard key={i} item={it} />
-              ))}
-            </div>
-
+            <h2>How to negotiate</h2>
             {r.negotiation.sellerQuestions.length > 0 && (
-              <div className="mt-4">
+              <div className="mt-3">
                 <h3 className="font-semibold text-ink text-sm mb-1">Ask the seller</h3>
                 <ul>
                   {r.negotiation.sellerQuestions.map((q, i) => (
@@ -535,17 +471,8 @@ export default function Report({
               </div>
             )}
 
-            {r.negotiation.engineeringFlagged && (
-              <p className="text-sm text-ink-soft leading-relaxed mt-3">
-                Items marked <span className="badge badge-medium">ENGINEERING LIKELY</span> generally
-                need a sealed structural package to legalize or verify. Ask us below and we can
-                scope one.
-              </p>
-            )}
-
             <p className="text-xs text-ink-muted italic mt-3">
-              Guidance based on the finding type, not a bid. Get a contractor or engineer quote for
-              the specific work before you rely on any number.
+              Guidance, not a bid. Use the fixed quotes above to price each item.
             </p>
           </section>
         )}
@@ -556,7 +483,7 @@ export default function Report({
             <h2>Visual review</h2>
 
             {vc?.performed ? (
-              <p className="italic text-ink-soft">{vc.summary}</p>
+              <p className="italic text-ink-soft">{noDash(vc.summary)}</p>
             ) : (
               <p>
                 Records tell half the story. Use the imagery below to compare the
@@ -819,9 +746,12 @@ export default function Report({
             </div>
 
             {/* AI observations - the actual comparison */}
-            {vc?.performed && vc.observations.length > 0 && (
+            {vc?.performed && vc.observations.some((o) => o.severity !== 'flag') && (
               <div className="mt-6 space-y-3">
-                {vc.observations.map((o, i) => (
+                <h3 className="font-semibold text-ink text-sm">
+                  {vc.observations.some((o) => o.severity === 'flag') ? 'Also checked (changes are listed under What we found)' : 'What we checked'}
+                </h3>
+                {vc.observations.filter((o) => o.severity !== 'flag').map((o, i) => (
                   <ObservationCard key={i} obs={o} />
                 ))}
               </div>
@@ -1094,7 +1024,7 @@ export default function Report({
                   What this report does not cover
                 </h3>
                 <ul>
-                  {r.dataLimitations.map((s, i) => (
+                  {dedupeLines(r.dataLimitations).map((s, i) => (
                     <li key={i}>{s}</li>
                   ))}
                 </ul>
@@ -1102,19 +1032,6 @@ export default function Report({
             )}
           </section>
         )}
-
-        {/* Next steps - short list */}
-        <section>
-          <h2>Next steps</h2>
-          <ul>
-            {(role && role !== 'buyer'
-              ? glanceNextSteps(buildGlance(r), role, r)
-              : r.nextSteps
-            ).map((n, i) => (
-              <li key={i}>{n}</li>
-            ))}
-          </ul>
-        </section>
 
         {/* Conversion - in-tool lead capture (emails office@palma.llc) */}
         <section>
