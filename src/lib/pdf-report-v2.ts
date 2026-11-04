@@ -12,9 +12,9 @@ import { googleImageFetchHeaders } from './images/keys';
 import type { DiagnosticReport } from './types';
 import { pickDisplayFrames } from './images/historical-aerial';
 import { computeReadiness } from './readiness';
-import { buildFixIts, buildInsurancePacket } from './fix-it';
+import { PACKET_PRICE_NOTE, buildFixIts, buildInsurancePacket } from './fix-it';
 import { SITE_ORIGIN } from './record-token';
-import { PERSONAS, personaCopy, type Persona } from './persona';
+import { PERSONAS, bandSummaryFor, personaCopy, type Persona } from './persona';
 import { buildGlance, glanceNextSteps, glanceVerdict, tipSections } from './glance';
 
 const W = 612;
@@ -294,7 +294,7 @@ export async function buildPdfV2(
     text(String(rd.score), cx - 40, cy - 17, { w: 80, size: 30, font: 'Times-Bold', color: C.navy, align: 'center' });
     text('out of 100', cx - 40, cy + 17, { w: 80, size: 7.5, color: C.muted, align: 'center' });
     text(rd.bandLabel, M + 124, 160, { w: CW - 124, size: 20, font: 'Times-Bold', color: RINGC[rd.band] });
-    text(rd.bandSummary, M + 124, 188, { w: CW - 124, size: 10, color: C.soft });
+    text(bandSummaryFor(role, rd), M + 124, 188, { w: CW - 124, size: 10, color: C.soft });
     text('A records-based indicator. It is not an insurer or lender decision.', M + 124, 222, { w: CW - 124, size: 8, color: C.muted });
   }
   let yr = 262;
@@ -313,10 +313,11 @@ export async function buildPdfV2(
   for (const pk of buildInsurancePacket(r, rd).slice(0, 5)) {
     const tone: Tone = pk.status === 'needed' ? 'red' : pk.status === 'recommended' ? 'amber' : 'green';
     pill(pk.status === 'ok' ? 'have' : pk.status, M, yr - 1, tone);
-    text(pk.item, M + 82, yr, { w: 170, size: 9, font: 'Helvetica-Bold' });
+    text(pk.price ? `${pk.item}  ${pk.price}` : pk.item, M + 82, yr, { w: 170, size: 9, font: 'Helvetica-Bold' });
     text(pk.note, M + 255, yr, { w: CW - 255, size: 8, color: C.soft });
     yr += 28;
   }
+  text(PACKET_PRICE_NOTE, M, yr - 6, { w: CW, size: 8, color: C.muted });
 
   // ===== PAGE: FIX IT =====================================================
   const fixes = buildFixIts(r, rd);
@@ -331,7 +332,7 @@ export async function buildPdfV2(
         const x = M + k * (fw + 14);
         const tone: Tone = f.tone === 'red' ? 'red' : 'amber';
         const steps = f.steps.map((st, n) => `${n + 1}. ${st}`).join('\n');
-        const meta = `Done by: ${f.owner}${f.cost ? `. Typical cost: ${f.cost}` : ''}${f.timeline ? `. Typical time: ${f.timeline}` : ''}`;
+        const meta = `Done by: ${f.owner}${f.cost ? `. Typical cost: ${f.cost}` : ''}${f.timeline ? `. Typical time: ${f.timeline}` : ''}. ${f.vendorNote}`;
         const h = toneCard(x, yf, fw, tone, tone === 'red' ? 'Fix first' : 'Worth fixing', f.title, `${f.why}\n\n${steps}`, meta);
         rowH = Math.max(rowH, h);
       });

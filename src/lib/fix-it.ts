@@ -1,8 +1,9 @@
 // "Fix it" paths: for each problem the report finds, the real route to closing
-// it, who does the work, and what drives the price. Dollar and time ranges are
-// deliberately NOT invented here. Put real numbers in FIX_IT_RANGES (strings
-// like "$2,500 to $6,000" and "4 to 10 weeks") and they appear on the cards.
-// Until then the cards promise a fixed quote within one business day.
+// it, who does the work, and what it costs. Prices come only from the firm's
+// own price list ("Service Offerings and Pricing", Nov 2026) or from the owner;
+// nothing here is invented. Items with no listed price show no price and keep
+// the "fixed quote" wording. Work that goes to outside vendors (a surveyor,
+// engineering plans, repairs) is quoted from the vendor network for best value.
 
 import type { DiagnosticReport } from './types';
 import type { Readiness } from './readiness';
@@ -17,25 +18,43 @@ export interface FixIt {
   quoteTopic: string;
   cost: string | null;
   timeline: string | null;
+  vendorNote: string;
 }
 
-// Edit these to show real ranges on every report. Leave null to show none.
+export const VENDOR_NOTE =
+  'Outside work (a surveyor, engineering plans, repairs) is quoted from our vendor network, so you get the best price.';
+
+// Edit these to change what the cards show. null shows no price.
 export const FIX_IT_RANGES: Record<string, { cost: string | null; timeline: string | null }> = {
-  legalize: { cost: null, timeline: null },
-  roof: { cost: null, timeline: null },
+  // Owner's range for a full after-the-fact legalization.
+  legalize: { cost: '$2,500 to $6,000', timeline: '6 to 12 weeks' },
+  // Price list: wind-mitigation $175, 4-point $350, both $500.
+  roof: { cost: 'Inspections: wind-mitigation $175, 4-point $350, or both for $500', timeline: null },
+  // No price listed: a licensed surveyor is quoted from the vendor network.
   flood: { cost: null, timeline: null },
-  code: { cost: null, timeline: null },
-  closeout: { cost: null, timeline: null },
+  // Price list: engineer letter $399 per covered inspection; single-trade permit management $259.
+  code: { cost: 'Engineer letter $399 per covered inspection, plus permit handling from $259', timeline: null },
+  // Price list: inspection reports $175 each; single-trade permit management $259.
+  closeout: { cost: 'Inspection reports $175 each, plus permit handling from $259', timeline: null },
+  // No price listed.
   septic: { cost: null, timeline: null },
   milestone: { cost: null, timeline: null },
 };
 
+// Price list prices for the papers in the insurance packet. Items not listed
+// have no price shown.
+export const PACKET_PRICES: Record<string, string> = {
+  '4-point inspection': '$350',
+  'Wind-mitigation inspection': '$175',
+};
+export const PACKET_PRICE_NOTE = 'Wind-mitigation and 4-point together: $500. 5% off when you book 3 or more services.';
+
 function mk(
   key: string,
-  base: Omit<FixIt, 'key' | 'cost' | 'timeline'>,
+  base: Omit<FixIt, 'key' | 'cost' | 'timeline' | 'vendorNote'>,
 ): FixIt {
   const r = FIX_IT_RANGES[key] ?? { cost: null, timeline: null };
-  return { key, ...base, cost: r.cost, timeline: r.timeline };
+  return { key, ...base, cost: r.cost, timeline: r.timeline, vendorNote: VENDOR_NOTE };
 }
 
 export function buildFixIts(r: DiagnosticReport, rd: Readiness): FixIt[] {
@@ -151,6 +170,7 @@ export interface PacketItem {
   item: string;
   status: 'needed' | 'recommended' | 'ok';
   note: string;
+  price?: string;
 }
 
 // The papers an insurance agent or lender will ask for, so a buyer is not
@@ -184,5 +204,5 @@ export function buildInsurancePacket(r: DiagnosticReport, rd: Readiness): Packet
   if (r.countyExtras?.sewer?.septicOrWellFlag) {
     out.push({ item: 'Septic inspection', status: 'needed', note: 'The county lists the parcel as possibly on septic or a well.' });
   }
-  return out;
+  return out.map((p) => (PACKET_PRICES[p.item] ? { ...p, price: PACKET_PRICES[p.item] } : p));
 }

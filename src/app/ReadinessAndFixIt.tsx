@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { DiagnosticReport } from '@/lib/types';
 import { computeReadiness, type Tone } from '@/lib/readiness';
-import { buildFixIts, buildInsurancePacket } from '@/lib/fix-it';
+import { PACKET_PRICE_NOTE, buildFixIts, buildInsurancePacket } from '@/lib/fix-it';
 import { bandSummaryFor, personaCopy, type Persona } from '@/lib/persona';
 
 const BAR: Record<Tone, string> = { red: 'bg-red-600', amber: 'bg-amber-500', green: 'bg-emerald-600', grey: 'bg-slate-400' };
@@ -123,6 +123,7 @@ export default function ReadinessAndFixIt({ report, role = null }: { report: Dia
                   {f.cost ? <> · Typical cost: {f.cost}</> : null}
                   {f.timeline ? <> · Typical time: {f.timeline}</> : null}
                 </div>
+                <div className="mt-1 text-xs text-ink-muted">{f.vendorNote}</div>
                 <button
                   type="button"
                   onClick={() => requestQuote(f.quoteTopic)}
@@ -150,7 +151,10 @@ export default function ReadinessAndFixIt({ report, role = null }: { report: Dia
                 {p.status === 'ok' ? 'Have' : p.status}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-ink">{p.item}</div>
+                <div className="text-sm font-semibold text-ink">
+                  {p.item}
+                  {p.price ? <span className="ml-2 text-xs font-bold text-[#1f3864]">{p.price}</span> : null}
+                </div>
                 <div className="text-xs text-ink-soft">{p.note}</div>
               </div>
               {p.status !== 'ok' && (
@@ -161,6 +165,7 @@ export default function ReadinessAndFixIt({ report, role = null }: { report: Dia
             </li>
           ))}
         </ul>
+        <p className="!text-xs !text-ink-muted mt-2">{PACKET_PRICE_NOTE}</p>
       </section>
 
       {rec && (
