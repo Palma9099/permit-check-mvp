@@ -196,12 +196,15 @@ export function toObservations(
     }
     const y0 = yearOf(labels[change.from]);
     const y1 = yearOf(labels[change.to]);
+    // Work often starts a year or two after the permit is issued (a 2020 solar
+    // permit first showed in a 2022 flight), so a permit up to two years before
+    // the earlier photo still counts.
     const inWindow = permits.filter((p) => {
       const y = Number(String(p.issueDate ?? '').slice(0, 4));
-      return Number.isFinite(y) && Number.isFinite(y0) && Number.isFinite(y1) && y >= y0 && y <= y1 && permitFits(area, p);
+      return Number.isFinite(y) && Number.isFinite(y0) && Number.isFinite(y1) && y >= y0 - 2 && y <= y1 && permitFits(area, p);
     });
     const needs = a?.needsPermitIfChanged === true;
-    const beforeOnlineRecords = Number.isFinite(y0) && y0 < PERMITS_ONLINE_FROM && inWindow.length === 0;
+    const beforeOnlineRecords = Number.isFinite(y0) && y0 - 2 < PERMITS_ONLINE_FROM && inWindow.length === 0;
     const named = inWindow
       .slice(0, 2)
       .map((p) => `${String(p.issueDate ?? '').slice(0, 4)} ${String(p.scope || p.appType || 'permit').split(' - ')[0].trim().toLowerCase()}`)

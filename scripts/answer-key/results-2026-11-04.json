@@ -1,0 +1,362 @@
+[
+ {
+  "folio": "3021270346880",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Pool",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2024 and 2025"
+   },
+   {
+    "area": "Patio / cover",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2024 and 2025"
+   }
+  ]
+ },
+ {
+  "folio": "3040080052340",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Pool",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   },
+   {
+    "area": "Driveway",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   }
+  ]
+ },
+ {
+  "folio": "3059350060580",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Pool",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Patio / cover",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   }
+  ]
+ },
+ {
+  "folio": "3059130240230",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Pool",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Patio / cover",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Screen enclosure",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2013 and 2018"
+   }
+  ]
+ },
+ {
+  "folio": "3049010290070",
+  "ok": false,
+  "error": "address resolved to no folio",
+  "observations": [
+   {
+    "area": "Solar",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   }
+  ]
+ },
+ {
+  "folio": "3059110060110",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Roof",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Pool",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   }
+  ]
+ },
+ {
+  "folio": "3059240250480",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Roof",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Solar",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   }
+  ]
+ },
+ {
+  "folio": "3060180031650",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Pool",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2024 and 2025"
+   },
+   {
+    "area": "Patio / cover",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2020 and 2021"
+   },
+   {
+    "area": "Fence",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2021 and 2022"
+   },
+   {
+    "area": "Driveway",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2021 and 2022"
+   },
+   {
+    "area": "Solar",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2024"
+   }
+  ]
+ },
+ {
+  "folio": "3050100210020",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Roof",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2013 and 2018"
+   },
+   {
+    "area": "Solar",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   }
+  ]
+ },
+ {
+  "folio": "3079080190240",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Roof",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2005 and 2010"
+   },
+   {
+    "area": "Pool",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2013 and 2018"
+   },
+   {
+    "area": "Shed / detached",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2013 and 2018"
+   },
+   {
+    "area": "Driveway",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   }
+  ]
+ },
+ {
+  "folio": "3060180040490",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Shed / detached",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2023 and 2024"
+   }
+  ]
+ },
+ {
+  "folio": "3050160470030",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Patio / cover",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2022 and 2024"
+   },
+   {
+    "area": "Driveway",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2021 and 2022"
+   },
+   {
+    "area": "Solar",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2022 and 2024"
+   }
+  ]
+ },
+ {
+  "folio": "3020100100780",
+  "ok": false,
+  "error": "address resolved to 3020090080400",
+  "observations": []
+ },
+ {
+  "folio": "3031030230160",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Shed / detached",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2020 and 2022"
+   },
+   {
+    "area": "Fence",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2020 and 2022"
+   }
+  ]
+ },
+ {
+  "folio": "3031150180110",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Patio / cover",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   },
+   {
+    "area": "Shed / detached",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   },
+   {
+    "area": "Driveway",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2010 and 2013"
+   }
+  ]
+ },
+ {
+  "folio": "3040260250030",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Roof",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Patio / cover",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   }
+  ]
+ },
+ {
+  "folio": "3040300041810",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Roof",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   },
+   {
+    "area": "Rear addition",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   },
+   {
+    "area": "Patio / cover",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   },
+   {
+    "area": "Shed / detached",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   }
+  ]
+ },
+ {
+  "folio": "3040270240080",
+  "ok": true,
+  "error": null,
+  "observations": [
+   {
+    "area": "Roof",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Pool",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Driveway",
+    "severity": "flag",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Rear addition",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Patio / cover",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   },
+   {
+    "area": "Screen enclosure",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2018 and 2022"
+   },
+   {
+    "area": "Fence",
+    "severity": "note",
+    "whatWeSaw": "Changed between 2022 and 2026"
+   }
+  ]
+ }
+]

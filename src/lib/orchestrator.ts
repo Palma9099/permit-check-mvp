@@ -613,7 +613,9 @@ export async function runDiagnostic(input: {
         ])
       : null;
   // A failed permit lookup means "no permit" is unknown this run; say so and do not save it.
-  const permitsUnknown = (adapterResult.notes ?? []).some((n: string) => /permit lookup failed/i.test(n));
+  // No folio means the permits were never looked up.
+  const permitsUnknown =
+    !adapterResult.propertyBasics.folio || (adapterResult.notes ?? []).some((n: string) => /permit lookup failed/i.test(n));
   const savedAerial = aerialKey ? await getSavedAnswer<VisualComparison>(aerialKey) : null;
   const visualComparison = savedAerial ?? (countySeries && countySeries.length >= 2
     ? await compareCountyAerials({ frames: countySeries, keyImageUrl: closeSatUrl, outlineApprox: polygon.isFallback, permits, yearBuilt, permitsUnknown })

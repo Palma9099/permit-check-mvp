@@ -34,7 +34,8 @@ for r in results:
     verdict, detail = 'miss', 'expected area not reported as changed'
     for o in got:
         w = window(o['whatWeSaw'])
-        if w and w[0] <= py + 1 and w[1] >= py:
+        # Same rule as the app: work can show up to two years after the permit.
+        if w and w[0] - 2 <= py and w[1] >= py:
             verdict, detail = 'hit', o['whatWeSaw']
             break
         verdict, detail = 'wrong-years', o['whatWeSaw']
