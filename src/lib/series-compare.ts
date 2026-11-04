@@ -77,7 +77,7 @@ ${spec.reading.map((r) => `- ${r}`).join('\n')}
 - An area is "changed" only if a specific physical difference is clearly visible: a different shape, size, material, layout, or a clearly different colour in good light.
 - When in doubt whether two photos differ, give them the same letter.
 
-Then say if the area's change (if any) is of a kind that normally needs a permit: ${spec.permitKinds}. Paint and landscaping do not.
+Then say if the area's change (if any) is of a kind that normally needs a permit: ${spec.permitKinds}. Paint and landscaping do not. Something only being taken away (shade sails, a tent, an above-ground pool, a shed removed) does not either.
 
 Never use em dashes or en dashes.
 
