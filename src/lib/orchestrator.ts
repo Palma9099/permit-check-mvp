@@ -598,7 +598,7 @@ export async function runDiagnostic(input: {
   // to today, dated by the series check. Otherwise the older NAIP check runs.
   const countySeries =
     historicalAerials.source.startsWith('Miami-Dade') && !input.userThenPhoto
-      ? spreadFrames(historicalAerials.allFrames, 5, yearBuilt)
+      ? spreadFrames(historicalAerials.allFrames, 6, yearBuilt)
       : null;
   const aerialKey =
     parcelId && !input.userThenPhoto
@@ -612,9 +612,11 @@ export async function runDiagnostic(input: {
           permits.length,
         ])
       : null;
+  // A failed permit lookup means "no permit" is unknown this run; say so and do not save it.
+  const permitsUnknown = (adapterResult.notes ?? []).some((n: string) => /permit lookup failed/i.test(n));
   const savedAerial = aerialKey ? await getSavedAnswer<VisualComparison>(aerialKey) : null;
   const visualComparison = savedAerial ?? (countySeries && countySeries.length >= 2
-    ? await compareCountyAerials({ frames: countySeries, keyImageUrl: closeSatUrl, outlineApprox: polygon.isFallback, permits, yearBuilt })
+    ? await compareCountyAerials({ frames: countySeries, keyImageUrl: closeSatUrl, outlineApprox: polygon.isFallback, permits, yearBuilt, permitsUnknown })
     : await compareImagery({
     closeSatelliteUrl: closeSatUrl,
     contextSatelliteUrl: contextSatUrl,
@@ -632,7 +634,7 @@ export async function runDiagnostic(input: {
     yearBuilt,
     polygonIsFallback: polygon.isFallback,
   }));
-  if (aerialKey && !savedAerial && visualComparison.performed && visualComparison.observations.length > 0) {
+  if (aerialKey && !savedAerial && !permitsUnknown && visualComparison.performed && visualComparison.observations.length > 0) {
     await saveAnswer(aerialKey, 'aerial', visualComparison);
   }
 

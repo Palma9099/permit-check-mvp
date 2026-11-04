@@ -29,11 +29,13 @@ export async function compareCountyAerials(opts: {
   outlineApprox?: boolean;
   permits: Permit[];
   yearBuilt: number | null;
+  permitsUnknown?: boolean;
 }): Promise<VisualComparison> {
   const res = await compareSeries(AERIAL_SPEC, {
     frames: opts.frames.map((f) => ({ imageUrl: f.imageUrl, label: String(f.captureYear) })),
     permits: opts.permits,
     yearBuilt: opts.yearBuilt,
+    permitsUnknown: opts.permitsUnknown,
     keyImage: opts.keyImageUrl
       ? {
           imageUrl: opts.keyImageUrl,

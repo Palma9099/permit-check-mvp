@@ -171,7 +171,9 @@ export const miamiDadeAdapter: CountyAdapter = {
     const lookupFailures: string[] = [];
     const [pa, permits, neighbors, codeEnf, inspectionCount] = await Promise.all([
       paByFolio(folio).catch(() => null),
-      permitsByFolio(folio).catch((e) => {
+      // One retry: under load the county service sometimes drops a request, and
+      // an empty list would read as "no permits" everywhere downstream.
+      permitsByFolio(folio).catch(() => permitsByFolio(folio)).catch((e) => {
         console.error('[miami-dade] permit lookup failed', e);
         lookupFailures.push('The county permit lookup failed for this run, so "no permits" below is NOT confirmed. Re-run, or check the county permit portal directly.');
         return [] as Permit[];

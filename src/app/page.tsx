@@ -139,6 +139,7 @@ export default function HomePage() {
         frames: streetHistory.slice(0, 4).map((f) => ({ imageUrl: f.imageUrl, label: f.label })),
         permits: report.permitHistory.subjectPermits.map((p) => ({ issueDate: p.issueDate, appType: p.appType, scope: p.scope })),
         yearBuilt: report.property.yearBuilt,
+        permitsUnknown: (report.dataLimitations ?? []).some((n) => /permit lookup failed/i.test(n)),
       }),
     })
       .then((r) => (r.ok ? r.json() : null))

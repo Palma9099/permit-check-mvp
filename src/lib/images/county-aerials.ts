@@ -89,9 +89,10 @@ export async function fetchCountyAerials(lat: number, lng: number, polygon?: Par
 }
 
 // Pick up to `n` frames spread across the years for the AI, always keeping the
-// oldest and newest, and preferring the sharp 3-inch flights in between.
+// oldest and newest, and preferring the sharp 3-inch flights in between. Starts
+// the year after the house was built, so construction is not read as a change.
 export function spreadFrames<T extends { captureYear: number; gsdMeters?: number }>(all: T[], n = 5, fromYear?: number | null): T[] {
-  const pool = all.filter((f) => !fromYear || f.captureYear >= fromYear - 1);
+  const pool = all.filter((f) => !fromYear || f.captureYear >= fromYear + 1);
   const use = pool.length >= 2 ? pool : all;
   if (use.length <= n) return use;
   const first = use[0];

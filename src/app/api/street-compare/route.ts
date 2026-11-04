@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
   const saved = key ? await getSavedAnswer<Awaited<ReturnType<typeof compareStreetHistory>>>(key) : null;
   if (saved) return NextResponse.json(saved);
 
-  const result = await compareStreetHistory({ frames, permits, yearBuilt });
-  if (key && result.performed && result.observations.length > 0) await saveAnswer(key, 'street', result);
+  const permitsUnknown = body?.permitsUnknown === true;
+  const result = await compareStreetHistory({ frames, permits, yearBuilt, permitsUnknown });
+  if (key && !permitsUnknown && result.performed && result.observations.length > 0) await saveAnswer(key, 'street', result);
   return NextResponse.json(result);
 }

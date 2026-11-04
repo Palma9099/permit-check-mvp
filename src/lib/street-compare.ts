@@ -27,6 +27,7 @@ export function compareStreetHistory(opts: {
   frames: StreetFrameIn[];
   permits: Array<Pick<Permit, 'issueDate' | 'appType' | 'scope'>>;
   yearBuilt: number | null;
+  permitsUnknown?: boolean;
 }): Promise<StreetComparison> {
-  return compareSeries(STREET_SPEC, { frames: opts.frames.slice(0, 4), permits: opts.permits, yearBuilt: opts.yearBuilt });
+  return compareSeries(STREET_SPEC, { frames: opts.frames.slice(0, 4), permits: opts.permits, yearBuilt: opts.yearBuilt, permitsUnknown: opts.permitsUnknown });
 }

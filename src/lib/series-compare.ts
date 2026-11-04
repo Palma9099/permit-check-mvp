@@ -42,6 +42,30 @@ type PermitLite = Pick<Permit, 'issueDate' | 'appType' | 'scope'>;
 // records request), so "no permit" is only known for changes after that.
 export const PERMITS_ONLINE_FROM = 2020;
 
+// Which permits can explain a change to an area. A pool permit does not explain
+// a new roof. Areas not listed accept any permit.
+const PERMIT_WORDS: Record<string, RegExp> = {
+  Roof: /ROOF/,
+  'Roof (front)': /ROOF/,
+  Pool: /POOL/,
+  Solar: /SOLAR|PHOTOVOLT|\bPV\b/,
+  'Shed / detached': /SHED|DETACHED|STORAGE|GAZEBO|ACCESSORY/,
+  Fence: /FENCE|WALL|GATE/,
+  'Fence / gate': /FENCE|WALL|GATE/,
+  Driveway: /DRIVE|PAVER|PAVING|SLAB|CONCRETE|RIGHT OF WAY/,
+  'Patio / cover': /PATIO|TERRACE|PERGOLA|GAZEBO|CARPORT|COVER|ADDITION|AWNING|SLAB/,
+  'Screen enclosure': /SCREEN|ENCLOS|ALUMINUM/,
+  'Rear addition': /ADDITION|ADD |ENCLOS|ROOM|EXTEN/,
+  'Front addition': /ADDITION|ADD |ENCLOS|ROOM|EXTEN|PORCH/,
+  'Front windows': /WINDOW|SHUTTER|ENT REPLACEMENT|OPENING/,
+  'Front door': /DOOR|ENT REPLACEMENT|OPENING|ENTRANCE/,
+  'Garage / carport': /GARAGE|CARPORT|DOOR|ENCLOS|CONVER/,
+};
+const permitFits = (area: string, p: PermitLite) => {
+  const re = PERMIT_WORDS[area];
+  return !re || re.test(`${p.appType ?? ''} ${p.scope ?? ''}`.toUpperCase());
+};
+
 
 function promptFor(spec: SeriesSpec): string {
   return `${spec.intro}
@@ -77,6 +101,8 @@ export async function compareSeries(
     // Optional first image that shows which property is the subject (for
     // aerials: today's satellite photo with the lot outlined in red).
     keyImage?: { imageUrl: string; text: string } | null;
+    // The permit lookup failed this run: never call a change unpermitted.
+    permitsUnknown?: boolean;
   },
 ): Promise<SeriesComparison> {
   const empty = (reason: string): SeriesComparison => ({ performed: false, summary: '', observations: [], runsAgreed: 0, failureReason: reason });
@@ -104,7 +130,7 @@ export async function compareSeries(
   const labels = loaded.map((f) => f.label);
   const runOnce = async (): Promise<ParsedVision | null> => {
     const call = await callVision(apiKey, system, content);
-    return call.ok ? toObservations(call.text, labels, opts.permits, spec) : null;
+    return call.ok ? toObservations(call.text, labels, opts.permits, spec, opts.permitsUnknown) : null;
   };
   try {
     const runs = (await Promise.all([runOnce(), runOnce(), runOnce()])).filter((x): x is ParsedVision => !!x);
@@ -123,8 +149,16 @@ const midSentence = (t: string) => (/^[A-Z][a-z]/.test(t) ? t[0].toLowerCase() +
 
 // Turn one run's per-photo letters into observations. An area changed where
 // two neighbouring clear photos carry different letters; the years come from
-// those photos' labels, never from the model's own wording.
-export function toObservations(text: string, labels: string[], permits: PermitLite[], spec: Pick<SeriesSpec, 'areas' | 'where'>): ParsedVision | null {
+// those photos' labels, never from the model's own wording. When an area
+// changed more than once, the most recent change is reported (an early one is
+// usually the house being built and would hide, say, a pool added later).
+export function toObservations(
+  text: string,
+  labels: string[],
+  permits: PermitLite[],
+  spec: Pick<SeriesSpec, 'areas' | 'where'>,
+  permitsUnknown = false,
+): ParsedVision | null {
   let parsed: any;
   try {
     parsed = JSON.parse(text.replace(/^[^{]*/s, '').replace(/[^}]*$/s, ''));
@@ -144,7 +178,7 @@ export function toObservations(text: string, labels: string[], permits: PermitLi
       continue;
     }
     let change: { from: number; to: number } | null = null;
-    for (let k = 1; k < clear.length; k++) {
+    for (let k = clear.length - 1; k >= 1; k--) {
       if (clear[k].d !== clear[k - 1].d) {
         change = { from: clear[k - 1].i, to: clear[k].i };
         break;
@@ -164,23 +198,25 @@ export function toObservations(text: string, labels: string[], permits: PermitLi
     const y1 = yearOf(labels[change.to]);
     const inWindow = permits.filter((p) => {
       const y = Number(String(p.issueDate ?? '').slice(0, 4));
-      return Number.isFinite(y) && Number.isFinite(y0) && Number.isFinite(y1) && y >= y0 && y <= y1;
+      return Number.isFinite(y) && Number.isFinite(y0) && Number.isFinite(y1) && y >= y0 && y <= y1 && permitFits(area, p);
     });
     const needs = a?.needsPermitIfChanged === true;
     const beforeOnlineRecords = Number.isFinite(y0) && y0 < PERMITS_ONLINE_FROM && inWindow.length === 0;
     const named = inWindow
       .slice(0, 2)
-      .map((p) => `${String(p.issueDate ?? '').slice(0, 4)} ${String(p.appType ?? 'permit').toLowerCase()}`)
+      .map((p) => `${String(p.issueDate ?? '').slice(0, 4)} ${String(p.scope || p.appType || 'permit').split(' - ')[0].trim().toLowerCase()}`)
       .join(', ');
     observations.push({
       area,
       whatWeSaw: `Changed between ${labels[change.from]} and ${labels[change.to]}: ${look(per[change.from])} in ${labels[change.from]}, ${look(per[change.to])} in ${labels[change.to]}.`,
       vsPermitRecord: inWindow.length
         ? `Permit on file in those years (${named}); check that it covers this work.`
+        : permitsUnknown
+        ? 'The county permit lookup did not answer this time, so permits could not be checked. Re-run the report.'
         : beforeOnlineRecords
         ? `County online permit records start in ${PERMITS_ONLINE_FROM}, so an older permit may exist. Order the permit history to confirm.`
         : `No permit issued ${y0} to ${y1}.`,
-      severity: needs && inWindow.length === 0 && !beforeOnlineRecords ? 'flag' : 'note',
+      severity: needs && inWindow.length === 0 && !beforeOnlineRecords && !permitsUnknown ? 'flag' : 'note',
     });
   }
   const flags = observations.filter((o) => o.severity === 'flag').map((o) => o.area.toLowerCase());
