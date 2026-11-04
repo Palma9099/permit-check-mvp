@@ -15,7 +15,7 @@ import { computeReadiness } from './readiness';
 import { PACKET_PRICE_NOTE, buildFixIts, buildInsurancePacket } from './fix-it';
 import { SITE_ORIGIN } from './record-token';
 import { PERSONAS, bandSummaryFor, personaCopy, type Persona } from './persona';
-import { FOUND_NOTE, collectFindings, foundHeadline } from './found';
+import { FOUND_NOTE, collectFindings, foundHeadline, sourceLabel } from './found';
 import { buildGlance, glanceNextSteps, glanceVerdict, tipSections } from './glance';
 
 const W = 612;
@@ -273,16 +273,16 @@ export async function buildPdfV2(
         header('What we found', 'Continued');
         yw = 124;
       }
-      toneCard(M, yw, CW, 'red', f.source === 'street' ? 'Street View' : 'Aerial photos', f.area, body);
+      toneCard(M, yw, CW, 'red', sourceLabel(f), f.area, body);
       yw += h + 10;
     }
     // Evidence: the photos the changes were read from.
     const ev: Array<{ buf: Buffer | null; cap: string; bbox?: Bbox }> = [];
-    if (found.some((f) => f.source === 'aerial') && frames.length >= 2) {
+    if (found.some((f) => f.sources.includes('aerial')) && frames.length >= 2) {
       ev.push({ buf: frameImgs[0] ?? null, cap: `AERIAL ${frames[0].captureYear}`, bbox: frames[0].displayBbox });
       ev.push({ buf: frameImgs[frames.length - 1] ?? null, cap: `AERIAL ${frames[frames.length - 1].captureYear}`, bbox: frames[frames.length - 1].displayBbox });
     }
-    if (found.some((f) => f.source === 'street') && hasGoogleHistory) {
+    if (found.some((f) => f.sources.includes('street')) && hasGoogleHistory) {
       ev.push({ buf: googleHistoryImgs[0] ?? null, cap: `STREET VIEW ${googleHistory[0].label}`.toUpperCase() });
       ev.push({ buf: googleHistoryImgs[googleHistory.length - 1] ?? null, cap: `STREET VIEW ${googleHistory[googleHistory.length - 1].label}`.toUpperCase() });
     }

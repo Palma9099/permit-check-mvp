@@ -4,7 +4,7 @@ import type { DiagnosticReport, VisionObservation } from '@/lib/types';
 import type { Persona } from '@/lib/persona';
 import type { StreetFrame } from '@/lib/street-history';
 import { pickDisplayFrames } from '@/lib/images/historical-aerial';
-import { FOUND_NOTE, collectFindings, foundCta, foundHeadline } from '@/lib/found';
+import { FOUND_NOTE, collectFindings, foundCta, foundHeadline, sourceLabel } from '@/lib/found';
 import { Outline } from './AerialTimeline';
 
 function requestQuote(topic: string) {
@@ -44,8 +44,8 @@ export default function FoundFirst({
   const aerialNow = frames[frames.length - 1];
   const svThen = streetHistory && streetHistory.length >= 2 ? streetHistory[0] : null;
   const svNow = streetHistory && streetHistory.length >= 2 ? streetHistory[streetHistory.length - 1] : null;
-  const hasStreet = findings.some((f) => f.source === 'street');
-  const hasAerial = findings.some((f) => f.source === 'aerial');
+  const hasStreet = findings.some((f) => f.sources.includes('street'));
+  const hasAerial = findings.some((f) => f.sources.includes('aerial'));
   const ring = (report.thenVsNow?.parcelPolygon as Array<[number, number]> | null) ?? [];
 
   if (findings.length === 0) {
@@ -75,7 +75,7 @@ export default function FoundFirst({
               <li key={`${f.source}-${f.area}`} className="!mb-0 rounded-lg bg-white/10 px-4 py-3">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="font-semibold text-white">{f.area}</span>
-                  <span className="text-[10px] uppercase tracking-wider text-white/60">{f.source === 'street' ? 'Street View' : 'Aerial photos'}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-white/60">{sourceLabel(f)}</span>
                 </div>
                 <p className="!text-sm !leading-snug !text-white/90 !mb-1 mt-1">{f.text}</p>
                 <p className="!text-sm !font-semibold !text-white !mb-2">No permit found for it in county records.</p>

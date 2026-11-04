@@ -6,21 +6,53 @@
 import type { DiagnosticReport, VisionObservation } from './types';
 import type { Persona } from './persona';
 
+export type FindingSource = 'aerial' | 'street';
+
 export interface Finding {
-  source: 'aerial' | 'street';
+  source: FindingSource; // where it was first seen
+  sources: FindingSource[]; // every check that saw it
   area: string;
   text: string;
 }
 
+// The aerial and Street View checks name areas differently ("Roof" and
+// "Roof (front)"), so one real change could be listed twice. Map both to a
+// topic and list each change once, naming every source that saw it.
+const TOPICS: Array<[string, RegExp]> = [
+  ['garage', /garage|carport/i],
+  ['roof', /roof/i],
+  ['driveway', /driveway/i],
+  ['fence', /fence|gate/i],
+  ['windows', /window/i],
+  ['door', /door/i],
+  ['patio', /patio|cover/i],
+  ['pool', /pool/i],
+  ['shed', /shed|detached/i],
+  ['addition', /addition|footprint/i],
+  ['solar', /solar/i],
+  ['finish', /facade|finish|paint/i],
+];
+const topicOf = (area: string) => TOPICS.find(([, re]) => re.test(area))?.[0] ?? area.toLowerCase();
+
+export function sourceLabel(f: Finding): string {
+  return f.sources.length > 1 ? 'Aerial and Street View' : f.source === 'street' ? 'Street View' : 'Aerial photos';
+}
+
 export function collectFindings(r: DiagnosticReport, streetObs: VisionObservation[] | null | undefined): Finding[] {
   const out: Finding[] = [];
-  const seen = new Set<string>();
-  const add = (source: Finding['source'], o: VisionObservation) => {
-    const k = `${source}:${o.area.toLowerCase()}`;
-    if (seen.has(k) || o.severity !== 'flag') return;
-    seen.add(k);
+  const byTopic = new Map<string, Finding>();
+  const add = (source: FindingSource, o: VisionObservation) => {
+    if (o.severity !== 'flag') return;
+    const t = topicOf(o.area);
+    const prev = byTopic.get(t);
+    if (prev) {
+      if (!prev.sources.includes(source)) prev.sources.push(source);
+      return;
+    }
     // House style: no long dashes in reader-facing text, even from older AI output.
-    out.push({ source, area: o.area, text: o.whatWeSaw.replace(/\s*[\u2014\u2013]\s*/g, ', ') });
+    const f: Finding = { source, sources: [source], area: o.area, text: o.whatWeSaw.replace(/\s*[\u2014\u2013]\s*/g, ', ') };
+    byTopic.set(t, f);
+    out.push(f);
   };
   for (const o of r.thenVsNow?.visualComparison?.observations ?? []) add('aerial', o);
   for (const o of streetObs ?? []) add('street', o);
