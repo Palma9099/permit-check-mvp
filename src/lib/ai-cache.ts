@@ -9,6 +9,8 @@ import { createHash } from 'crypto';
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SECRET_KEY;
 const TTL_DAYS = 30;
+// Bump when the AI check changes, so answers from the old check are never reused.
+const CHECK_VERSION = 'v2-opus-5-5';
 
 export type AiKind = 'aerial' | 'street';
 
@@ -19,7 +21,7 @@ const stripSecrets = (u: string | null | undefined) =>
 
 export function aiCacheKey(kind: AiKind, parcel: string, parts: Array<string | number | null | undefined>): string {
   const h = createHash('sha256')
-    .update(parts.map((p) => (typeof p === 'string' && p.startsWith('http') ? stripSecrets(p) : String(p ?? ''))).join('\n'))
+    .update([CHECK_VERSION, ...parts.map((p) => (typeof p === 'string' && p.startsWith('http') ? stripSecrets(p) : String(p ?? '')))].join('\n'))
     .digest('hex')
     .slice(0, 24);
   return `${kind}|${parcel.toLowerCase().replace(/\s+/g, ' ').trim()}|${h}`;

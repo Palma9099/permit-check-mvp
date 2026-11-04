@@ -4,7 +4,7 @@ import type { UserUploadedThen } from '@/lib/types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 // 6 MB cap on the uploaded historical photo. Vercel serverless function body
 // limit is around 4.5 MB by default; we keep client-side scaling under that.

@@ -38,12 +38,21 @@ export function sourceLabel(f: Finding): string {
   return f.sources.length > 1 ? 'Aerial and Street View' : f.source === 'street' ? 'Street View' : 'Aerial photos';
 }
 
+// Areas the street photos see whole. When dated Street View shows one of these
+// unchanged across the years, a "changed" call from the softer 2 to 3 ft aerials
+// is dropped: on a test house the aerials read old pavers as "plain concrete in
+// 2010", while a 2008 Street View photo already showed the same pavers.
+// Fences and roofs are not overruled, since the street sees only the front.
+const STREET_SEES_WHOLE = new Set(['driveway', 'garage']);
+
 export function collectFindings(r: DiagnosticReport, streetObs: VisionObservation[] | null | undefined): Finding[] {
   const out: Finding[] = [];
   const byTopic = new Map<string, Finding>();
+  const streetSame = new Set((streetObs ?? []).filter((o) => o.severity === 'match').map((o) => topicOf(o.area)));
   const add = (source: FindingSource, o: VisionObservation) => {
     if (o.severity !== 'flag') return;
     const t = topicOf(o.area);
+    if (source === 'aerial' && STREET_SEES_WHOLE.has(t) && streetSame.has(t)) return;
     const prev = byTopic.get(t);
     if (prev) {
       if (!prev.sources.includes(source)) prev.sources.push(source);

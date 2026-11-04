@@ -7,9 +7,7 @@
 // aerial check, it runs three times and keeps only what a majority agrees on.
 
 import type { Permit, VisionObservation } from './types';
-import { MODEL, fetchImageBase64, mergeVisionRuns, parseResult, type ParsedVision } from './vision-compare';
-
-const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
+import { callVision, fetchImageBase64, mergeVisionRuns, type ParsedVision } from './vision-compare';
 
 export interface StreetFrameIn {
   imageUrl: string;
@@ -24,21 +22,27 @@ export interface StreetComparison {
   failureReason: string | null;
 }
 
-const PROMPT = `You compare dated Street View photos of ONE house, all taken from about the same street position, looking at it. Your job: list visible changes to the subject house over time, and say whether the permit record explains each one.
+const AREAS = ['Front windows', 'Front door', 'Garage / carport', 'Front addition', 'Roof (front)', 'Fence / gate', 'Driveway', 'Exterior finish'];
 
-The subject house is the one centred in the photos. Ignore neighbours, cars, people, plants that only grew, light and weather.
+// The model only groups the numbered photos by how each area looks (a letter per look).
+// The code below works out whether it changed and between which years, so a
+// change can never be dated to photos where the area looks the same.
+const PROMPT = `You look at dated Street View photos of ONE house, numbered in date order, all taken from about the same street position.
 
-Check these areas: "Front windows", "Front door", "Garage / carport", "Front addition", "Roof (front)", "Fence / gate", "Driveway", "Exterior finish".
+For each area below, sort the photos by how that area of the subject house (the house centred in the photos) looks. Give each distinct look a capital letter (A, B, C) and describe each letter in a few plain words. Photos where the area looks the same get the SAME letter. Use "?" for a photo where the area is hidden or too unclear. Areas: ${AREAS.map((a) => `"${a}"`).join(', ')}.
 
-Severity:
-- "flag": a visible change of a kind that normally needs a permit (windows or doors replaced, garage enclosed, addition, roof replaced, new fence or wall, driveway rebuilt) with NO matching permit in the record for the years between the photos.
-- "note": a visible change that usually needs no permit (paint colour, landscaping), or a change a permit does explain.
-- "match": no visible change.
-- "uncertain": the photos do not show the area clearly enough to say.
+How to read the photos:
+- Older photos are smaller, hazier and differently lit. Haze, glare, shadow, a different sun angle or a lower-quality image is NOT a change. Colour shifts from lighting are NOT a change.
+- Cars, people, bins, plants and trees growing or being trimmed are NOT changes. Look past them.
+- An area is "changed" only if a specific physical difference is clearly visible: a different shape, size, material, opening layout, style or a clearly different colour in good light.
+- When in doubt whether two photos differ, give them the same letter.
 
-Rules: describe only what you can see. Name the years between which a change appears. Never invent a change. Never use em dashes or en dashes; use commas or periods.
+Then say if the area's change (if any) is of a kind that normally needs a permit: windows or doors replaced, garage enclosed, addition, roof replaced, new or replaced fence or wall, driveway rebuilt. Paint and landscaping do not.
 
-Return ONLY JSON: {"summary": "one sentence", "observations": [{"area": "...", "whatWeSaw": "...", "vsPermitRecord": "...", "severity": "flag|note|match|uncertain"}]}`;
+Never use em dashes or en dashes.
+
+Return ONLY JSON:
+{"areas": [{"area": "...", "perPhoto": ["A", "A", "B", ...one letter or ? per photo, in photo order], "looks": {"A": "short description", "B": "short description"}, "needsPermitIfChanged": true|false}]}`;
 
 function permitText(permits: Array<Pick<Permit, 'issueDate' | 'appType' | 'scope'>>, yearBuilt: number | null): string {
   const lines = [`Year built: ${yearBuilt ?? 'unknown'}`, `Permits on file: ${permits.length}`];
@@ -57,32 +61,20 @@ export async function compareStreetHistory(opts: {
   if (!apiKey) return empty('AI key not configured');
   const frames = opts.frames.slice(0, 4);
   const imgs = await Promise.all(frames.map((f) => fetchImageBase64(f.imageUrl)));
+  const loaded = frames.filter((_, i) => !!imgs[i]);
+  const data = imgs.filter((x): x is string => !!x);
+  if (loaded.length < 2) return empty('fewer than two photos could be loaded');
   const content: any[] = [];
-  frames.forEach((f, i) => {
-    if (!imgs[i]) return;
-    content.push({ type: 'text', text: `Street View photo, ${f.label}:` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imgs[i] } });
+  loaded.forEach((f, i) => {
+    content.push({ type: 'text', text: `Photo ${i + 1} of ${loaded.length}, taken ${f.label}:` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: data[i] } });
   });
-  if (content.length < 4) return empty('fewer than two photos could be loaded');
-  content.push({ type: 'text', text: `Permit record:\n${permitText(opts.permits, opts.yearBuilt)}\n\nReturn the JSON.` });
+  content.push({ type: 'text', text: `${permitText(opts.permits, opts.yearBuilt)}\n\nReturn the JSON.` });
 
-  const body = JSON.stringify({ model: MODEL, max_tokens: 1400, temperature: 0, system: PROMPT, messages: [{ role: 'user', content }] });
+  const labels = loaded.map((f) => f.label);
   const runOnce = async (): Promise<ParsedVision | null> => {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const res = await fetch(ANTHROPIC_API, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body,
-      });
-      if (res.ok) {
-        const data: any = await res.json();
-        const t = Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === 'text')?.text : '';
-        return parseResult(typeof t === 'string' ? t : '');
-      }
-      if (![429, 500, 502, 503, 504, 529].includes(res.status)) return null;
-      await new Promise((r) => setTimeout(r, attempt * 1500));
-    }
-    return null;
+    const call = await callVision(apiKey, PROMPT, content);
+    return call.ok ? toObservations(call.text, labels, opts.permits) : null;
   };
   try {
     const runs = (await Promise.all([runOnce(), runOnce(), runOnce()])).filter((x): x is ParsedVision => !!x);
@@ -92,4 +84,72 @@ export async function compareStreetHistory(opts: {
   } catch (err: any) {
     return empty(String(err?.message ?? err).slice(0, 200));
   }
+}
+
+const yearOf = (label: string) => Number(label.match(/(19|20)\d{2}/)?.[0] ?? NaN);
+
+// Turn one run's per-photo letters into observations. An area changed where
+// two neighbouring clear photos carry different letters; the years
+// come from those photos' labels, never from the model's own wording.
+export function toObservations(
+  text: string,
+  labels: string[],
+  permits: Array<Pick<Permit, 'issueDate' | 'appType' | 'scope'>>,
+): ParsedVision | null {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text.replace(/^[^{]*/s, '').replace(/[^}]*$/s, ''));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed?.areas)) return null;
+  const noDash = (t: string) => t.replace(/\s*[\u2014\u2013]\s*/g, ', ');
+  const observations: VisionObservation[] = [];
+  for (const a of parsed.areas) {
+    const area = AREAS.find((x) => x === a?.area);
+    const per: string[] = Array.isArray(a?.perPhoto) ? a.perPhoto.map((x: any) => String(x ?? '').trim().toUpperCase()) : [];
+    const look = (k: string) => noDash(String(a?.looks?.[k] ?? '').trim()) || 'a different look';
+    if (!area || per.length !== labels.length) continue;
+    const clear = per.map((d, i) => ({ d, i })).filter((x) => /^[A-Z]$/.test(x.d));
+    if (clear.length < 2) {
+      observations.push({ area, whatWeSaw: 'Not clear enough in the photos to compare.', vsPermitRecord: '', severity: 'uncertain' });
+      continue;
+    }
+    let change: { from: number; to: number } | null = null;
+    for (let k = 1; k < clear.length; k++) {
+      if (clear[k].d !== clear[k - 1].d) {
+        change = { from: clear[k - 1].i, to: clear[k].i };
+        break;
+      }
+    }
+    if (!change) {
+      observations.push({
+        area,
+        whatWeSaw: `Looks the same from ${labels[clear[0].i]} to ${labels[clear[clear.length - 1].i]}: ${look(clear[0].d)}.`,
+        vsPermitRecord: 'No change to explain.',
+        severity: 'match',
+      });
+      continue;
+    }
+    const y0 = yearOf(labels[change.from]);
+    const y1 = yearOf(labels[change.to]);
+    const inWindow = permits.filter((p) => {
+      const y = Number(String(p.issueDate ?? '').slice(0, 4));
+      return Number.isFinite(y) && Number.isFinite(y0) && Number.isFinite(y1) && y >= y0 && y <= y1;
+    });
+    const needs = a?.needsPermitIfChanged === true;
+    observations.push({
+      area,
+      whatWeSaw: `Changed between ${labels[change.from]} and ${labels[change.to]}: ${look(per[change.from])} in ${labels[change.from]}, ${look(per[change.to])} in ${labels[change.to]}.`,
+      vsPermitRecord: inWindow.length
+        ? `${inWindow.length} permit(s) issued ${y0} to ${y1}; check whether one covers it.`
+        : `No permit issued ${y0} to ${y1}.`,
+      severity: needs && inWindow.length === 0 ? 'flag' : 'note',
+    });
+  }
+  const flags = observations.filter((o) => o.severity === 'flag').map((o) => o.area.toLowerCase());
+  return {
+    summary: flags.length ? `Front changes with no permit in the same years: ${flags.join(', ')}.` : 'No front changes that need a permit were seen.',
+    observations,
+  };
 }

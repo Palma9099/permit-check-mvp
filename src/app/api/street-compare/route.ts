@@ -5,7 +5,7 @@ import { aiCacheKey, getSavedAnswer, saveAnswer } from '@/lib/ai-cache';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 // Runs the Street View AI check for a report the site just produced. It needs
 // the report's signed record link (so it cannot be used as a free AI endpoint)

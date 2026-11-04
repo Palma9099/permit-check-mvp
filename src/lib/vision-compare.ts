@@ -35,7 +35,55 @@ import type {
 } from './types';
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages';
-export const MODEL = 'claude-sonnet-4-5-20250929';
+// Opus 5.5 reads photos far more accurately than Sonnet 4.5 did: on a test
+// house Sonnet dated a 2022-2025 facade remodel to 2008-2022 and invented a
+// garage-door and fence change. Thinking is always on for this model and
+// `temperature` is not accepted; repeatability comes from the 2-of-3 vote and
+// the saved answers (ai-cache.ts) instead.
+export const MODEL = 'claude-opus-5-5';
+
+export type VisionCall = { ok: true; text: string } | { ok: false; reason: string };
+
+// One photo-comparison request. Retries overload, rate-limit and 5xx a couple
+// of times. A safety decline is re-run server side on Anthropic's recommended
+// fallback model (`fallbacks: "default"`); if it still declines, the run
+// counts as failed rather than being read as an answer.
+export async function callVision(apiKey: string, system: string, content: any[]): Promise<VisionCall> {
+  const body = JSON.stringify({
+    model: MODEL,
+    // Thinking counts toward max_tokens, so leave room beyond the JSON reply.
+    max_tokens: 16000,
+    output_config: { effort: 'high' },
+    fallbacks: 'default',
+    system,
+    messages: [{ role: 'user', content }],
+  });
+  let res!: Response;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    res = await fetch(ANTHROPIC_API, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'server-side-fallback-2026-07-01',
+      },
+      body,
+    });
+    if (res.ok || ![429, 500, 502, 503, 504, 529].includes(res.status) || attempt === 3) break;
+    await new Promise((r) => setTimeout(r, attempt * 1500));
+  }
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    console.error(`[vision] Anthropic non-OK: status=${res.status} body=${errText.slice(0, 400)}`);
+    return { ok: false, reason: `HTTP ${res.status}${errText ? `: ${errText.slice(0, 300)}` : ''}` };
+  }
+  const data: any = await res.json();
+  if (data?.stop_reason === 'refusal') return { ok: false, reason: 'declined by the model' };
+  // The reply can start with thinking blocks; read the text block by type.
+  const textBlock = Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === 'text') : null;
+  return { ok: true, text: typeof textBlock?.text === 'string' ? textBlock.text : '' };
+}
 
 // Parse a base64 data URL like "data:image/jpeg;base64,/9j/..." into the
 // media type + raw base64 payload Anthropic's API expects.
@@ -689,42 +737,10 @@ export async function compareImagery(opts: {
     text: `Permit record for the subject parcel:\n${digest}\n\n${windowText}\n\nReturn the JSON object per the schema in the system prompt. Red polygon on the Google NOW frame = subject boundary — never flag anything outside it.`,
   });
 
-  const reqBody = JSON.stringify({
-    model: MODEL,
-    max_tokens: 1800,
-    // Zero randomness: the same photos must give the same findings every run.
-    // At the default (1.0) one address flipped between "roof unchanged" and
-    // "roof re-covered" from run to run, which moved the readiness score.
-    temperature: 0,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userContent }],
-  });
-
-  // One model call. Retries transient overload/rate-limit/5xx a couple times so
-  // a momentary blip doesn't drop the run.
   const runOnce = async (): Promise<{ ok: true; parsed: ParsedVision } | { ok: false; reason: string }> => {
-    let res!: Response;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      res = await fetch(ANTHROPIC_API, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: reqBody,
-      });
-      if (res.ok || ![429, 500, 502, 503, 504, 529].includes(res.status) || attempt === 3) break;
-      await new Promise((r) => setTimeout(r, attempt * 1500));
-    }
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.error(`[vision-compare] Anthropic non-OK: status=${res.status} body=${errText.slice(0, 400)}`);
-      return { ok: false, reason: `HTTP ${res.status}${errText ? `: ${errText.slice(0, 300)}` : ''}` };
-    }
-    const data: any = await res.json();
-    const textBlock = Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === 'text') : null;
-    const parsed = parseResult(typeof textBlock?.text === 'string' ? textBlock.text : '');
+    const call = await callVision(apiKey, SYSTEM_PROMPT, userContent);
+    if (!call.ok) return call;
+    const parsed = parseResult(call.text);
     return parsed ? { ok: true, parsed } : { ok: false, reason: 'json parse failed' };
   };
 
