@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { VERIFIED_CHECKS } from '@/lib/verified-checks';
+import { TIERS, VERIFIED_CHECKS, type Tier } from '@/lib/verified-checks';
 
 // Staff page: a Palma reviewer checks a home and publishes its Palma Verified
 // record. Needs the staff key (VERIFY_ADMIN_KEY), kept in this browser tab only.
@@ -20,6 +20,7 @@ export default function VerifyAdmin() {
   const [notes, setNotes] = useState('');
   const [msg, setMsg] = useState<{ tone: 'red' | 'green'; text: string; url?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tier, setTier] = useState<Tier>('premium');
 
   useEffect(() => {
     try {
@@ -58,7 +59,7 @@ export default function VerifyAdmin() {
     setMsg(null);
     setBusy(true);
     try {
-      const j = await call('/api/verified/publish', { record, checks, reviewer, roofYear, notes });
+      const j = await call('/api/verified/publish', { tier, record, checks, reviewer, roofYear, notes });
       setMsg({ tone: 'green', text: `Published. Valid until ${new Date(j.expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.`, url: j.url });
     } catch (e: any) {
       setMsg({ tone: 'red', text: e.message });
@@ -67,7 +68,7 @@ export default function VerifyAdmin() {
     }
   }
 
-  const allOk = CHECKS.every((c) => checks[c.key]?.ok);
+  const allOk = tier === 'instant' || CHECKS.every((c) => checks[c.key]?.ok);
   const input = 'w-full rounded-lg border border-black/15 bg-white px-3 py-2 text-sm';
 
   return (
@@ -106,6 +107,24 @@ export default function VerifyAdmin() {
             </div>
           )}
 
+          <div className="mt-5 flex gap-2" role="group" aria-label="Tier">
+            {(['instant', 'premium'] as Tier[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTier(t)}
+                aria-pressed={tier === t}
+                className={`flex-1 rounded-xl px-4 py-3 text-left ring-1 ${tier === t ? 'bg-[#1f3864] text-white ring-[#1f3864]' : 'bg-white ring-black/15'}`}
+              >
+                <span className="block text-sm font-semibold">
+                  {TIERS[t].name} · {TIERS[t].price}
+                </span>
+                <span className={`block text-xs ${tier === t ? 'text-white/80' : 'text-ink-muted'}`}>{TIERS[t].blurb}</span>
+              </button>
+            ))}
+          </div>
+
+          {tier === 'premium' && (
           <ul className="mt-5 space-y-3">
             {CHECKS.map((c) => (
               <li key={c.key} className="rounded-lg border border-black/10 p-3">
@@ -130,7 +149,9 @@ export default function VerifyAdmin() {
               </li>
             ))}
           </ul>
+          )}
 
+          {tier === 'premium' && (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="block text-sm font-semibold">
               Reviewer name
@@ -141,17 +162,18 @@ export default function VerifyAdmin() {
               <input value={roofYear} onChange={(e) => setRoofYear(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="e.g. 2016" className={`${input} mt-1`} />
             </label>
           </div>
+          )}
           <label className="mt-3 block text-sm font-semibold">
             Public note (optional)
             <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className={`${input} mt-1`} />
           </label>
           <button
             type="button"
-            disabled={busy || !allOk || !reviewer.trim()}
+            disabled={busy || !allOk || (tier === 'premium' && !reviewer.trim())}
             onClick={publish}
             className="mt-4 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
           >
-            Publish Palma Verified
+            Publish {TIERS[tier].name}
           </button>
           {!allOk && <div className="mt-2 text-xs text-ink-muted">Every check must be confirmed before publishing.</div>}
         </div>

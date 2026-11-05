@@ -8,20 +8,24 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SECRET_KEY;
 
-export { VERIFIED_CHECKS, VERIFIED_MONTHS, VERIFIED_PRICE } from './verified-checks';
-import { VERIFIED_MONTHS } from './verified-checks';
+export { TIERS, VERIFIED_CHECKS, VERIFIED_MONTHS, VERIFIED_PRICE } from './verified-checks';
+import { VERIFIED_MONTHS, type Tier } from './verified-checks';
 
 export interface VerifiedCheck {
   key: string;
   label: string;
   ok: boolean;
   note?: string;
+  // Instant tier: what the records show, with its colour (red, amber, green, grey).
+  value?: string;
+  tone?: string;
 }
 
 export interface VerifiedRecord {
   id: string;
   folio: string;
   address: string;
+  tier: Tier;
   status: 'verified' | 'revoked';
   verified_at: string;
   expires_at: string;

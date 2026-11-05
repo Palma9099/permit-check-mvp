@@ -51,13 +51,13 @@ export default function HomeHero({
 }) {
   const r = report;
   // A live Palma Verified record for this folio shows as the first chip.
-  const [verified, setVerified] = useState<{ id: string; expiresAt: string } | null>(null);
+  const [verified, setVerified] = useState<{ id: string; tier: string; expiresAt: string } | null>(null);
   useEffect(() => {
     const f = (r.property.folio ?? '').replace(/\D+/g, '');
     if (f.length !== 13) return;
     fetch(`/api/verified/lookup?folio=${f}`)
       .then((x) => (x.ok ? x.json() : {}))
-      .then((j: any) => setVerified(j?.id ? { id: j.id, expiresAt: j.expiresAt } : null))
+      .then((j: any) => setVerified(j?.id ? { id: j.id, tier: j.tier, expiresAt: j.expiresAt } : null))
       .catch(() => {});
   }, [r.property.folio]);
   const rd = r.readiness ?? computeReadiness(r);
@@ -130,10 +130,10 @@ export default function HomeHero({
                 href={`/verified/${verified.id}`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-2 rounded-full bg-emerald-600 px-3.5 py-1.5 text-sm font-semibold text-white shadow-lg ring-1 ring-white/30 hover:bg-emerald-500"
+                className={`flex items-center gap-2 rounded-full ${verified.tier === 'instant' ? 'bg-sky-600 hover:bg-sky-500' : 'bg-emerald-600 hover:bg-emerald-500'} px-3.5 py-1.5 text-sm font-semibold text-white shadow-lg ring-1 ring-white/30`}
               >
                 <span aria-hidden>✓</span>
-                Palma Verified until {new Date(verified.expiresAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                {verified.tier === 'instant' ? 'Palma Checked' : 'Palma Verified'} until {new Date(verified.expiresAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
               </a>
             </li>
           )}

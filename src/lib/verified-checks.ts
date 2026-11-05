@@ -1,8 +1,24 @@
 // Palma Verified settings shared by the server and the staff page (no Node
 // imports here, so the browser can load it).
 
-// What a Verified record costs the seller, and how long it stays valid.
-export const VERIFIED_PRICE = '$5.99';
+// Two tiers. "Checked" is automated from the report, with no person signing
+// off, so it never carries the Verified name or seal.
+export type Tier = 'instant' | 'premium';
+export const TIERS: Record<Tier, { name: string; seal: string; price: string; blurb: string }> = {
+  instant: {
+    name: 'Palma Checked',
+    seal: 'CHECKED',
+    price: '$5.99',
+    blurb: 'Instant, dated summary of what the public records show.',
+  },
+  premium: {
+    name: 'Palma Verified',
+    seal: 'VERIFIED',
+    price: '$599',
+    blurb: 'A Palma reviewer pulls the full permit history and confirms every item.',
+  },
+};
+export const VERIFIED_PRICE = TIERS.premium.price;
 export const VERIFIED_MONTHS = 6;
 
 // The checks a reviewer must confirm before publishing.

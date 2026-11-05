@@ -3,7 +3,8 @@ import { VERIFIED_CHECKS, adminKeyOk, publishVerified, type VerifiedCheck } from
 import { LATEST_COUNTY_SERVICE, countyExportUrl } from '@/lib/images/county-aerials';
 import { displayBboxFor } from '@/lib/images/historical-aerial';
 import { lotCenterByFolio } from '@/lib/miami-dade-raw';
-import { SITE_ORIGIN } from '@/lib/record-token';
+import { SITE_ORIGIN, toneFromCode } from '@/lib/record-token';
+import type { Tier } from '@/lib/verified-checks';
 import { itemValue, recordFrom } from '../_shared';
 
 export const runtime = 'nodejs';
@@ -17,17 +18,26 @@ export async function POST(req: NextRequest) {
   const p = recordFrom(body?.record);
   if (!p || !p.f) return NextResponse.json({ error: 'That record link is not valid.' }, { status: 400 });
 
-  const reviewer = String(body?.reviewer ?? '').trim().slice(0, 80);
-  if (!reviewer) return NextResponse.json({ error: 'Add the reviewer name.' }, { status: 400 });
-  const given = (body?.checks ?? {}) as Record<string, { ok?: boolean; note?: string }>;
-  const checks: VerifiedCheck[] = VERIFIED_CHECKS.map((c) => ({
-    key: c.key,
-    label: c.label,
-    ok: given[c.key]?.ok === true,
-    note: String(given[c.key]?.note ?? '').trim().slice(0, 240) || undefined,
-  }));
-  const missing = checks.filter((c) => !c.ok).map((c) => c.label);
-  if (missing.length) return NextResponse.json({ error: `Not every check is confirmed: ${missing.join('; ')}.` }, { status: 400 });
+  const tier: Tier = body?.tier === 'instant' ? 'instant' : 'premium';
+  let reviewer: string;
+  let checks: VerifiedCheck[];
+  if (tier === 'instant') {
+    // Automated: what the signed report shows, item by item. No sign-off.
+    reviewer = 'Automated records check';
+    checks = p.i.map(([label, tone, value, detail], n) => ({ key: `r${n}`, label, value, tone: toneFromCode(tone), ok: tone === 'g', note: detail }));
+  } else {
+    reviewer = String(body?.reviewer ?? '').trim().slice(0, 80);
+    if (!reviewer) return NextResponse.json({ error: 'Add the reviewer name.' }, { status: 400 });
+    const given = (body?.checks ?? {}) as Record<string, { ok?: boolean; note?: string }>;
+    checks = VERIFIED_CHECKS.map((c) => ({
+      key: c.key,
+      label: c.label,
+      ok: given[c.key]?.ok === true,
+      note: String(given[c.key]?.note ?? '').trim().slice(0, 240) || undefined,
+    }));
+    const missing = checks.filter((c) => !c.ok).map((c) => c.label);
+    if (missing.length) return NextResponse.json({ error: `Not every check is confirmed: ${missing.join('; ')}.` }, { status: 400 });
+  }
 
   const roofYear = Number(body?.roofYear);
   const center = await lotCenterByFolio(p.f).catch(() => null);
@@ -36,6 +46,7 @@ export async function POST(req: NextRequest) {
   try {
     const rec = await publishVerified({
       folio: p.f.replace(/\D+/g, ''),
+      tier,
       address: p.a,
       reviewer,
       checks,

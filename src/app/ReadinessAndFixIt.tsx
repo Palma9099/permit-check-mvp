@@ -5,7 +5,7 @@ import type { DiagnosticReport } from '@/lib/types';
 import { computeReadiness, type Tone } from '@/lib/readiness';
 import { PACKET_PRICE_NOTE, buildFixIts, buildInsurancePacket } from '@/lib/fix-it';
 import { bandSummaryFor, personaCopy, type Persona } from '@/lib/persona';
-import { VERIFIED_MONTHS, VERIFIED_PRICE } from '@/lib/verified-checks';
+import { TIERS, VERIFIED_MONTHS } from '@/lib/verified-checks';
 
 const BAR: Record<Tone, string> = { red: 'bg-red-600', amber: 'bg-amber-500', green: 'bg-emerald-600', grey: 'bg-slate-400' };
 const TXT: Record<Tone, string> = { red: 'text-red-700', amber: 'text-amber-700', green: 'text-emerald-700', grey: 'text-slate-600' };
@@ -126,21 +126,34 @@ export default function ReadinessAndFixIt({
 
       {(role === 'seller' || role === 'owner') && (
         <section>
-          <div className="flex flex-wrap items-center gap-5 rounded-2xl bg-gradient-to-br from-[#064e3b] to-[#047857] px-6 py-5 text-white shadow-[0_8px_30px_rgba(4,120,87,0.25)]">
-            <span aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl ring-1 ring-white/30">✓</span>
-            <div className="min-w-[14rem] flex-1">
-              <div className="font-serif text-xl font-semibold">Get Palma Verified</div>
-              <div className="text-sm text-white/85">
-                We check every permit and open item, then give you a verified record and listing badge. Valid {VERIFIED_MONTHS} months.
+          <h2>Show buyers a clean record</h2>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {(['instant', 'premium'] as const).map((t) => (
+              <div
+                key={t}
+                className={`flex flex-col rounded-2xl px-5 py-5 text-white shadow-[0_8px_30px_rgba(16,36,71,0.18)] ${
+                  t === 'premium' ? 'bg-gradient-to-br from-[#064e3b] to-[#047857]' : 'bg-gradient-to-br from-[#0c4a6e] to-[#0369a1]'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/15 text-xl ring-1 ring-white/30">✓</span>
+                  <div className="font-serif text-xl font-semibold">{TIERS[t].name}</div>
+                  <span className="ml-auto text-lg font-semibold">{TIERS[t].price}</span>
+                </div>
+                <p className="!mb-0 !mt-2 !text-sm !text-white/85">
+                  {TIERS[t].blurb} Shareable page and listing badge, valid {VERIFIED_MONTHS} months.
+                </p>
+                <div className="mt-auto pt-4">
+                  <button
+                    type="button"
+                    onClick={() => requestQuote(`${TIERS[t].name} record (${TIERS[t].price})`)}
+                    className={`rounded-full bg-white px-5 py-2 text-sm font-semibold shadow-sm hover:bg-white/90 ${t === 'premium' ? 'text-[#065f46]' : 'text-[#075985]'}`}
+                  >
+                    {t === 'premium' ? 'Get verified' : 'Get checked'}
+                  </button>
+                </div>
               </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => requestQuote('Palma Verified record')}
-              className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#065f46] shadow-sm hover:bg-white/90"
-            >
-              Get verified · {VERIFIED_PRICE}
-            </button>
+            ))}
           </div>
         </section>
       )}
