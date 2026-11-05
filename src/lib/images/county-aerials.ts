@@ -39,6 +39,9 @@ const YEARS: Array<{ year: number; service: string; inches: number }> = [
   { year: 2026, service: 'Woolpert2026', inches: 3 },
 ];
 
+// Newest county flight, for single-photo uses like the Verified page.
+export const LATEST_COUNTY_SERVICE = YEARS[YEARS.length - 1].service;
+
 export const COUNTY_AERIAL_SOURCE = 'Miami-Dade County yearly aerial photography';
 
 export function countyExportUrl(service: string, b: { lon1: number; lat1: number; lon2: number; lat2: number }, px = 768): string {

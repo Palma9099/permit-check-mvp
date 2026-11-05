@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import type { DiagnosticReport } from '@/lib/types';
 import { computeReadiness } from '@/lib/readiness';
 import { buildGlance, type Tone } from '@/lib/glance';
@@ -49,6 +50,16 @@ export default function HomeHero({
   findingsCount: number | null;
 }) {
   const r = report;
+  // A live Palma Verified record for this folio shows as the first chip.
+  const [verified, setVerified] = useState<{ id: string; expiresAt: string } | null>(null);
+  useEffect(() => {
+    const f = (r.property.folio ?? '').replace(/\D+/g, '');
+    if (f.length !== 13) return;
+    fetch(`/api/verified/lookup?folio=${f}`)
+      .then((x) => (x.ok ? x.json() : {}))
+      .then((j: any) => setVerified(j?.id ? { id: j.id, expiresAt: j.expiresAt } : null))
+      .catch(() => {});
+  }, [r.property.folio]);
   const rd = r.readiness ?? computeReadiness(r);
   const glance = Object.fromEntries(buildGlance(r).map((g) => [g.key, g]));
   const frames = r.thenVsNow?.historicalAerials?.allFrames ?? [];
@@ -113,6 +124,19 @@ export default function HomeHero({
         </div>
 
         <ul className="!list-none !ml-0 mt-7 flex flex-wrap gap-2">
+          {verified && (
+            <li className="!mb-0">
+              <a
+                href={`/verified/${verified.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 rounded-full bg-emerald-600 px-3.5 py-1.5 text-sm font-semibold text-white shadow-lg ring-1 ring-white/30 hover:bg-emerald-500"
+              >
+                <span aria-hidden>✓</span>
+                Palma Verified until {new Date(verified.expiresAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+              </a>
+            </li>
+          )}
           {facts.map((f) => (
             <li key={f.text} className="!mb-0 flex items-center gap-2 rounded-full bg-white/10 px-3.5 py-1.5 text-sm font-medium ring-1 ring-white/20 backdrop-blur-sm">
               <span aria-hidden className={`h-2 w-2 rounded-full ${DOT[f.tone]}`} />

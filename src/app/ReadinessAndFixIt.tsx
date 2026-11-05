@@ -5,6 +5,7 @@ import type { DiagnosticReport } from '@/lib/types';
 import { computeReadiness, type Tone } from '@/lib/readiness';
 import { PACKET_PRICE_NOTE, buildFixIts, buildInsurancePacket } from '@/lib/fix-it';
 import { bandSummaryFor, personaCopy, type Persona } from '@/lib/persona';
+import { VERIFIED_MONTHS, VERIFIED_PRICE } from '@/lib/verified-checks';
 
 const BAR: Record<Tone, string> = { red: 'bg-red-600', amber: 'bg-amber-500', green: 'bg-emerald-600', grey: 'bg-slate-400' };
 const TXT: Record<Tone, string> = { red: 'text-red-700', amber: 'text-amber-700', green: 'text-emerald-700', grey: 'text-slate-600' };
@@ -119,6 +120,27 @@ export default function ReadinessAndFixIt({
                 </div>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {(role === 'seller' || role === 'owner') && (
+        <section>
+          <div className="flex flex-wrap items-center gap-5 rounded-2xl bg-gradient-to-br from-[#064e3b] to-[#047857] px-6 py-5 text-white shadow-[0_8px_30px_rgba(4,120,87,0.25)]">
+            <span aria-hidden className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl ring-1 ring-white/30">✓</span>
+            <div className="min-w-[14rem] flex-1">
+              <div className="font-serif text-xl font-semibold">Get Palma Verified</div>
+              <div className="text-sm text-white/85">
+                We check every permit and open item, then give you a verified record and listing badge. Valid {VERIFIED_MONTHS} months.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => requestQuote('Palma Verified record')}
+              className="rounded-full bg-white px-5 py-2 text-sm font-semibold text-[#065f46] shadow-sm hover:bg-white/90"
+            >
+              Get verified · {VERIFIED_PRICE}
+            </button>
           </div>
         </section>
       )}
