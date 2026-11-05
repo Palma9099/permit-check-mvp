@@ -42,7 +42,7 @@ export const FIX_IT_RANGES: Record<string, { cost: string | null; timeline: stri
   // Owner's range for a full after-the-fact legalization.
   legalize: { cost: '$2,500 to $6,000 for most jobs, including engineering, permit handling and our after-the-fact fee; $12,000 and up for additions or large structural work, including contractor sign-on fees', timeline: '6 to 12 weeks' },
   // Price list: wind-mitigation $175, 4-point $350, both $500.
-  roof: { cost: 'Inspections: wind-mitigation $175, 4-point $350, or both for $500', timeline: '6 to 10 weeks' },
+  roof: { cost: 'Inspections: wind-mitigation $175, 4-point $350, or both for $500', timeline: 'Report in 48 hours' },
   // Network rates: averages of 10 published Florida prices, see docs/network-rates-2026-11.md.
   flood: { cost: 'Network rate about $510 (Florida average $330 to $690)', timeline: '1 to 2 weeks' },
   // Price list: engineer letter $399 per covered inspection; single-trade permit management $259.
