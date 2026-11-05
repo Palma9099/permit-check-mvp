@@ -297,9 +297,12 @@ async function codeCaseQuery(service: string, folio: string): Promise<CodeCase[]
   const rows = await arcgisQuery(service, where);
   return rows.map((r) => ({
     caseNumber: cleanString(r.CASE_NUM ?? r.CASENUMBER ?? ''),
-    caseDate: fromEpochMs(r.CASE_DATE ?? r.OPENEDDATE),
-    status: cleanString(r.STAT_DESC ?? r.STATUS ?? r.CASE_STATUS ?? ''),
-    problemDescription: cleanString(r.PROBLEM_DESC ?? r.DESCRIPTION ?? ''),
+    // Building-violation layers name these OPEN_DATE / CASE_TYPE / CLOSED_DATE.
+    caseDate: fromEpochMs(r.CASE_DATE ?? r.OPENEDDATE ?? r.OPEN_DATE),
+    status:
+      cleanString(r.STAT_DESC ?? r.STATUS ?? r.CASE_STATUS ?? '') ||
+      (r.CLOSED_DATE ? `Closed ${fromEpochMs(r.CLOSED_DATE) ?? ''}`.trim() : ''),
+    problemDescription: cleanString(r.PROBLEM_DESC ?? r.DESCRIPTION ?? r.CASE_TYPE ?? ''),
     lastAction: cleanString(r.LAST_ACTV ?? ''),
     lien: cleanString(r.LN_RFRLTYP ?? ''),
   }));
@@ -308,21 +311,38 @@ async function codeCaseQuery(service: string, folio: string): Promise<CodeCase[]
 export async function codeEnforcement(folio: string): Promise<{
   open: CodeCase[];
   closedPast5: CodeCase[];
+  // Sources that did not answer this run; a "no cases" from them is unknown.
+  failed: string[];
 }> {
-  const [open1, open2, open3, closed1, ener1] = await Promise.all([
-    codeCaseQuery('CodeComplianceViolation_Open_View', folio),
-    codeCaseQuery('Open_Building_Violations', folio),
-    codeCaseQuery('BuildingViolation_gdb', folio),
-    codeCaseQuery('CodeComplianceViolation_ClosedPast5Years_View', folio),
-    codeCaseQuery('EnergovCodeCasePublicView', folio),
-  ]);
+  const SOURCES = [
+    'CodeComplianceViolation_Open_View',
+    'Open_Building_Violations',
+    'BuildingViolation_gdb',
+    'CodeComplianceViolation_ClosedPast5Years_View',
+    'EnergovCodeCasePublicView',
+    'Closed_Building_Violations_(Past_5_years)',
+  ];
+  // Each source on its own: one locked or slow layer must not wipe out the rest
+  // (a failed Promise.all once reported "no cases" for everything).
+  const settled = await Promise.allSettled(SOURCES.map((s) => codeCaseQuery(s, folio).catch(() => codeCaseQuery(s, folio))));
+  const failed = SOURCES.filter((_, i) => settled[i].status === 'rejected');
+  const [open1, open2, open3, closed1, ener1, closed2] = settled.map((r) => (r.status === 'fulfilled' ? r.value : []));
   const seen = new Set<string>();
+  // BuildingViolation_gdb also carries closed cases; a case with a close date
+  // (or listed in a closed-cases layer) is not open.
+  const closedNums = new Set([...closed1, ...closed2].map((c) => c.caseNumber));
   const open = [...open1, ...open2, ...open3, ...ener1].filter((c) => {
+    if (/^closed/i.test(c.status ?? '') || closedNums.has(c.caseNumber)) return false;
     const k = c.caseNumber + '|' + c.caseDate;
     if (seen.has(k)) return false;
     seen.add(k);
     return Boolean(c.caseNumber);
   });
-  const closedPast5 = closed1.filter((c) => Boolean(c.caseNumber));
-  return { open, closedPast5 };
+  const seenClosed = new Set<string>();
+  const closedPast5 = [...closed1, ...closed2].filter((c) => {
+    if (!c.caseNumber || seenClosed.has(c.caseNumber)) return false;
+    seenClosed.add(c.caseNumber);
+    return true;
+  });
+  return { open, closedPast5, failed };
 }

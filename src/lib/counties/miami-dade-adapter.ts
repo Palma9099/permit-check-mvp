@@ -196,7 +196,7 @@ export const miamiDadeAdapter: CountyAdapter = {
         console.error('[miami-dade] neighbor permit lookup failed', e);
         return { total: 0, byAddress: [] as { address: string; count: number }[] };
       }),
-      codeEnforcement(folio).catch(() => ({ open: [], closedPast5: [] })),
+      codeEnforcement(folio).catch(() => ({ open: [], closedPast5: [], failed: ['all violation sources'] })),
       inspectionsByAddress(byAddr.candidates[0]?.address ?? address).catch(() => 0),
     ]);
 
@@ -249,6 +249,9 @@ export const miamiDadeAdapter: CountyAdapter = {
       sourcesTried: SOURCE_LINES,
       notes: [
         ...lookupFailures,
+        ...(codeEnf.failed.length
+          ? [`Some county violation records did not answer this run (${codeEnf.failed.length} of 6), so "no open cases" is not confirmed. Re-run the report.`]
+          : []),
         ...(matchedByPoint ? ['The Property Appraiser address search did not find this address, so the lot was matched by its map location. Check the owner and address above.'] : []),
         ...NOTE_LINES,
       ],
