@@ -86,7 +86,48 @@ export async function paByAddress(
     if (inZip.length > 0) ordered = inZip;
   }
 
+  // A geocoder can move an address to a neighbouring house number (7861 came
+  // back as 8788 once). Never accept a lot whose house number differs from the
+  // one searched for.
+  const num = bare.match(/^\d+/)?.[0];
+  if (num) ordered = ordered.filter((c) => c.address.match(/^\d+/)?.[0] === num);
+
   return { folio: ordered[0]?.folio ?? null, candidates: ordered };
+}
+
+// County parcel layer: which lot contains a point, and where a lot is.
+const PARCELS = 'https://services.arcgis.com/8Pc9XBTAsYuxx9Ny/arcgis/rest/services/ParcelsView_gdb/FeatureServer/0/query';
+
+export async function folioAtPoint(lat: number, lng: number): Promise<string | null> {
+  const q = new URLSearchParams({
+    geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+    geometryType: 'esriGeometryPoint',
+    spatialRel: 'esriSpatialRelIntersects',
+    outFields: 'FOLIO',
+    returnGeometry: 'false',
+    f: 'json',
+  });
+  const data = await fetchJson(`${PARCELS}?${q.toString()}`).catch(() => null);
+  const f = cleanString(data?.features?.[0]?.attributes?.FOLIO);
+  return f ? compactFolio(f) : null;
+}
+
+// Centre of a lot by folio (average of its outline points; plenty for
+// re-centring a map on a house lot).
+export async function lotCenterByFolio(folio: string): Promise<{ lat: number; lng: number } | null> {
+  const q = new URLSearchParams({
+    where: `FOLIO='${compactFolio(folio)}'`,
+    outFields: 'FOLIO',
+    outSR: '4326',
+    returnGeometry: 'true',
+    f: 'json',
+  });
+  const data = await fetchJson(`${PARCELS}?${q.toString()}`).catch(() => null);
+  const ring: number[][] | undefined = data?.features?.[0]?.geometry?.rings?.[0];
+  if (!ring?.length) return null;
+  const lng = ring.reduce((n, p) => n + p[0], 0) / ring.length;
+  const lat = ring.reduce((n, p) => n + p[1], 0) / ring.length;
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
 }
 
 export async function paByFolio(folio: string): Promise<any | null> {
@@ -145,6 +186,73 @@ export async function permitsByFolio(folio: string): Promise<Permit[]> {
     contractor: cleanString(r.ContractorName).replace(/\\/g, '') || null,
     scope: [cleanString(r.DetailDescriptionComments), cleanString(r.CategoryDescription1)].filter(Boolean).join(' - ') || null,
   }));
+}
+
+// The county's GIS permit layer: permits that are active, expired without a
+// final inspection, or recently finaled, going back to the 1980s. It is not a
+// full history (the full archive sits behind the county's captcha-protected
+// search), but it is the only public source of older OPEN and EXPIRED permits,
+// which are what block a sale or an insurance claim.
+const PERMIT_LAYER =
+  'https://gisweb.miamidade.gov/arcgis/rest/services/MD_LandInformation/MapServer/1/query';
+
+const ymd = (s: unknown) => {
+  const t = cleanString(s);
+  return /^\d{8}$/.test(t) && t !== '00000000' ? `${t.slice(0, 4)}-${t.slice(4, 6)}-${t.slice(6, 8)}` : null;
+};
+
+export async function permitLayerByFolio(folio: string): Promise<Permit[]> {
+  const f = compactFolio(folio);
+  const q = new URLSearchParams({
+    where: `FOLIO='${f}'`,
+    outFields: 'ID,PROCNUM,TYPE,DESC1,FFRMLINE,ISSUDATE,LSTINSDT,BPSTATUS,CONTRNAME',
+    returnGeometry: 'false',
+    f: 'json',
+  });
+  const data = await fetchJson(`${PERMIT_LAYER}?${q.toString()}`);
+  if (data?.error) throw new Error(`permit layer: ${data.error.message ?? 'error'}`);
+  return (data?.features ?? []).map((ft: any) => {
+    const r = ft.attributes ?? {};
+    const last = ymd(r.LSTINSDT);
+    const code = cleanString(r.BPSTATUS);
+    const status =
+      code === 'E'
+        ? `Expired without final inspection${last ? ` (last inspection ${last})` : ''}`
+        : code === 'A'
+        ? `Open${last ? `, last inspection ${last}` : ', no inspection on record'}`
+        : code === 'F'
+        ? `Closed out${last ? ` (final inspection ${last})` : ''}`
+        : null;
+    return {
+      permitNumber: r.ID != null ? String(r.ID) : null,
+      processNumber: cleanString(r.PROCNUM) || null,
+      appType: cleanString(r.DESC1) || cleanString(r.TYPE) || null,
+      issueDate: fromEpochMs(r.ISSUDATE),
+      status,
+      estValue: null,
+      contractor: cleanString(r.CONTRNAME) || null,
+      scope: cleanString(r.FFRMLINE) || null,
+    } as Permit;
+  });
+}
+
+// Merge the permit table (2020 on, full detail) with the GIS layer (older open
+// and expired permits). Same permit number in both: keep the table's detail but
+// take the layer's status, which says outright whether the permit finaled,
+// expired or is still open; the table only implies it from dates.
+export function mergePermits(table: Permit[], layer: Permit[]): Permit[] {
+  const byNum = new Map<string, Permit>();
+  for (const p of table) if (p.permitNumber) byNum.set(p.permitNumber, p);
+  const out = [...table];
+  for (const p of layer) {
+    const hit = p.permitNumber ? byNum.get(p.permitNumber) : undefined;
+    if (hit) {
+      if (p.status) hit.status = p.status;
+      continue;
+    }
+    out.push(p);
+  }
+  return out.sort((a, b) => String(b.issueDate ?? '').localeCompare(String(a.issueDate ?? '')));
 }
 
 export async function inspectionsByAddress(addressFragment: string): Promise<number> {

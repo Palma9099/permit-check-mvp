@@ -9,8 +9,7 @@ import {
   permitsByFolio,
   inspectionsByAddress,
   neighborPermits,
-  codeEnforcement,
-} from '../miami-dade-raw';
+  codeEnforcement, mergePermits, permitLayerByFolio, folioAtPoint } from '../miami-dade-raw';
 import type { AdapterResult, CountyAdapter } from './types';
 import { emptyResult } from './types';
 import type { ExtraFeature, Permit, Sale } from '../types';
@@ -155,8 +154,19 @@ export const miamiDadeAdapter: CountyAdapter = {
   slug: 'fl-miami-dade',
   name: 'Miami-Dade County',
   tier: 'A',
-  async run({ address, zip }): Promise<AdapterResult> {
-    const byAddr = await paByAddress(address, zip).catch(() => ({ folio: null, candidates: [] as Array<{ folio: string; address: string }> }));
+  async run({ address, zip, lat, lng, typedAddress }): Promise<AdapterResult> {
+    const none = { folio: null, candidates: [] as Array<{ folio: string; address: string }> };
+    // Typed address first, then the geocoder's version, then the lot at the map point.
+    let byAddr = typedAddress && /^\s*\d/.test(typedAddress) ? await paByAddress(typedAddress, zip).catch(() => none) : none;
+    if (!byAddr.folio) byAddr = await paByAddress(address, zip).catch(() => none);
+    let matchedByPoint = false;
+    if (!byAddr.folio) {
+      const atPoint = await folioAtPoint(lat, lng).catch(() => null);
+      if (atPoint) {
+        byAddr = { folio: atPoint, candidates: [] };
+        matchedByPoint = true;
+      }
+    }
     const folio = byAddr.folio;
     if (!folio) {
       return emptyResult(
@@ -169,13 +179,17 @@ export const miamiDadeAdapter: CountyAdapter = {
     }
 
     const lookupFailures: string[] = [];
-    const [pa, permits, neighbors, codeEnf, inspectionCount] = await Promise.all([
+    const [pa, tablePermits, layerPermits, neighbors, codeEnf, inspectionCount] = await Promise.all([
       paByFolio(folio).catch(() => null),
       // One retry: under load the county service sometimes drops a request, and
       // an empty list would read as "no permits" everywhere downstream.
       permitsByFolio(folio).catch(() => permitsByFolio(folio)).catch((e) => {
         console.error('[miami-dade] permit lookup failed', e);
         lookupFailures.push('The county permit lookup failed for this run, so "no permits" below is NOT confirmed. Re-run, or check the county permit portal directly.');
+        return [] as Permit[];
+      }),
+      permitLayerByFolio(folio).catch(() => permitLayerByFolio(folio)).catch((e) => {
+        console.error('[miami-dade] permit layer lookup failed', e);
         return [] as Permit[];
       }),
       neighborPermits(folio).catch((e) => {
@@ -185,6 +199,8 @@ export const miamiDadeAdapter: CountyAdapter = {
       codeEnforcement(folio).catch(() => ({ open: [], closedPast5: [] })),
       inspectionsByAddress(byAddr.candidates[0]?.address ?? address).catch(() => 0),
     ]);
+
+    const permits = mergePermits(tablePermits, layerPermits);
 
     if (!pa) {
       return emptyResult(
@@ -231,7 +247,11 @@ export const miamiDadeAdapter: CountyAdapter = {
       codeCasesOpen: codeEnf.open,
       codeCasesClosedPast5: codeEnf.closedPast5,
       sourcesTried: SOURCE_LINES,
-      notes: [...lookupFailures, ...NOTE_LINES],
+      notes: [
+        ...lookupFailures,
+        ...(matchedByPoint ? ['The Property Appraiser address search did not find this address, so the lot was matched by its map location. Check the owner and address above.'] : []),
+        ...NOTE_LINES,
+      ],
       candidates: byAddr.candidates,
     };
   },

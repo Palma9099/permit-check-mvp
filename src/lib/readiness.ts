@@ -69,9 +69,17 @@ export function computeReadiness(r: DiagnosticReport): Readiness {
   const ph = r.countyExtras?.permitHealth;
   let permitPenalty = 0;
   let permitReason = 'Permit record looks consistent with the home.';
+  const md = /miami-dade/i.test(r.county?.name ?? '');
   if (nPermits === 0 && age && age > 15) {
-    permitPenalty = 12;
-    permitReason = `No permits for a ${age}-year-old home. Repairs may be unpermitted, or records may be on paper.`;
+    // Miami-Dade's online records only reach back to 2020, so "none" there is
+    // weaker evidence than a full-history county saying none.
+    permitPenalty = md ? 6 : 12;
+    permitReason = md
+      ? `No permits since 2020 and none open or expired for a ${age}-year-old home. Older permits need the certified permit history.`
+      : `No permits for a ${age}-year-old home. Repairs may be unpermitted, or records may be on paper.`;
+  } else if (ph && ph.expired > 0) {
+    permitPenalty = 10;
+    permitReason = `${ph.expired} permit${ph.expired > 1 ? 's' : ''} expired without a final inspection. Expired permits stay on the record and can hold up a sale or a claim.`;
   } else if (ph && ph.noInspection > 0) {
     permitPenalty = 6;
     permitReason = 'A permit has no inspection on record. The final should be on file.';

@@ -50,8 +50,9 @@ export default function CountyExtrasSection({ report }: { report: DiagnosticRepo
         )}
 
         {permitHealth && (
-          <Card title="Permit status" tone={permitHealth.noInspection > 0 ? 'amber' : 'green'}>
+          <Card title="Permit status" tone={permitHealth.expired > 0 ? 'red' : permitHealth.noInspection > 0 ? 'amber' : 'green'}>
             <div className="font-serif text-2xl font-semibold">
+              {permitHealth.expired > 0 ? `${permitHealth.expired} expired without a final, ` : ''}
               {permitHealth.closedOut} closed out
               {permitHealth.inspectedNoCloseout > 0 ? `, ${permitHealth.inspectedNoCloseout} inspected` : ''}
               {permitHealth.noInspection > 0 ? `, ${permitHealth.noInspection} not inspected` : ''}

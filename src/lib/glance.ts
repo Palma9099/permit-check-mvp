@@ -35,7 +35,12 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
     key: 'permits',
     label: 'Permits',
     value: n === 0 ? 'None found' : `${n} on file`,
-    detail: n === 0 ? (year ? `Built ${year}. Nothing in county records.` : 'Nothing in county records.') : 'Listed in county records.',
+    detail:
+      n === 0
+        ? /miami-dade/i.test(r.county?.name ?? '')
+          ? `${year ? `Built ${year}. ` : ''}None since 2020, none open or expired.`
+          : year ? `Built ${year}. Nothing in county records.` : 'Nothing in county records.'
+        : 'Listed in county records.',
     tone: n === 0 ? (noPermitOld ? 'amber' : 'grey') : 'green',
     info: {
       what: 'Permits the county has on record for this address.',

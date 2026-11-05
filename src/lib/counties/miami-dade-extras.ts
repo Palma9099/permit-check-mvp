@@ -42,12 +42,13 @@ export interface PermitHealth {
   closedOut: number;          // county shows a close-out (certificate of completion or occupancy) date
   inspectedNoCloseout: number; // inspected but no close-out date on record
   noInspection: number;       // issued, but no inspection on record
+  expired: number;            // expired without a final inspection (county GIS permit layer)
   items: Array<{
     permitNumber: string | null;
     appType: string | null;
     issueDate: string | null;
     status: string | null;
-    bucket: 'closedOut' | 'inspected' | 'noInspection';
+    bucket: 'closedOut' | 'inspected' | 'noInspection' | 'expired';
     ageYears: number | null;
   }>;
 }
@@ -123,12 +124,15 @@ function taxFrom(pa: any): TaxImpact | null {
   };
 }
 
-function bucketOf(status: string | null): 'closedOut' | 'inspected' | 'noInspection' {
+function bucketOf(status: string | null): 'closedOut' | 'inspected' | 'noInspection' | 'expired' {
   const s = (status ?? '').toLowerCase();
   if (s.startsWith('closed out')) return 'closedOut';
-  if (s.startsWith('inspected')) return 'inspected';
+  if (s.startsWith('expired')) return 'expired';
+  if (s.startsWith('inspected') || s.startsWith('open, last inspection')) return 'inspected';
   return 'noInspection';
 }
+
+const BUCKET_ORDER = ['expired', 'noInspection', 'inspected', 'closedOut'];
 
 function permitHealthFrom(permits: Permit[]): PermitHealth | null {
   if (!permits.length) return null;
@@ -149,7 +153,9 @@ function permitHealthFrom(permits: Permit[]): PermitHealth | null {
     closedOut: count('closedOut'),
     inspectedNoCloseout: count('inspected'),
     noInspection: count('noInspection'),
-    items: items.slice(0, 8),
+    expired: count('expired'),
+    // Problems first, so the short list on the card shows what needs action.
+    items: [...items].sort((a, b) => BUCKET_ORDER.indexOf(a.bucket) - BUCKET_ORDER.indexOf(b.bucket)).slice(0, 8),
   };
 }
 

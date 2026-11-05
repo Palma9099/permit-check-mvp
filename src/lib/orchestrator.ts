@@ -31,6 +31,7 @@ import { bestPropertyAppraiserLink } from './counties/pa-links';
 import { fetchMunicipalPermits } from './counties/municipal-permits';
 import { FL_COUNTY_DIRECTORY } from './counties/portals';
 import { fetchParcelPolygon, polygonCentroid } from './parcel';
+import { compactFolio, folioAtPoint, lotCenterByFolio } from './miami-dade-raw';
 import {
   buildSubjectSatelliteUrl,
   buildContextSatelliteUrl,
@@ -75,6 +76,11 @@ function buildFlags(
   const strong: Flag[] = [];
   const medium: Flag[] = [];
   const weak: Flag[] = [];
+  // Miami-Dade's public permit data is complete only from 2020 (plus the GIS
+  // list of open and expired permits). Before that, a missing permit is
+  // unknown, not evidence, so older years are worded and weighted as such.
+  const md = /miami-dade/i.test(countyName);
+  const knownFrom = md ? 2020 : null;
 
   if (yearBuilt) {
     const postBuildYears = Object.keys(buckets)
@@ -91,6 +97,8 @@ function buildFlags(
         const py = Number(p.issueDate.slice(0, 4));
         return Math.abs(py - y) <= 2;
       });
+      // Before the online records start, a missing permit proves nothing.
+      if (matching.length === 0 && knownFrom && y + 2 < knownFrom) continue;
       if (matching.length === 0) {
         // Reduce false positives: a single dated feature with no permit is only
         // MEDIUM confidence - it can reflect a paper/microfilm permit that was
@@ -112,12 +120,16 @@ function buildFlags(
   if (permits.length === 0 && neighborTotal >= 5) {
     strong.push({
       severity: 'strong',
-      title: 'Zero permits on file - neighbors have many',
-      detail: `This parcel has no records in the county's digital permit archive. Adjacent parcels on the same block show ${neighborTotal} permits combined. Most likely explanations: work was unpermitted, records never migrated from paper/microfilm into the current portal, or records filed under a different folio. Certified records pull required.`,
+      title: md ? 'No permits since 2020, neighbors have many' : 'Zero permits on file - neighbors have many',
+      detail: md
+        ? `The county's online permit records (complete from 2020) and its list of open and expired permits show nothing for this parcel, while parcels on the same block show ${neighborTotal} permits in the same records. Possible reasons: work done without permits, permits filed under another folio, or all work done before 2020. Order the certified permit history to see older permits.`
+        : `This parcel has no records in the county's digital permit archive. Adjacent parcels on the same block show ${neighborTotal} permits combined. Most likely explanations: work was unpermitted, records never migrated from paper/microfilm into the current portal, or records filed under a different folio. Certified records pull required.`,
     });
   }
 
-  if (permits.length === 0 && yearBuilt && new Date().getFullYear() - yearBuilt >= 15) {
+  // In Miami-Dade the online records only reach back to 2020, so this cannot
+  // say whether older replacements were permitted.
+  if (!md && permits.length === 0 && yearBuilt && new Date().getFullYear() - yearBuilt >= 15) {
     medium.push({
       severity: 'medium',
       title: 'Long-cycle systems never permitted despite age',
@@ -460,6 +472,7 @@ export async function runDiagnostic(input: {
         zip: geo.matchedZip ?? geo.inputZip,
         lat: geo.lat,
         lng: geo.lng,
+        typedAddress: rawAddress || null,
       })
     : (await import('./counties/types')).emptyResult(
         [],
@@ -502,6 +515,17 @@ export async function runDiagnostic(input: {
   );
 
   // 3. Parcel polygon.
+  // The confirmed lot wins over the geocoder's point. If the point sits on a
+  // different lot (the geocoder moved the house number, or landed on a
+  // neighbour), move it to the confirmed lot so the outline, aerials and
+  // Street View all show the same house as the records.
+  if (countyKey === 'miami-dade' && adapterResult.propertyBasics.folio) {
+    const atPoint = await folioAtPoint(geo.lat, geo.lng).catch(() => null);
+    if (atPoint && atPoint !== compactFolio(adapterResult.propertyBasics.folio)) {
+      const c = await lotCenterByFolio(adapterResult.propertyBasics.folio).catch(() => null);
+      if (c) geo = { ...geo, lat: c.lat, lng: c.lng };
+    }
+  }
   const polygon = await fetchParcelPolygon(geo.lat, geo.lng, countyKey);
 
   // 3b. Aim point - the canonical "where the camera should look" coord.

@@ -829,6 +829,13 @@ export default function Report({
             <strong>{r.permitHistory.neighborPermitCount}</strong> permit(s) on
             neighboring parcels in the same block.
           </p>
+          {/miami-dade/i.test(r.county?.name ?? '') && (
+            <p className="text-sm text-ink-soft">
+              Covers every county permit issued since 2020, plus any older permit that is still open or expired
+              without a final inspection. Older closed permits are not published online; order the certified permit
+              history to see them.
+            </p>
+          )}
           {r.permitHistory.subjectPermits.length > 0 ? (
             <table>
               <thead>

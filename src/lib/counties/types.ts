@@ -65,6 +65,9 @@ export interface CountyAdapter {
     zip: string | null;
     lat: number;
     lng: number;
+    // The address exactly as the person typed it. Tried first, since a
+    // geocoder's tidied version can carry a different house number.
+    typedAddress?: string | null;
   }): Promise<AdapterResult>;
 }
 

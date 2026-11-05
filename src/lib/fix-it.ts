@@ -127,14 +127,17 @@ export function buildFixIts(r: DiagnosticReport, rd: Readiness): FixIt[] {
   }
 
   const ph = r.countyExtras?.permitHealth;
-  if (ph && (ph.noInspection > 0 || ph.inspectedNoCloseout > 0)) {
+  if (ph && (ph.expired > 0 || ph.noInspection > 0 || ph.inspectedNoCloseout > 0)) {
     out.push(
       mk('closeout', {
-        title: 'Close out open permits',
-        why: 'A permit with no final can show up as open work to an insurer or buyer.',
+        title: ph.expired > 0 ? 'Close out expired permits' : 'Close out open permits',
+        why:
+          ph.expired > 0
+            ? 'A permit that expired without a final inspection stays on the property record. Buyers, lenders and insurers treat it as unfinished work until it is closed.'
+            : 'A permit with no final can show up as open work to an insurer or buyer.',
         steps: ['Pull the permit file from the county.', 'Schedule the missing inspections.', 'Get the final or certificate of completion on record.'],
         owner: 'Palma (permitting)',
-        tone: ph.noInspection > 0 ? 'amber' : 'amber',
+        tone: ph.expired > 0 ? 'red' : 'amber',
         quoteTopic: 'Close out open or unfinished permits',
       }),
     );
@@ -209,8 +212,12 @@ export function buildInsurancePacket(r: DiagnosticReport, rd: Readiness): Packet
     out.push({ item: 'Elevation certificate', status: 'needed', note: 'Needed to price flood insurance in a high-risk zone.' });
   }
   const ph = r.countyExtras?.permitHealth;
-  if (ph && (ph.noInspection > 0 || ph.inspectedNoCloseout > 0)) {
-    out.push({ item: 'Permit close-out papers', status: 'recommended', note: 'Some permits show no close-out date. Have the finals on hand.' });
+  if (ph && (ph.expired > 0 || ph.noInspection > 0 || ph.inspectedNoCloseout > 0)) {
+    out.push({
+      item: 'Permit close-out papers',
+      status: ph.expired > 0 ? 'needed' : 'recommended',
+      note: ph.expired > 0 ? 'A permit expired without a final inspection. It must be closed or reopened.' : 'Some permits show no close-out date. Have the finals on hand.',
+    });
   }
   if (r.countyExtras?.sewer?.septicOrWellFlag) {
     out.push({ item: 'Septic inspection', status: 'needed', note: 'The county lists the parcel as possibly on septic or a well.' });

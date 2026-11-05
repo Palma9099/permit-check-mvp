@@ -507,9 +507,9 @@ export async function buildPdfV2(
   if (xt?.permitHealth) {
     const h = xt.permitHealth;
     cards.push({
-      tone: h.noInspection > 0 ? 'amber' : 'green',
+      tone: h.expired > 0 ? 'red' : h.noInspection > 0 ? 'amber' : 'green',
       label: 'Permit status',
-      title: `${h.closedOut} closed out${h.inspectedNoCloseout ? `, ${h.inspectedNoCloseout} inspected` : ''}${h.noInspection ? `, ${h.noInspection} not inspected` : ''}`,
+      title: `${h.expired ? `${h.expired} expired without a final, ` : ''}${h.closedOut} closed out${h.inspectedNoCloseout ? `, ${h.inspectedNoCloseout} inspected` : ''}${h.noInspection ? `, ${h.noInspection} not inspected` : ''}`,
       body: h.items.slice(0, 3).map((p) => `${p.appType ?? 'Permit'} ${p.issueDate?.slice(0, 4) ?? ''}: ${p.status}`).join('. '),
       note: 'Inspected means an approved inspection is logged but no close-out date. The final paperwork should be on file.',
     });
@@ -599,7 +599,9 @@ export async function buildPdfV2(
   y4 += Math.ceil(facts.length / 3) * 42 + 14;
   y4 = sectionTitle('Where this came from', y4);
   y4 += text(
-    'County property appraiser, county permit and code records, FEMA flood map, USDA aerial photos (2010, 2022) and Google imagery. Records are digital only. Older paper permits may not appear.',
+    /miami-dade/i.test(r.county?.name ?? '')
+      ? 'County property appraiser, county permit and code records, FEMA flood map, county aerial photos and Google imagery. Permits: every one issued since 2020, plus older permits still open or expired. Older closed permits need the certified permit history.'
+      : 'County property appraiser, county permit and code records, FEMA flood map, USDA aerial photos and Google imagery. Records are digital only. Older paper permits may not appear.',
     M, y4, { size: 9, color: C.soft, gap: 3 },
   ) + 10;
   // CTA
