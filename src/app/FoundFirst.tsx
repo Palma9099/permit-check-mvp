@@ -89,7 +89,7 @@ export default function FoundFirst({
     <section>
       <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-red-700">What we found</div>
       <h2 className="!mt-1">{foundHeadline(role, findings.length)}</h2>
-      <div className="mt-4 grid gap-5 md:grid-cols-2">
+      <div className={`mt-4 grid gap-5 ${findings.length === 1 ? "" : "md:grid-cols-2"}`}>
         {findings.map((f) => {
           const ch = splitChange(f.text);
           const [before, now] = picsFor(f, ch);

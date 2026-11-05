@@ -10,7 +10,7 @@ const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SECRET_KEY;
 const TTL_DAYS = 30;
 // Bump when the AI check changes, so answers from the old check are never reused.
-const CHECK_VERSION = 'v2-opus-5-5';
+const CHECK_VERSION = 'v3-removals';
 
 export type AiKind = 'aerial' | 'street';
 

@@ -203,7 +203,10 @@ export function toObservations(
       const y = Number(String(p.issueDate ?? '').slice(0, 4));
       return Number.isFinite(y) && Number.isFinite(y0) && Number.isFinite(y1) && y >= y0 - 2 && y <= y1 && permitFits(area, p);
     });
-    const needs = a?.needsPermitIfChanged === true;
+    // Something only taken away (pool filled, shed or shade sails removed) is
+    // not unpermitted work, whatever the model said.
+    const removal = /^(no |none|nothing|removed|gone|bare|empty|open (yard|lawn|grass))/i.test(look(per[change.to]));
+    const needs = a?.needsPermitIfChanged === true && !removal;
     const beforeOnlineRecords = Number.isFinite(y0) && y0 - 2 < PERMITS_ONLINE_FROM && inWindow.length === 0;
     const named = inWindow
       .slice(0, 2)
