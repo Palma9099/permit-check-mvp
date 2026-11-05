@@ -139,8 +139,10 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
   const aerial: GlanceItem = {
     key: 'aerial',
     label: 'Aerial photos',
-    value: vc?.performed ? (changes ? 'Changes seen' : 'No changes') : 'Not compared',
-    detail: vc?.performed ? (changes ? '2010 vs 2022, for review.' : '2010 vs 2022 look alike.') : 'No historical photos.',
+    value: vc?.performed ? (changes ? 'Changes seen' : 'Matches permits') : 'Not compared',
+    detail: vc?.performed
+      ? `${String(vc.thenCaptureDate ?? '').slice(0, 4) || 'Older'} to ${String(vc.nowCaptureDate ?? '').slice(0, 4) || 'now'}, from above.`
+      : 'No historical photos.',
     tone: vc?.performed ? (changes ? 'amber' : 'green') : 'grey',
     info: {
       what: 'We compare older and newer aerial photos of the lot against the permit record.',

@@ -3,11 +3,13 @@
 import type { DiagnosticReport, Flag, VisionObservation } from '@/lib/types';
 import LeadCapture from './LeadCapture';
 import AtAGlance from './AtAGlance';
-import ReadinessAndFixIt from './ReadinessAndFixIt';
+import ReadinessAndFixIt, { ScoreBreakdown } from './ReadinessAndFixIt';
+import HomeHero from './HomeHero';
+import { collectFindings } from '@/lib/found';
 import StreetHistory from './StreetHistory';
 import FoundFirst from './FoundFirst';
 import type { StreetFrame } from '@/lib/street-history';
-import { PERSONAS, PERSONA_ORDER, personaCopy, type Persona } from '@/lib/persona';
+import { PERSONAS, personaCopy, type Persona } from '@/lib/persona';
 import AerialTimeline from './AerialTimeline';
 import CountyExtrasSection from './CountyExtrasSection';
 
@@ -286,20 +288,11 @@ export default function Report({
   const pc = personaCopy(role);
   const r = report;
   const vc = r.thenVsNow?.visualComparison;
+  // Same list as the What we found block, so the hero count always matches it.
+  const findingsCount = vc?.performed ? collectFindings(r, streetFindings?.performed ? streetFindings.observations : null).length : null;
   // The geocoder prepends this line when the address match is uncertain. Pull it
   // out of the bottom-line list and show it as a prominent banner instead.
   const uncertainLine = r.bottomLine.find((l) => l.startsWith('ADDRESS MATCH UNCERTAIN'));
-  // The triage disclaimer already sits under the badge and in the footer.
-  const bottomLineRest = r.bottomLine.filter((l) => l !== uncertainLine && !/^This is a records/i.test(l));
-  // Records-status badge, derived from the flags we already computed. Deliberately
-  // worded as a records signal (not a verdict): strong flags = worth reviewing,
-  // medium = some gaps, none = nothing flagged. Color-coded like a summary chip.
-  const records =
-    r.flags.strong.length > 0
-      ? { label: 'Records need review', cls: 'bg-red-500 text-white' }
-      : r.flags.medium.length > 0
-      ? { label: 'Some records gaps', cls: 'bg-amber-400 text-[#3a2a00]' }
-      : { label: 'No records flags', cls: 'bg-emerald-500 text-white' };
   return (
     <article className="bg-card shadow-card rounded-lg border border-black/5 overflow-hidden">
       {/* Low-confidence address-match banner */}
@@ -330,79 +323,27 @@ export default function Report({
           </div>
         </div>
       )}
-      {/* Cover */}
-      <div className="px-6 sm:px-10 py-8 bg-gradient-to-br from-[#1f3864] to-[#102447] text-white">
-        <div className="text-xs uppercase tracking-[0.18em] text-white/70 mb-2">
-          Diagnostic Report
-        </div>
-        <h2 className="font-serif text-3xl sm:text-4xl font-semibold leading-tight">
-          {r.property.siteAddress ?? r.query.address}
-        </h2>
-        <div className="mt-2 text-white/80 text-sm">
-          {r.property.folio ? `Folio ${r.property.folio} · ` : ''}
-          {r.county?.name ?? r.ahj?.name ?? 'Florida'}
-          {r.county?.tier ? ` (Tier ${r.county.tier})` : ''} ·{' '}
-          {new Date(r.generatedAt).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-          })}
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${records.cls}`}>
-            {records.label}
-          </span>
-          <span className="text-[11px] text-white/60">
-            Records-level triage · not an official compliance determination
-          </span>
-        </div>
-
-        <div className="mt-4 bg-white/10 border border-white/20 rounded-md p-4">
-          <div className="text-xs font-semibold uppercase tracking-wider text-white/80 mb-2">
-            Bottom line
-          </div>
-          <ul className="space-y-1.5 text-sm text-white/95">
-            {bottomLineRest.map((line, i) => (
-              <li key={i}>· {line}</li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="mt-3 text-[11px] text-white/55">
-          Live sources pulled{' '}
-          {new Date(r.sourcesAsOf ?? r.generatedAt).toLocaleString('en-US', {
-            dateStyle: 'medium',
-            timeStyle: 'short',
-          })}
-          . County records and imagery can lag real-world changes.
-        </div>
-      </div>
+      <HomeHero report={r} role={role} onRoleChange={onRoleChange} findingsCount={findingsCount} />
 
       <div className="px-6 sm:px-10 py-8 prose-section">
         <FoundFirst report={r} role={role} streetHistory={streetHistory} streetFindings={streetFindings} />
 
-        {/* Who is reading? Switching re-words the whole report instantly. */}
-        <div className="mb-6 flex flex-wrap items-center gap-2" role="group" aria-label="Viewing as">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Viewing as</span>
-          {PERSONA_ORDER.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => onRoleChange?.(p)}
-              aria-pressed={role === p}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                role === p ? 'border-[#1f3864] bg-[#1f3864] text-white' : 'border-black/15 bg-white text-ink hover:bg-black/5'
-              }`}
-            >
-              {PERSONAS[p].short}
-            </button>
-          ))}
-        </div>
-
         <AtAGlance report={r} role={role} />
 
-        <ReadinessAndFixIt report={r} role={role} />
+        <ReadinessAndFixIt report={r} role={role} findingsCount={findingsCount ?? 0} />
+
+        {/* Everything an agent, lender or inspector may want, one tap away. */}
+        <details className="group mt-10 rounded-2xl ring-1 ring-black/10 [&_summary::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl bg-slate-50 px-5 py-4 hover:bg-slate-100">
+            <span>
+              <span className="block font-serif text-lg font-semibold text-ink">Full details</span>
+              <span className="block text-xs text-ink-muted">Score breakdown, records, photos and sources, for your agent or inspector</span>
+            </span>
+            <span aria-hidden className="text-2xl leading-none text-ink-muted transition group-open:rotate-45">+</span>
+          </summary>
+          <div className="px-5 pb-6 pt-2">
+        <ScoreBreakdown report={r} role={role} />
+
 
         {/* Top flags */}
         {(r.flags.strong.length > 0 || r.flags.medium.length > 0) && (
@@ -1039,6 +980,14 @@ export default function Report({
             )}
           </section>
         )}
+
+            <p className="!mt-6 !text-xs !text-ink-muted">
+              Live sources pulled{' '}
+              {new Date(r.sourcesAsOf ?? r.generatedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}. County records
+              and imagery can lag real-world changes.
+            </p>
+          </div>
+        </details>
 
         {/* Conversion - in-tool lead capture (emails office@palma.llc) */}
         <section>

@@ -98,4 +98,4 @@ export function foundCta(role: Persona | null | undefined): string {
 }
 
 export const FOUND_NOTE =
-  'Each change was found consistently across three independent checks of the photos, and no permit for it appears in county records. Paper permits or permits filed under another address may not show up, so confirm with the county.';
+  'Each change was seen in separate checks of the photos, and no permit for it is in county records. Older paper permits may not show, so confirm with the county.';

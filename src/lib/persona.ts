@@ -224,3 +224,35 @@ export function bandSummaryFor(role: Persona | null | undefined, rd: { band: str
   };
   return (role && by[role]?.[rd.band]) || rd.bandSummary;
 }
+
+// One short line for the report hero. The longer band summary stays in the
+// score breakdown.
+export function shortVerdict(role: Persona | null | undefined, band: string): string {
+  const by: Record<string, Record<string, string>> = {
+    owner: {
+      ready: 'Your home is in good standing.',
+      'fix-first': 'A few things to tidy up.',
+      hard: 'Some items to fix soon.',
+      'high-risk': 'Serious items to fix.',
+    },
+    seller: {
+      ready: 'Ready to list.',
+      'fix-first': 'Fix a few things before you list.',
+      hard: 'Fix these before you list.',
+      'high-risk': 'Serious items could sink a sale.',
+    },
+    buyer: {
+      ready: 'No major red flags.',
+      'fix-first': 'Ask about a few things before you offer.',
+      hard: 'Get these answered before you offer.',
+      'high-risk': 'Serious items. Proceed with care.',
+    },
+  };
+  const neutral: Record<string, string> = {
+    ready: 'No major red flags.',
+    'fix-first': 'A few things worth a look.',
+    hard: 'Several things need attention.',
+    'high-risk': 'Serious items found.',
+  };
+  return by[role ?? '']?.[band] ?? neutral[band] ?? '';
+}

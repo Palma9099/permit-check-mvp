@@ -17,6 +17,8 @@ export interface FixIt {
   tone: 'red' | 'amber';
   quoteTopic: string;
   cost: string | null;
+  // Two or three words for the card face, e.g. "From $2,500".
+  price: string | null;
   timeline: string | null;
   vendorNote: string;
 }
@@ -25,6 +27,17 @@ export const VENDOR_NOTE =
   'Outside work (a surveyor, engineering plans, repairs) is quoted from our vendor network, so you get the best price.';
 
 // Edit these to change what the cards show. null shows no price.
+// Short price for the card face; the full wording above sits behind "How it works".
+export const FIX_IT_PRICE: Record<string, string> = {
+  legalize: 'From $2,500',
+  roof: 'From $175',
+  flood: 'About $510',
+  code: 'From $399',
+  closeout: 'From $175',
+  septic: 'About $500',
+  milestone: 'About $10,500',
+};
+
 export const FIX_IT_RANGES: Record<string, { cost: string | null; timeline: string | null }> = {
   // Owner's range for a full after-the-fact legalization.
   legalize: { cost: '$2,500 to $6,000 for most jobs, including engineering, permit handling and our after-the-fact fee; $12,000 and up for additions or large structural work, including contractor sign-on fees', timeline: '6 to 12 weeks' },
@@ -50,21 +63,23 @@ export const PACKET_PRICES: Record<string, string> = {
   'Septic inspection': 'about $500',
 };
 export const PACKET_PRICE_NOTE =
-  'Wind-mitigation and 4-point together: $500. 5% off when you book 3 or more services. "About" prices are network rates, the average of published Florida prices; your quote confirms the exact price.';
+  'Wind-mitigation and 4-point together: $500. 5% off when you book 3 or more. "About" prices are Florida averages; your quote confirms the price.';
 
 function mk(
   key: string,
-  base: Omit<FixIt, 'key' | 'cost' | 'timeline' | 'vendorNote'>,
+  base: Omit<FixIt, 'key' | 'cost' | 'price' | 'timeline' | 'vendorNote'>,
 ): FixIt {
   const r = FIX_IT_RANGES[key] ?? { cost: null, timeline: null };
-  return { key, ...base, cost: r.cost, timeline: r.timeline, vendorNote: VENDOR_NOTE };
+  return { key, ...base, cost: r.cost, price: FIX_IT_PRICE[key] ?? null, timeline: r.timeline, vendorNote: VENDOR_NOTE };
 }
 
-export function buildFixIts(r: DiagnosticReport, rd: Readiness): FixIt[] {
+// `findings`: changes with no permit from the photo checks ("What we found"),
+// including Street View ones the server-side score does not see.
+export function buildFixIts(r: DiagnosticReport, rd: Readiness, findings = 0): FixIt[] {
   const by = Object.fromEntries(rd.factors.map((f) => [f.key, f]));
   const out: FixIt[] = [];
 
-  if (by.permits.penalty >= 12 || by.aerial.penalty >= 8) {
+  if (by.permits.penalty >= 12 || by.aerial.penalty >= 8 || findings > 0) {
     out.push(
       mk('legalize', {
         title: 'Legalize unpermitted work',

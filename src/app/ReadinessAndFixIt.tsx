@@ -8,7 +8,6 @@ import { bandSummaryFor, personaCopy, type Persona } from '@/lib/persona';
 
 const BAR: Record<Tone, string> = { red: 'bg-red-600', amber: 'bg-amber-500', green: 'bg-emerald-600', grey: 'bg-slate-400' };
 const TXT: Record<Tone, string> = { red: 'text-red-700', amber: 'text-amber-700', green: 'text-emerald-700', grey: 'text-slate-600' };
-const RING: Record<string, string> = { ready: '#059669', 'fix-first': '#d97706', hard: '#ea580c', 'high-risk': '#b91c1c' };
 
 // Tells the lead form at the bottom what the person wants quoted, and brings it
 // into view. Keeps one form (and one email path) for every "Get a quote" button.
@@ -16,34 +15,55 @@ function requestQuote(topic: string) {
   window.dispatchEvent(new CustomEvent('palma:quote', { detail: { topic } }));
 }
 
-function ScoreRing({ score, color }: { score: number; color: string }) {
-  const r = 44;
-  const c = 2 * Math.PI * r;
+// Why the score is what it is. Lives in Full details; the hero shows the score.
+export function ScoreBreakdown({ report, role = null }: { report: DiagnosticReport; role?: Persona | null }) {
+  const rd = report.readiness ?? computeReadiness(report);
   return (
-    <svg viewBox="0 0 110 110" className="h-28 w-28 shrink-0" role="img" aria-label={`Closing readiness ${score} out of 100`}>
-      <circle cx="55" cy="55" r={r} fill="none" stroke="#e5e7eb" strokeWidth="10" />
-      <circle
-        cx="55"
-        cy="55"
-        r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth="10"
-        strokeLinecap="round"
-        strokeDasharray={`${(score / 100) * c} ${c}`}
-        transform="rotate(-90 55 55)"
-      />
-      <text x="55" y="55" textAnchor="middle" className="font-serif" fontSize="30" fontWeight="700" fill="#14213d">{score}</text>
-      <text x="55" y="74" textAnchor="middle" fontSize="9" fill="#6b7280">out of 100</text>
-    </svg>
+    <section>
+      <h2>Why this score</h2>
+      <p className="!text-sm !leading-snug">
+        {bandSummaryFor(role, rd)} Based on public records, not an insurer&apos;s or lender&apos;s decision.
+      </p>
+      <ul className="!list-none !ml-0 mt-3 space-y-3">
+        {rd.factors
+          .filter((f) => f.penalty > 0)
+          .map((f) => (
+            <li key={f.key} className="!mb-0">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm font-semibold text-ink">{f.label}</span>
+                <span className={`text-xs font-semibold ${TXT[f.tone]}`}>{`-${f.penalty} of ${f.max}`}</span>
+              </div>
+              <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
+                <div className={`h-1.5 rounded-full ${BAR[f.tone]}`} style={{ width: `${Math.max(4, (f.penalty / f.max) * 100)}%` }} />
+              </div>
+              <p className="!text-xs !leading-snug !text-ink-soft !mb-0 mt-1">{f.reason}</p>
+            </li>
+          ))}
+      </ul>
+      {rd.factors.some((f) => f.penalty === 0) && (
+        <p className="!text-xs !text-emerald-700 !mb-0 mt-3">
+          No points lost: {rd.factors.filter((f) => f.penalty === 0).map((f) => f.label).join(', ')}.
+        </p>
+      )}
+    </section>
   );
 }
 
-export default function ReadinessAndFixIt({ report, role = null }: { report: DiagnosticReport; role?: Persona | null }) {
+// What to do: one card per fix (price, time, one button; steps behind a tap),
+// the papers to have on hand, and the shareable record.
+export default function ReadinessAndFixIt({
+  report,
+  role = null,
+  findingsCount = 0,
+}: {
+  report: DiagnosticReport;
+  role?: Persona | null;
+  findingsCount?: number;
+}) {
   const copy = personaCopy(role);
   const rd = report.readiness ?? computeReadiness(report);
-  const fixes = buildFixIts(report, rd);
-  const packet = buildInsurancePacket(report, rd);
+  const fixes = buildFixIts(report, rd, findingsCount);
+  const packet = buildInsurancePacket(report, rd).filter((p) => p.status !== 'ok');
   const [copied, setCopied] = useState(false);
   const rec = report.record;
 
@@ -61,116 +81,80 @@ export default function ReadinessAndFixIt({ report, role = null }: { report: Dia
 
   return (
     <>
-      <section>
-        <h2>{copy.readinessTitle}</h2>
-        <div className="mt-3 rounded-xl border border-black/10 bg-white p-5">
-          <div className="flex flex-wrap items-center gap-5">
-            <ScoreRing score={rd.score} color={RING[rd.band]} />
-            <div className="min-w-[14rem] flex-1">
-              <div className="font-serif text-2xl font-semibold text-ink">{rd.bandLabel}</div>
-              <p className="!text-sm !leading-snug !mb-1 mt-1">{bandSummaryFor(role, rd)}</p>
-              <p className="!text-xs !text-ink-muted !mb-0">
-                {copy.readinessAsk} A records-based indicator, not an insurer&apos;s or lender&apos;s decision.
-              </p>
-            </div>
-          </div>
-
-          <ul className="!list-none !ml-0 mt-5 space-y-3">
-            {rd.factors.filter((f) => f.penalty > 0).map((f) => (
-              <li key={f.key} className="!mb-0">
-                <div className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm font-semibold text-ink">{f.label}</span>
-                  <span className={`text-xs font-semibold ${TXT[f.tone]}`}>{f.penalty === 0 ? 'No points lost' : `-${f.penalty} of ${f.max}`}</span>
-                </div>
-                <div className="mt-1 h-1.5 w-full rounded-full bg-slate-100">
-                  <div className={`h-1.5 rounded-full ${BAR[f.tone]}`} style={{ width: `${Math.max(4, (f.penalty / f.max) * 100)}%`, opacity: f.penalty === 0 ? 0.25 : 1 }} />
-                </div>
-                <p className="!text-xs !leading-snug !text-ink-soft !mb-0 mt-1">{f.reason}</p>
-              </li>
-            ))}
-          </ul>
-          {rd.factors.some((f) => f.penalty === 0) && (
-            <p className="!text-xs !text-emerald-700 !mb-0 mt-3">
-              No points lost: {rd.factors.filter((f) => f.penalty === 0).map((f) => f.label).join(', ')}.
-            </p>
-          )}
-        </div>
-      </section>
-
       {fixes.length > 0 && (
         <section>
           <h2>{copy.fixTitle}</h2>
-          <p className="!text-sm !text-ink-soft !mb-0">{copy.fixIntro}</p>
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
             {fixes.map((f) => (
-              <div key={f.key} className="relative overflow-hidden rounded-lg border border-black/10 bg-white p-4 pl-5">
-                <div className={`absolute left-0 top-0 h-full w-1.5 ${f.tone === 'red' ? 'bg-red-600' : 'bg-amber-500'}`} />
-                <div className="font-serif text-lg font-semibold text-ink">{f.title}</div>
-                <p className="!text-sm !leading-snug !mb-2">{f.why}</p>
-                <ol className="!ml-5 !text-sm list-decimal">
-                  {f.steps.map((s) => (
-                    <li key={s} className="!mb-0.5">{s}</li>
-                  ))}
-                </ol>
-                <div className="mt-2 text-xs text-ink-muted">
-                  Done by: {f.owner}
-                  {f.cost ? <> · Typical cost: {f.cost}</> : null}
-                  {f.timeline ? <> · Typical time: {f.timeline}</> : null}
+              <div key={f.key} className="flex flex-col rounded-2xl bg-white p-5 shadow-[0_8px_30px_rgba(16,36,71,0.08)] ring-1 ring-black/5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="font-serif text-xl font-semibold leading-snug text-ink">{f.title}</div>
+                  <span aria-hidden className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${f.tone === 'red' ? 'bg-red-600' : 'bg-amber-500'}`} />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => requestQuote(f.quoteTopic)}
-                  className="mt-3 rounded-md bg-[#1f3864] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#102447]"
-                >
-                  {copy.fixButton}
-                </button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {f.price && <span className="rounded-full bg-[#1f3864]/[0.07] px-3 py-1 text-sm font-semibold text-[#1f3864]">{f.price}</span>}
+                  {f.timeline && <span className="rounded-full bg-slate-100 px-3 py-1 text-sm text-ink-soft">{f.timeline}</span>}
+                </div>
+                <details className="group mt-3 text-sm">
+                  <summary className="cursor-pointer list-none text-sm font-semibold text-[#1f3864] [&::-webkit-details-marker]:hidden">
+                    <span className="group-open:hidden">How it works +</span>
+                    <span className="hidden group-open:inline">How it works −</span>
+                  </summary>
+                  <p className="!mb-2 !mt-2 !text-sm !leading-snug text-ink-soft">{f.why}</p>
+                  <ol className="!ml-5 !text-sm list-decimal">
+                    {f.steps.map((s) => (
+                      <li key={s} className="!mb-0.5">{s}</li>
+                    ))}
+                  </ol>
+                  {f.cost && <p className="!mb-0 !mt-2 !text-xs text-ink-muted">{f.cost}. Done by {f.owner}.</p>}
+                </details>
+                <div className="mt-auto pt-4">
+                  <button
+                    type="button"
+                    onClick={() => requestQuote(f.quoteTopic)}
+                    className="rounded-full bg-[#1f3864] px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#102447]"
+                  >
+                    {copy.fixButton}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
-          <p className="!text-xs !text-ink-muted mt-2">{fixes[0].vendorNote}</p>
         </section>
       )}
 
-      <section>
-        <h2>{copy.packetTitle}</h2>
-        <p className="!text-sm !text-ink-soft !mb-0">{copy.packetIntro}</p>
-        <ul className="!list-none !ml-0 mt-3 divide-y divide-black/5 rounded-lg border border-black/10 bg-white">
-          {packet.map((p) => (
-            <li key={p.item} className="!mb-0 flex items-start gap-3 px-4 py-3">
-              <span
-                className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                  p.status === 'needed' ? 'bg-red-50 text-red-700' : p.status === 'recommended' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
-                }`}
-              >
-                {p.status === 'ok' ? 'Have' : p.status}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-ink">
+      {packet.length > 0 && (
+        <section>
+          <h2>{copy.packetTitle}</h2>
+          <ul className="!list-none !ml-0 mt-3 divide-y divide-black/5 rounded-2xl bg-white ring-1 ring-black/5">
+            {packet.map((p) => (
+              <li key={p.item} className="!mb-0 flex items-center gap-3 px-5 py-3">
+                <span aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-full ${p.status === 'needed' ? 'bg-red-600' : 'bg-amber-500'}`} />
+                <span className="min-w-0 flex-1 text-sm font-semibold text-ink" title={p.note}>
                   {p.item}
-                  {p.price ? <span className="ml-2 text-xs font-bold text-[#1f3864]">{p.price}</span> : null}
-                </div>
-                <div className="text-xs text-ink-soft">{p.note}</div>
-              </div>
-              {p.status !== 'ok' && (
-                <button type="button" onClick={() => requestQuote(`Order: ${p.item}`)} className="shrink-0 text-xs font-semibold text-[#1f3864] underline">
+                </span>
+                {p.price ? <span className="text-sm font-semibold text-[#1f3864]">{p.price}</span> : null}
+                <button type="button" onClick={() => requestQuote(`Order: ${p.item}`)} className="shrink-0 rounded-full border border-[#1f3864] px-3 py-1 text-xs font-semibold text-[#1f3864] hover:bg-[#1f3864] hover:text-white">
                   Order
                 </button>
-              )}
-            </li>
-          ))}
-        </ul>
-        <p className="!text-xs !text-ink-muted mt-2">{PACKET_PRICE_NOTE}</p>
-      </section>
+              </li>
+            ))}
+          </ul>
+          <p className="!text-xs !text-ink-muted mt-2">{PACKET_PRICE_NOTE}</p>
+        </section>
+      )}
 
       {rec && (
         <section>
-          <h2>{copy.shareTitle}</h2>
-          <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-black/10 bg-white p-4">
-            <p className="!text-sm !mb-0 min-w-[14rem] flex-1">{copy.shareIntro}</p>
-            <button type="button" onClick={copyLink} className="rounded-md border border-ink px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-[#1f3864]/[0.05] px-5 py-4">
+            <div className="min-w-[12rem] flex-1">
+              <div className="font-semibold text-ink">{copy.shareTitle}</div>
+              <div className="text-xs text-ink-muted">Valid for 30 days.</div>
+            </div>
+            <button type="button" onClick={copyLink} className="rounded-full border border-ink px-4 py-2 text-sm font-semibold text-ink transition hover:bg-ink hover:text-white">
               {copied ? 'Link copied' : 'Copy link'}
             </button>
-            <a href={rec.path} target="_blank" rel="noreferrer" className="rounded-md bg-[#1f3864] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#102447]">
+            <a href={rec.path} target="_blank" rel="noreferrer" className="rounded-full bg-[#1f3864] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#102447]">
               Open record
             </a>
           </div>

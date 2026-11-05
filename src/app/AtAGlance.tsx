@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { DiagnosticReport } from '@/lib/types';
-import { buildGlance, glanceNextSteps, glanceVerdict, tipSections, type Tone } from '@/lib/glance';
+import { buildGlance, tipSections, type Tone } from '@/lib/glance';
 import type { Persona } from '@/lib/persona';
 
 const TONE: Record<Tone, { bar: string; text: string; ring: string }> = {
@@ -46,7 +46,7 @@ export default function AtAGlance({ report, role = null }: { report: DiagnosticR
               onMouseEnter={() => setOpen(b.key)}
               onMouseLeave={() => setOpen((cur) => (cur === b.key ? null : cur))}
             >
-              <div className={`relative overflow-hidden rounded-lg border border-black/10 bg-white px-4 pt-5 pb-4 h-full ${isOpen ? `ring-2 ${t.ring}` : ''}`}>
+              <div className={`relative overflow-hidden rounded-2xl bg-white px-4 pt-5 pb-4 h-full shadow-[0_4px_18px_rgba(16,36,71,0.06)] ring-1 ring-black/5 ${isOpen ? `ring-2 ${t.ring}` : ''}`}>
                 <div className={`absolute inset-x-0 top-0 h-1.5 ${t.bar}`} />
                 <div className="flex items-start justify-between gap-2">
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">{b.label}</div>
@@ -92,17 +92,6 @@ export default function AtAGlance({ report, role = null }: { report: DiagnosticR
         })}
       </div>
 
-      <div className="mt-4 rounded-lg bg-[#102447] px-5 py-4 text-white">
-        <div className="font-serif text-xl font-semibold">{glanceVerdict(items, role)}</div>
-      </div>
-      <ul className="mt-4 !list-none !ml-0 space-y-2">
-        {glanceNextSteps(items, role, report).map((s) => (
-          <li key={s} className="flex items-start gap-3 !mb-0">
-            <span aria-hidden className="mt-1 h-3.5 w-3.5 shrink-0 rounded-[3px] border-2 border-[#b8893b]" />
-            <span className="text-[15px] text-ink">{s}</span>
-          </li>
-        ))}
-      </ul>
     </section>
   );
 }
