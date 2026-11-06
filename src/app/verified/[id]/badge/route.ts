@@ -25,5 +25,5 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   <text x="62" y="29" font-family="Georgia, serif" font-size="17" font-weight="700" fill="#ffffff">${name}</text>
   <text x="62" y="47" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#c8d5ee">${esc(line)}</text>
 </svg>`;
-  return new Response(svg, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=3600' } });
+  return new Response(svg, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=60' } });
 }

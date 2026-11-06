@@ -54,7 +54,8 @@ export async function getVerified(id: string): Promise<VerifiedRecord | null> {
   }
 }
 
-// The newest live record for a folio, if any.
+// The live record for a folio, if any. A staff-reviewed ("premium") record wins
+// over a newer instant one ("premium" sorts after "instant", so tier.desc).
 export async function liveVerifiedForFolio(folio: string): Promise<VerifiedRecord | null> {
   const t = table();
   const f = folio.replace(/\D+/g, '');
@@ -62,7 +63,7 @@ export async function liveVerifiedForFolio(folio: string): Promise<VerifiedRecor
   try {
     const now = new Date().toISOString();
     const res = await fetch(
-      `${t}?select=*&folio=eq.${f}&status=eq.verified&expires_at=gt.${encodeURIComponent(now)}&order=verified_at.desc&limit=1`,
+      `${t}?select=*&folio=eq.${f}&status=eq.verified&expires_at=gt.${encodeURIComponent(now)}&order=tier.desc,verified_at.desc&limit=1`,
       { cache: 'no-store', headers: headers(), signal: AbortSignal.timeout(3000) },
     );
     if (!res.ok) return null;
