@@ -651,6 +651,10 @@ export default function HomePage() {
           </div>
         </form>
 
+        <a href="/lien-search" className="mt-4 inline-block text-sm font-semibold text-[#1f3864] hover:underline">
+          Title company? Run a Miami-Dade lien search →
+        </a>
+
         {/* Deep scan - long-running, emailed full permit + violation history */}
         <div id="deep-scan" className="mt-4 border-t border-black/10 pt-4 scroll-mt-24">
           <details open={deepOpen} onToggle={(e) => setDeepOpen((e.target as HTMLDetailsElement).open)}>

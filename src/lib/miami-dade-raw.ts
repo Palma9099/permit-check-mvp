@@ -28,12 +28,12 @@ async function fetchJson(url: string, init?: RequestInit): Promise<any> {
   return res.json();
 }
 
-function fromEpochMs(ms: number | null | undefined): string | null {
+export function fromEpochMs(ms: number | null | undefined): string | null {
   if (typeof ms !== 'number' || !Number.isFinite(ms) || ms <= 0) return null;
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-function cleanString(s: unknown): string {
+export function cleanString(s: unknown): string {
   if (typeof s !== 'string') return '';
   return s.replace(/\s+/g, ' ').trim();
 }
@@ -138,7 +138,7 @@ export async function paByFolio(folio: string): Promise<any | null> {
   return fetchJson(url).catch(() => null);
 }
 
-async function arcgisQuery(service: string, where: string, out: string = '*'): Promise<any[]> {
+export async function arcgisQuery(service: string, where: string, out: string = '*'): Promise<any[]> {
   const url =
     `${ARCGIS_BASE}/${encodeURIComponent(service)}/FeatureServer/0/query` +
     `?where=${encodeURIComponent(where)}` +
