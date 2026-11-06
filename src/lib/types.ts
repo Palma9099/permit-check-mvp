@@ -270,6 +270,9 @@ import type { Readiness } from './readiness';
 export interface DiagnosticReport {
   // Miami-Dade only: tax reset, permit health, evacuation zone, sewer or septic.
   countyExtras?: CountyExtras | null;
+  // Miami-Dade only: recorded liens and unpaid fines still standing (from the
+  // lien search). checked=false when a county source did not answer.
+  liens?: { lines: Array<{ title: string; detail: string; tone: 'red' | 'amber' | 'green' }>; checked: boolean } | null;
   // Closing readiness score and its factors (shared by web, PDF and record).
   readiness?: Readiness;
   // Signed, shareable record link (null when signing is not configured).

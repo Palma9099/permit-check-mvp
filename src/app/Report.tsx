@@ -8,6 +8,7 @@ import HomeHero from './HomeHero';
 import { collectFindings } from '@/lib/found';
 import StreetHistory from './StreetHistory';
 import FoundFirst from './FoundFirst';
+import LiensCard from './LiensCard';
 import type { StreetFrame } from '@/lib/street-history';
 import { PERSONAS, personaCopy, type Persona } from '@/lib/persona';
 import AerialTimeline from './AerialTimeline';
@@ -327,6 +328,8 @@ export default function Report({
 
       <div className="px-6 sm:px-10 py-8 prose-section">
         <FoundFirst report={r} role={role} streetHistory={streetHistory} streetFindings={streetFindings} />
+
+        <LiensCard report={r} />
 
         <AtAGlance report={r} role={role} />
 

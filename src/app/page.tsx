@@ -457,7 +457,7 @@ export default function HomePage() {
                 : 'A plain-English look at county permit records and aerial photos. Tell us your situation and we tailor what it means for you.'}
             </p>
             <ul className="mt-6 flex flex-wrap gap-2 text-xs">
-              {['Permits', 'Roof and insurance', 'Flood zone', 'Recertification', 'Code cases', 'Aerial photos'].map((label) => (
+              {['Permits', 'Roof and insurance', 'Flood zone', 'Recertification', 'Code and liens', 'Aerial photos'].map((label) => (
                 <li key={label} className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-white/90">
                   <span className="h-1.5 w-1.5 rounded-full bg-[#d9b46a]" />
                   {label}

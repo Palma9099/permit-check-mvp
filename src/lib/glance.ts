@@ -112,16 +112,24 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
     },
   };
 
-  // Code enforcement
+  // Code enforcement and liens (liens first: they block a clean closing).
   const open = r.codeEnforcement.openCount;
+  const liens = r.liens?.lines.length ?? 0;
   const code: GlanceItem = {
     key: 'code',
-    label: 'Code cases',
-    value: open === 0 ? 'None open' : `${open} open`,
-    detail: open === 0 ? 'Clean in county records.' : 'See county code portal.',
-    tone: open === 0 ? 'green' : 'red',
+    label: 'Code and liens',
+    value: liens > 0 ? `${liens} lien${liens > 1 ? 's' : ''} or fine${liens > 1 ? 's' : ''}` : open === 0 ? 'None open' : `${open} open`,
+    detail:
+      liens > 0
+        ? `Recorded in county records${open > 0 ? `, plus ${open} open case${open > 1 ? 's' : ''}` : ''}.`
+        : open === 0
+        ? r.liens && !r.liens.checked
+          ? 'No open cases. Liens not checked this time.'
+          : 'No open cases or recorded liens.'
+        : 'See county code portal.',
+    tone: open === 0 && liens === 0 ? 'green' : 'red',
     info: {
-      what: 'Open code violations the county has filed against this address.',
+      what: 'Open code violations, recorded code liens and unpaid county fines tied to this property.',
       buyer:
         open === 0
           ? 'No open violations means no county fines or liens tied to this address right now.'
@@ -187,11 +195,15 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
     : 'Have the inspection status, reserve study and any assessments ready for buyers.';
 
   code.info.seen =
-    open === 0
+    liens > 0
+      ? "A buyer's title company will find the recorded lien. It must be paid and released before closing."
+      : open === 0
       ? 'A buyer will find no open county violations.'
       : 'A buyer will find the open case, and fines or liens can follow the property to them.';
   code.info.seller =
-    open === 0
+    liens > 0
+      ? 'Pay off and release the lien before you list, or the title company will hold the closing.'
+      : open === 0
       ? 'Keep it clean until closing. A new case can delay a sale.'
       : 'Close open cases before you list so fines and liens do not reach the buyer.';
 
@@ -257,6 +269,8 @@ export function glanceNextSteps(items: GlanceItem[], role: Persona | null = null
     if (by.aerial.tone === 'amber') out.push('Ask the seller about the changes seen from the air.');
     out.push('Get an insurance quote before your contingency ends.');
   }
+  // A recorded lien comes first for everyone: it holds up the closing.
+  if (r?.liens?.lines.length) out.unshift('Order the lien search, then pay off and release the recorded lien before closing.');
   return out.slice(0, 5);
 }
 

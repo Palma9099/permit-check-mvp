@@ -78,6 +78,8 @@ export default function HomeHero({
   } else if (glance.permits) {
     facts.push({ text: `Permits: ${glance.permits.value.toLowerCase()}`, tone: glance.permits.tone });
   }
+  const liens = r.liens?.lines.length ?? 0;
+  if (liens > 0) facts.push({ text: `${liens} lien${liens > 1 ? 's' : ''} or unpaid fine${liens > 1 ? 's' : ''}`, tone: 'red' });
   if (glance.roof) facts.push({ text: `Roof: ${glance.roof.value.toLowerCase()}`, tone: glance.roof.tone });
   if (glance.flood) facts.push({ text: `Flood: ${glance.flood.value}`, tone: glance.flood.tone });
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LienSearch, LienSection } from '@/lib/lien-search';
 import { LIEN_SEARCH_PRICE, LIEN_SEARCH_TURNAROUND } from '@/lib/lien-search-config';
 
@@ -23,8 +23,23 @@ export default function LienSearchClient() {
   const [order, setOrder] = useState({ name: '', company: '', email: '', phone: '', closing: '' });
   const [sent, setSent] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
-  async function run(e: React.FormEvent) {
+  // Linked from a property report: /lien-search?folio=3049260021120 runs at once.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const start = q.get('folio') ?? q.get('q');
+    if (start) {
+      setQuery(start);
+      search(start);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function run(e: React.FormEvent) {
     e.preventDefault();
+    search(query);
+  }
+
+  async function search(query: string) {
     setErr(null);
     setR(null);
     setSent('idle');

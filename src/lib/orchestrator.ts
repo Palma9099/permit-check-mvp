@@ -14,6 +14,7 @@ import { computeReadiness } from './readiness';
 import { createRecordToken } from './record-token';
 import { mapillarySidesForReport } from './images/mapillary';
 import { fetchMiamiDadeExtras } from './counties/miami-dade-extras';
+import { openLiens } from './lien-search';
 import type {
   DiagnosticReport,
   Flag,
@@ -546,7 +547,7 @@ export async function runDiagnostic(input: {
   //    historical THEN/NOW pairs from one Google pano-list call, all
   //    rendered with bearing-to-aim so the camera points at the building
   //    rather than at the parcel-line geocode.
-  const [svEngine, historicalAerials, floodResult, countyExtras, mapillary] = await Promise.all([
+  const [svEngine, historicalAerials, floodResult, countyExtras, mapillary, liens] = await Promise.all([
     buildStreetViewEngine({
       searchLat: geo.lat,
       searchLng: geo.lng,
@@ -586,6 +587,13 @@ export async function runDiagnostic(input: {
       allFrames: [],
       failureReason: 'Mapillary lookup failed.' as string | null,
     })),
+    // Miami-Dade only: recorded liens and unpaid fines. A failed source is
+    // "not checked", never "no liens".
+    countyKey === 'miami-dade' && adapterResult.propertyBasics.folio
+      ? openLiens(adapterResult.propertyBasics.folio)
+          .then((lines) => ({ lines, checked: true }))
+          .catch(() => ({ lines: [], checked: false }))
+      : Promise.resolve(null),
   ]);
   const streetViewImages = svEngine.current;
 
@@ -911,6 +919,7 @@ export async function runDiagnostic(input: {
     insurance,
     flood,
     countyExtras,
+    liens,
     recert,
     negotiation,
     nextSteps,

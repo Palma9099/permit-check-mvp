@@ -184,6 +184,33 @@ function section(
   };
 }
 
+// Liens recorded on building-violation cases sit in their own table, keyed by
+// case number.
+async function buildingLienRows(bvRows: any[]): Promise<any[]> {
+  const nums = bvRows.map((r) => cleanString(r.CASE_NUM)).filter((n) => /^[A-Z0-9]+$/i.test(n));
+  return nums.length ? arcgisQuery('BuildingViolationLien', `CASE_NUM IN (${nums.map((n) => `'${n}'`).join(',')})`) : [];
+}
+
+const buildingLienLine = (l: any): LienLine => ({
+  title: `Building violation lien, case ${cleanString(l.CASE_NUM)}`,
+  detail: `Recorded ${dt(fromEpochMs(l.LIEN_RECDT))}, Official Records Book ${l.LIEN_BOOK} Page ${l.LIEN_PAGE}. The county layer does not show releases; confirm payoff or release.`,
+  tone: 'red',
+});
+
+// Just the liens and unpaid fines still standing, for the property check.
+// Throws when a source does not answer, so the caller never reports "none".
+export async function openLiens(folioIn: string): Promise<LienLine[]> {
+  const f = compactFolio(folioIn);
+  const where = `FOLIO='${f}'`;
+  const [ccviol, energov, bv] = await Promise.all([
+    arcgisQuery('CCVIOL_gdb', where),
+    arcgisQuery('EnergovCodeCasePublicView', `PARCELNUMBER='${f}'`),
+    arcgisQuery('BuildingViolation_gdb', where),
+  ]);
+  const bvLiens = await buildingLienRows(bv);
+  return [...ccviolLines(ccviol).liens, ...energovLines(energov).liens, ...bvLiens.map(buildingLienLine)].filter((l) => l.tone !== 'green');
+}
+
 export async function runLienSearch(folioIn: string): Promise<LienSearch> {
   const f = compactFolio(folioIn);
   const where = `FOLIO='${f}'`;
@@ -197,13 +224,8 @@ export async function runLienSearch(folioIn: string): Promise<LienSearch> {
     permitLayerByFolio(f),
   ]);
 
-  // Liens recorded on building-violation cases sit in their own table, keyed by
-  // case number.
   const bvRows = bv.status === 'fulfilled' ? bv.value : [];
-  const bvNums = bvRows.map((r) => cleanString(r.CASE_NUM)).filter((n) => /^\d+$/.test(n));
-  const bvLiens: PromiseSettledResult<any[]> = bvNums.length
-    ? await Promise.allSettled([arcgisQuery('BuildingViolationLien', `CASE_NUM IN (${bvNums.map((n) => `'${n}'`).join(',')})`)]).then((r) => r[0])
-    : { status: 'fulfilled', value: [] };
+  const bvLiens = await Promise.allSettled([buildingLienRows(bvRows)]).then((r) => r[0]);
 
   const cc = ccviol.status === 'fulfilled' ? ccviolLines(ccviol.value) : null;
   const eg = energov.status === 'fulfilled' ? energovLines(energov.value) : null;
@@ -216,11 +238,7 @@ export async function runLienSearch(folioIn: string): Promise<LienSearch> {
           value: [
             ...cc!.liens,
             ...eg!.liens,
-            ...(bvLiens as PromiseFulfilledResult<any[]>).value.map((l) => ({
-              title: `Building violation lien, case ${cleanString(l.CASE_NUM)}`,
-              detail: `Recorded ${dt(fromEpochMs(l.LIEN_RECDT))}, Official Records Book ${l.LIEN_BOOK} Page ${l.LIEN_PAGE}. The county layer does not show releases; confirm payoff or release.`,
-              tone: 'red' as const,
-            })),
+            ...(bvLiens as PromiseFulfilledResult<any[]>).value.map(buildingLienLine),
           ],
         };
 

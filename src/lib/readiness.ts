@@ -127,17 +127,26 @@ export function computeReadiness(r: DiagnosticReport): Readiness {
       : 'Flood zone could not be confirmed this time and is not counted in the score. Check the FEMA map.',
   });
 
-  // 5. Open code cases: up to 10.
+  // 5. Open code cases, recorded liens and unpaid fines: up to 10.
   const codeMax = 10;
   const open = r.codeEnforcement?.openCount ?? 0;
-  const codePenalty = open > 0 ? 10 : 0;
+  const liens = r.liens?.lines.length ?? 0;
+  const codePenalty = open > 0 || liens > 0 ? 10 : 0;
+  const parts = [
+    liens > 0 ? `${liens} lien${liens > 1 ? 's' : ''} or unpaid county fine${liens > 1 ? 's' : ''}` : '',
+    open > 0 ? `${open} open county code case${open > 1 ? 's' : ''}` : '',
+  ].filter(Boolean);
   factors.push({
     key: 'code',
-    label: 'Code cases',
+    label: 'Code cases and liens',
     penalty: codePenalty,
     max: codeMax,
     tone: toneFor(codePenalty, codeMax),
-    reason: open > 0 ? `${open} open county code case${open > 1 ? 's' : ''}. Fines and liens can pass to a new owner.` : 'No open code cases.',
+    reason: parts.length
+      ? `${parts.join(' and ')}. ${liens > 0 ? 'Liens must be paid and released before a clean closing.' : 'Fines and liens can pass to a new owner.'}`
+      : r.liens && !r.liens.checked
+      ? 'No open code cases. County lien records did not answer this time; run the lien search to confirm.'
+      : 'No open code cases or recorded liens.',
   });
 
   // 6. Sewer or septic: up to 5.
