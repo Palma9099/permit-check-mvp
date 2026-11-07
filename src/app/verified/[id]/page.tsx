@@ -74,6 +74,25 @@ export default async function VerifiedPage({ params }: { params: { id: string } 
           </div>
         </div>
 
+        {v.status === 'revoked' && (
+          // Expired and withdrawn are different facts and only one of them
+          // means the record was wrong. Every check is still listed below, so
+          // without this a reader takes "No longer verified" for an expiry.
+          <div className="border-b border-[#fecaca] bg-[#fef2f2] px-6 py-5 sm:px-10">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7f1d1d]">
+              Withdrawn by Palma Building Solutions
+            </div>
+            <p className="mt-2 text-sm text-[#7f1d1d]">
+              This record was withdrawn{v.revoked_at ? ` on ${fmt(v.revoked_at)}` : ''} and should not be relied on.
+              It did not simply expire. What is listed below is what was checked at the time.
+            </p>
+            {v.revoked_reason ? <p className="mt-2 text-sm font-semibold text-[#7f1d1d]">{v.revoked_reason}</p> : null}
+            <p className="mt-2 text-sm text-[#7f1d1d]">
+              Palma Building Solutions · 305-393-0690 · office@palma.llc
+            </p>
+          </div>
+        )}
+
         <div className="px-6 py-8 sm:px-10">
           <h2 className="font-serif text-2xl font-semibold text-ink">{instant ? 'What the public records show' : 'What we checked'}</h2>
           <ul className="mt-4 divide-y divide-black/5 rounded-2xl ring-1 ring-black/5">

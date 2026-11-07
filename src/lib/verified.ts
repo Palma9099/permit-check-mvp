@@ -34,6 +34,10 @@ export interface VerifiedRecord {
   summary: { score?: number; band?: string; roofYear?: number | null; floodZone?: string | null } | null;
   notes: string | null;
   hero_image: string | null;
+  // Set only when a published record is withdrawn (migrations/0007).
+  revoked_at?: string | null;
+  revoked_by?: string | null;
+  revoked_reason?: string | null; // shown on the public page, so write it for the public
 }
 
 const table = () => (SUPA_URL && SUPA_KEY ? `${SUPA_URL.replace(/\/$/, '')}/rest/v1/verified_records` : null);
@@ -94,6 +98,27 @@ export async function publishVerified(input: Omit<VerifiedRecord, 'id' | 'status
 }
 
 // Staff key check for the review page. Fails closed when no key is set.
+// Withdraw a published record. The read side already honours the status
+// everywhere it matters (isLive, the listing badge, the folio lookup, the
+// public page), so this is the whole of the recall.
+//
+// Never a delete. The badge was embedded in a live listing and the seal was
+// shown to buyers; afterwards the question is what Palma certified, and when
+// they took it back.
+export async function revokeVerified(id: string, by: string, reason: string): Promise<VerifiedRecord | null> {
+  const t = table();
+  if (!t || !/^PV-[A-Z0-9]{6,10}$/.test(id)) return null;
+  const patch = { status: 'revoked', revoked_at: new Date().toISOString(), revoked_by: by, revoked_reason: reason };
+  const res = await fetch(`${t}?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { ...headers(), Prefer: 'return=representation' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`Could not withdraw (${res.status}): ${(await res.text()).slice(0, 200)}`);
+  const rows = await res.json();
+  return Array.isArray(rows) && rows[0] ? (rows[0] as VerifiedRecord) : null;
+}
+
 export function adminKeyOk(given: string | null | undefined): boolean {
   const want = process.env.VERIFY_ADMIN_KEY;
   if (!want || !given) return false;
