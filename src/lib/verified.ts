@@ -4,6 +4,7 @@
 // home verified on its own: only the staff review page publishes one.
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { absent, failed, selectOne, type Lookup } from './lookup';
 
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SECRET_KEY;
@@ -45,37 +46,32 @@ const headers = () => ({ apikey: SUPA_KEY as string, Authorization: `Bearer ${SU
 
 export const isLive = (v: VerifiedRecord) => v.status === 'verified' && Date.parse(v.expires_at) > Date.now();
 
-export async function getVerified(id: string): Promise<VerifiedRecord | null> {
+// Returns a Lookup, not a record: see lib/lookup.ts. The seal is public, so
+// "no record" is an assertion about a paying customer and must be earned.
+export async function getVerified(id: string): Promise<Lookup<VerifiedRecord>> {
   const t = table();
-  if (!t || !/^PV-[A-Z0-9]{6,10}$/.test(id)) return null;
-  try {
-    const res = await fetch(`${t}?select=*&id=eq.${encodeURIComponent(id)}&limit=1`, { cache: 'no-store', headers: headers() });
-    if (!res.ok) return null;
-    const rows = await res.json();
-    return Array.isArray(rows) && rows[0] ? (rows[0] as VerifiedRecord) : null;
-  } catch {
-    return null;
-  }
+  if (!t) return failed('the record database is not configured');
+  if (!/^PV-[A-Z0-9]{6,10}$/.test(id)) return absent();
+  return selectOne<VerifiedRecord>(`${t}?select=*&id=eq.${encodeURIComponent(id)}&limit=1`, {
+    cache: 'no-store',
+    headers: headers(),
+  });
 }
 
 // The live record for a folio, if any. A staff-reviewed ("premium") record wins
 // over a newer instant one ("premium" sorts after "instant", so tier.desc).
-export async function liveVerifiedForFolio(folio: string): Promise<VerifiedRecord | null> {
+export async function liveVerifiedForFolio(folio: string): Promise<Lookup<VerifiedRecord>> {
   const t = table();
   const f = folio.replace(/\D+/g, '');
-  if (!t || f.length !== 13) return null;
-  try {
-    const now = new Date().toISOString();
-    const res = await fetch(
-      `${t}?select=*&folio=eq.${f}&status=eq.verified&expires_at=gt.${encodeURIComponent(now)}&order=tier.desc,verified_at.desc&limit=1`,
-      { cache: 'no-store', headers: headers(), signal: AbortSignal.timeout(3000) },
-    );
-    if (!res.ok) return null;
-    const rows = await res.json();
-    return Array.isArray(rows) && rows[0] ? (rows[0] as VerifiedRecord) : null;
-  } catch {
-    return null;
-  }
+  if (!t) return failed('the record database is not configured');
+  if (f.length !== 13) return absent();
+  const now = new Date().toISOString();
+  // The 3 second timeout keeps the report fast; a timeout is a failure, not an
+  // answer, so the caller must not cache it as "this home is not verified".
+  return selectOne<VerifiedRecord>(
+    `${t}?select=*&folio=eq.${f}&status=eq.verified&expires_at=gt.${encodeURIComponent(now)}&order=tier.desc,verified_at.desc&limit=1`,
+    { cache: 'no-store', headers: headers(), signal: AbortSignal.timeout(3000) },
+  );
 }
 
 function newId(): string {

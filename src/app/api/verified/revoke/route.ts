@@ -31,7 +31,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const existing = await getVerified(id);
+  const look = await getVerified(id);
+  if (!look.ok) {
+    return NextResponse.json(
+      { error: `Could not check that record: ${look.detail}. Nothing was withdrawn. Try again.` },
+      { status: 503 },
+    );
+  }
+  const existing = look.record;
   if (!existing) return NextResponse.json({ error: 'No record with that id.' }, { status: 404 });
   if (existing.status === 'revoked') {
     return NextResponse.json(

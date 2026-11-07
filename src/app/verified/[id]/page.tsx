@@ -8,7 +8,10 @@ export const dynamic = 'force-dynamic';
 const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const v = await getVerified(params.id);
+  // A failed lookup gets the generic title rather than the "no record" one:
+  // the page itself says we could not load it.
+  const look = await getVerified(params.id);
+  const v = look.ok ? look.record : null;
   return {
     title: v ? `${TIERS[v.tier ?? 'premium'].name}: ${v.address.split(',')[0]}` : 'Palma Verified',
     description: v ? `Permit and code records checked by Palma Building Solutions on ${fmt(v.verified_at)}.` : undefined,
@@ -31,7 +34,26 @@ function Seal({ live, color, word }: { live: boolean; color: string; word: strin
 // Public page for a Palma Verified record: what was checked, by whom, when,
 // and until when it holds. Shareable with buyers, agents and lenders.
 export default async function VerifiedPage({ params }: { params: { id: string } }) {
-  const v = await getVerified(params.id);
+  const look = await getVerified(params.id);
+  // "No record found" is a claim about a home the owner paid to certify. When
+  // the lookup failed we have not earned it, and a buyer reading it draws
+  // exactly the wrong conclusion.
+  if (!look.ok) {
+    return (
+      <main className="mx-auto max-w-xl px-4 py-20 text-center">
+        <h1 className="font-serif text-3xl font-semibold">We could not load this record</h1>
+        <p className="mt-3 text-ink-soft">
+          Something on our side is not answering. This is not a statement about the property: the record may be
+          perfectly valid.
+        </p>
+        <p className="mt-4 text-ink">
+          Try again in a minute, or call Palma at{' '}
+          <a className="font-semibold underline" href="tel:+13053930690">305-393-0690</a>.
+        </p>
+      </main>
+    );
+  }
+  const v = look.record;
   if (!v) {
     return (
       <main className="mx-auto max-w-xl px-4 py-20 text-center">

@@ -9,7 +9,28 @@ const et = (iso: string) =>
 // A finished lien search, as delivered to the title company: county records
 // plus what Palma staff found in taxes, Official Records and utilities.
 export default async function LienRecordPage({ params }: { params: { id: string } }) {
-  const rec = await getLienRecord(params.id);
+  const look = await getLienRecord(params.id);
+
+  // Not knowing is its own answer. "No lien search found" when the database is
+  // simply unreachable reads as a broken link, and a title company reading
+  // that falls back on the PDF in their inbox, which may be the withdrawn one.
+  if (!look.ok) {
+    return (
+      <main className="mx-auto max-w-xl px-4 py-20 text-center">
+        <h1 className="font-serif text-3xl font-semibold">We could not load this search</h1>
+        <p className="mt-3 text-ink-soft">
+          Something on our side is not answering. This does not mean the search is missing or wrong, only that we
+          cannot show it to you right now.
+        </p>
+        <p className="mt-4 text-ink">
+          Refresh in a minute. If you are closing today, call Palma at{' '}
+          <a className="font-semibold underline" href="tel:+13053930690">305-393-0690</a> before you rely on any copy
+          you are holding.
+        </p>
+      </main>
+    );
+  }
+  const rec = look.record;
 
   // A withdrawn search must say WITHDRAWN, not "not found". The title company
   // is holding the PDF we sent them: a link that reads as broken sends them

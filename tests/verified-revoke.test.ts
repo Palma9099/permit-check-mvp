@@ -47,11 +47,14 @@ describe('a withdrawn record is not live', () => {
 
   it('drops out of the folio lookup, which is what the listing badge reads', async () => {
     stub = installSupabaseStub([verifiedRow()]);
-    expect(await liveVerifiedForFolio('3049260021120')).toBeTruthy();
+    const live = await liveVerifiedForFolio('3049260021120');
+    expect(live.ok && live.record?.id).toBe('PV-ABCDEFG');
 
     stub.restore();
     stub = installSupabaseStub([verifiedRow({ status: 'revoked' })]);
-    expect(await liveVerifiedForFolio('3049260021120')).toBeNull();
+    // ok: true with no record. The database answered and the home has no live
+    // one, which is different from the failure case in lookup-failure.test.ts.
+    expect(await liveVerifiedForFolio('3049260021120')).toEqual({ ok: true, record: null });
   });
 });
 

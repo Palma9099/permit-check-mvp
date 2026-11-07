@@ -5,6 +5,7 @@
 
 import { randomBytes } from 'node:crypto';
 import type { LienSearch, StaffStep } from './lien-search';
+import { absent, failed, selectOne, type Lookup } from './lookup';
 
 const SUPA_URL = process.env.SUPABASE_URL;
 const SUPA_KEY = process.env.SUPABASE_SECRET_KEY;
@@ -46,17 +47,17 @@ export interface LienRecord {
 const table = () => (SUPA_URL && SUPA_KEY ? `${SUPA_URL.replace(/\/$/, '')}/rest/v1/lien_searches` : null);
 const headers = () => ({ apikey: SUPA_KEY as string, Authorization: `Bearer ${SUPA_KEY}`, 'content-type': 'application/json' });
 
-export async function getLienRecord(id: string): Promise<LienRecord | null> {
+// Returns a Lookup, not a record: see lib/lookup.ts. A client holding the PDF
+// must never be told "no such search" because we could not reach the database.
+export async function getLienRecord(id: string): Promise<Lookup<LienRecord>> {
   const t = table();
-  if (!t || !/^LS-[A-Z0-9]{10}$/.test(id)) return null;
-  try {
-    const res = await fetch(`${t}?select=*&id=eq.${encodeURIComponent(id)}&limit=1`, { cache: 'no-store', headers: headers() });
-    if (!res.ok) return null;
-    const rows = await res.json();
-    return Array.isArray(rows) && rows[0] ? (rows[0] as LienRecord) : null;
-  } catch {
-    return null;
-  }
+  if (!t) return failed('the record database is not configured');
+  // An id of the wrong shape cannot exist, so that is a real absence.
+  if (!/^LS-[A-Z0-9]{10}$/.test(id)) return absent();
+  return selectOne<LienRecord>(`${t}?select=*&id=eq.${encodeURIComponent(id)}&limit=1`, {
+    cache: 'no-store',
+    headers: headers(),
+  });
 }
 
 // Ten characters from a 32-letter alphabet: the link is the only key to the

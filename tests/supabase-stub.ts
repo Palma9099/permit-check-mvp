@@ -23,6 +23,10 @@ export interface Stub {
   calls: Call[];
   /** Force the next request to fail, to prove the caller reports it. */
   failNext: { status: number; text: string } | null;
+  /** Fail every request whose url matches, for a caller that makes two. */
+  failMatching: { pattern: RegExp; status: number; text: string } | null;
+  /** Make fetch itself throw, the way a dropped connection does. */
+  throwNext: string | null;
   restore: () => void;
 }
 
@@ -32,6 +36,8 @@ export function installSupabaseStub(seed: any[] = []): Stub {
     rows: new Map(seed.map((r) => [r.id, { ...r }])),
     calls: [],
     failNext: null,
+    failMatching: null,
+    throwNext: null,
     restore: () => {
       globalThis.fetch = real;
     },
@@ -43,10 +49,18 @@ export function installSupabaseStub(seed: any[] = []): Stub {
     const body = init.body ? JSON.parse(init.body) : null;
     stub.calls.push({ url, method, body, headers: (init.headers ?? {}) as Record<string, string> });
 
+    if (stub.throwNext) {
+      const msg = stub.throwNext;
+      stub.throwNext = null;
+      throw new TypeError(msg);
+    }
     if (stub.failNext) {
       const { status, text } = stub.failNext;
       stub.failNext = null;
       return new Response(text, { status });
+    }
+    if (stub.failMatching && stub.failMatching.pattern.test(url)) {
+      return new Response(stub.failMatching.text, { status: stub.failMatching.status });
     }
 
     // Any id=eq.X filter, which is how both libraries address one record.

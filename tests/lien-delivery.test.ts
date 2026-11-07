@@ -57,9 +57,13 @@ describe('the PDF of a withdrawn search', () => {
 
 describe('reading a record', () => {
   it('refuses an id that is not the right shape without querying', async () => {
+    // An id of the wrong shape cannot exist, so this is a real absence and
+    // not a failure: the page is right to say "no search found".
     stub = installSupabaseStub([lienRow()]);
-    expect(await getLienRecord('nope')).toBeNull();
-    expect(await getLienRecord('LS-short')).toBeNull();
+    for (const bad of ['nope', 'LS-short']) {
+      const look = await getLienRecord(bad);
+      expect(look).toEqual({ ok: true, record: null });
+    }
     expect(stub.calls).toHaveLength(0);
   });
 
@@ -67,8 +71,60 @@ describe('reading a record', () => {
     // getLienRecord deliberately does not filter by status: the page needs the
     // record in order to say it was withdrawn and why.
     stub = installSupabaseStub([lienRow({ status: 'revoked' })]);
-    const rec = await getLienRecord('LS-ABCDEFGHJK');
-    expect(rec?.status).toBe('revoked');
+    const look = await getLienRecord('LS-ABCDEFGHJK');
+    expect(look.ok && look.record?.status).toBe('revoked');
+  });
+});
+
+// The distinction this whole module exists for. Before it, every one of these
+// came back as null and the client was told "No lien search found".
+describe('not knowing is not the same as not finding', () => {
+  it('says no record when the database answers and has none', async () => {
+    stub = installSupabaseStub([]);
+    expect(await getLienRecord('LS-ABCDEFGHJK')).toEqual({ ok: true, record: null });
+  });
+
+  it('says it could not tell when the database errors', async () => {
+    stub = installSupabaseStub([lienRow()]);
+    stub.failNext = { status: 500, text: 'relation "lien_searches" does not exist' };
+    const look = await getLienRecord('LS-ABCDEFGHJK');
+    expect(look.ok).toBe(false);
+    expect(look.ok === false && look.detail).toMatch(/500/);
+  });
+
+  it('says it could not tell when the connection drops', async () => {
+    stub = installSupabaseStub([lienRow()]);
+    stub.throwNext = 'fetch failed';
+    const look = await getLienRecord('LS-ABCDEFGHJK');
+    expect(look.ok).toBe(false);
+    expect(look.ok === false && look.detail).toMatch(/could not reach/i);
+  });
+
+  it('says it could not tell when the key is wrong, not that the record is gone', async () => {
+    // A 401 is the most dangerous one: every record on the site looks deleted.
+    stub = installSupabaseStub([lienRow()]);
+    stub.failNext = { status: 401, text: 'Invalid API key' };
+    expect((await getLienRecord('LS-ABCDEFGHJK')).ok).toBe(false);
+  });
+});
+
+describe('the PDF when we cannot tell', () => {
+  it('answers 503 and never 404, and says the search may be fine', async () => {
+    stub = installSupabaseStub([lienRow()]);
+    stub.failNext = { status: 500, text: 'boom' };
+    const res = await pdf('LS-ABCDEFGHJK');
+    expect(res.status).toBe(503);
+
+    const body = await res.json();
+    expect(body.error).toMatch(/not a statement about the search/i);
+    expect(body.call).toBeTruthy();
+  });
+
+  it('is never cached, so a one-minute outage does not outlive itself', async () => {
+    stub = installSupabaseStub([lienRow()]);
+    stub.failNext = { status: 500, text: 'boom' };
+    const res = await pdf('LS-ABCDEFGHJK');
+    expect(res.headers.get('cache-control')).toMatch(/no-store/);
   });
 });
 

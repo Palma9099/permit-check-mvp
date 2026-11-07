@@ -37,7 +37,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'The replacement id does not look like a record id.' }, { status: 400 });
   }
 
-  const existing = await getLienRecord(id);
+  // A failed lookup must not be reported as a wrong id: staff would retype it
+  // and conclude the search was never published, while the bad one stays live.
+  const look = await getLienRecord(id);
+  if (!look.ok) {
+    return NextResponse.json(
+      { error: `Could not check that search: ${look.detail}. Nothing was withdrawn. Try again.` },
+      { status: 503 },
+    );
+  }
+  const existing = look.record;
   if (!existing) return NextResponse.json({ error: 'No search with that id.' }, { status: 404 });
   if (existing.status === 'revoked') {
     return NextResponse.json(
@@ -51,7 +60,14 @@ export async function POST(req: NextRequest) {
     if (replacedBy === id) {
       return NextResponse.json({ error: 'A search cannot replace itself.' }, { status: 400 });
     }
-    const replacement = await getLienRecord(replacedBy);
+    const rl = await getLienRecord(replacedBy);
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: `Could not check the replacement search: ${rl.detail}. Nothing was withdrawn.` },
+        { status: 503 },
+      );
+    }
+    const replacement = rl.record;
     if (!replacement || replacement.status !== 'final') {
       return NextResponse.json(
         { error: 'The replacement search does not exist or is not final. Publish the corrected search first.' },
