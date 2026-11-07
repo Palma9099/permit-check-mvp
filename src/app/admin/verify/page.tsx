@@ -21,6 +21,11 @@ export default function VerifyAdmin() {
   const [msg, setMsg] = useState<{ tone: 'red' | 'green'; text: string; url?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [tier, setTier] = useState<Tier>('premium');
+  // Withdrawing a published record. Keyed on the record id, not on whatever is
+  // loaded above, so a half-finished review cannot be confused with the record
+  // being pulled back.
+  const [wd, setWd] = useState({ id: '', by: '', reason: '' });
+  const [wdMsg, setWdMsg] = useState<{ tone: 'red' | 'green'; text: string } | null>(null);
 
   useEffect(() => {
     try {
@@ -70,6 +75,26 @@ export default function VerifyAdmin() {
 
   const allOk = tier === 'instant' || CHECKS.every((c) => checks[c.key]?.ok);
   const input = 'w-full rounded-lg border border-black/15 bg-white px-3 py-2 text-sm';
+
+  async function withdraw() {
+    setWdMsg(null);
+    setBusy(true);
+    try {
+      const res = await fetch('/api/verified/revoke', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-admin-key': key },
+        body: JSON.stringify({ id: wd.id.trim().toUpperCase(), by: wd.by, reason: wd.reason }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? `Error ${res.status}`);
+      setWdMsg({ tone: 'green', text: `${j.id} withdrawn. The seal and the listing badge clear within a minute. ${j.note}` });
+      setWd({ id: '', by: '', reason: '' });
+    } catch (e: any) {
+      setWdMsg({ tone: 'red', text: e.message });
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
@@ -178,6 +203,48 @@ export default function VerifyAdmin() {
           {!allOk && <div className="mt-2 text-xs text-ink-muted">Every check must be confirmed before publishing.</div>}
         </div>
       )}
+
+      <div className="mt-10 rounded-2xl bg-white p-5 ring-1 ring-red-200">
+        <h2 className="font-serif text-xl font-semibold text-[#7f1d1d]">Withdraw a published record</h2>
+        <p className="text-sm text-ink-muted">
+          For a Verified or Checked record that turns out to be wrong. The seal greys out, the listing badge clears
+          within a minute, the folio stops returning it, and the public page says it was withdrawn rather than
+          expired. The record is kept, never deleted.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-semibold">
+            Record id
+            <input value={wd.id} onChange={(e) => setWd({ ...wd, id: e.target.value })} placeholder="PV-7K3Q9X2" className={`${input} mt-1`} />
+          </label>
+          <label className="block text-sm font-semibold">
+            Withdrawn by
+            <input value={wd.by} onChange={(e) => setWd({ ...wd, by: e.target.value })} placeholder="Your name" className={`${input} mt-1`} />
+          </label>
+        </div>
+        <label className="mt-3 block text-sm font-semibold">
+          Reason, in a sentence (shown publicly on the record page)
+          <textarea
+            value={wd.reason}
+            onChange={(e) => setWd({ ...wd, reason: e.target.value })}
+            rows={2}
+            placeholder="A 2019 roof permit was finalled under a different folio; the roof age shown here is wrong."
+            className={`${input} mt-1`}
+          />
+        </label>
+        <button
+          type="button"
+          disabled={busy || !key || !wd.id.trim() || !wd.by.trim() || wd.reason.trim().length < 12}
+          onClick={withdraw}
+          className="mt-4 rounded-full bg-[#7f1d1d] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          {busy ? 'Withdrawing…' : 'Withdraw this record'}
+        </button>
+        {wdMsg && (
+          <div className={`mt-3 rounded-lg px-4 py-3 text-sm ${wdMsg.tone === 'green' ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-800'}`}>
+            {wdMsg.text}
+          </div>
+        )}
+      </div>
 
       {msg && (
         <div className={`mt-6 rounded-lg px-4 py-3 text-sm ${msg.tone === 'green' ? 'bg-emerald-50 text-emerald-900' : 'bg-red-50 text-red-800'}`}>

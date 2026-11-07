@@ -1,17 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { LienSearch, LienSection } from '@/lib/lien-search';
+import type { LienSearch } from '@/lib/lien-search';
+import LienSections from './LienSections';
 import { LIEN_SEARCH_PRICE, LIEN_SEARCH_TURNAROUND } from '@/lib/lien-search-config';
 
-const ORDER = { found: 0, failed: 1, clear: 2 } as const;
-const DOT = { red: 'bg-red-600', amber: 'bg-amber-500', green: 'bg-emerald-600' } as const;
 
-function Chip({ s }: { s: LienSection }) {
-  if (s.state === 'clear') return <span className="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-emerald-700">Clear</span>;
-  if (s.state === 'failed') return <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-amber-700">Not checked</span>;
-  return <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-red-700">Found</span>;
-}
 
 // Title companies: run the county part of a lien search in seconds, download it,
 // and order the full search (taxes, Official Records, utilities) from Palma.
@@ -70,7 +64,7 @@ export default function LienSearchClient() {
           email: order.email,
           phone: order.phone,
           address: `${r.address} (folio ${r.prettyFolio})`,
-          message: `LIEN SEARCH ORDER (${LIEN_SEARCH_PRICE}). Closing date: ${order.closing || 'not given'}. Company: ${order.company || 'not given'}. Staff steps: ${r.staffSteps.map((s) => s.title).join(', ')}.`,
+          message: `LIEN SEARCH ORDER (${LIEN_SEARCH_PRICE}). Closing date: ${order.closing || 'not given'}. Company: ${order.company || 'not given'}. Staff steps: ${r.staffSteps.map((s) => s.title).join(', ')}. Finish it: ${window.location.origin}/admin/lien?folio=${r.folio}`,
           summary,
         }),
       });
@@ -82,7 +76,6 @@ export default function LienSearchClient() {
 
   const input = 'w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-base text-ink shadow-sm outline-none focus:border-[#1f3864] focus:ring-2 focus:ring-[#1f3864]/15';
   const [street, ...rest] = (r?.address ?? '').split(',');
-  const clearCount = r ? r.sections.filter((s) => s.state === 'clear' && s.lines.length === 0).length : 0;
   const place = rest.join(',').replace(/-0000\b/, '').trim();
 
   return (
@@ -143,35 +136,7 @@ export default function LienSearchClient() {
               </div>
             </section>
 
-            {/* Problems first, full width; clear sections after, side by side. */}
-            <div className="grid gap-4 md:grid-cols-6">
-              {[...r.sections].sort((a, b) => ORDER[a.state] - ORDER[b.state]).map((s) => (
-                <section
-                  key={s.key}
-                  className={`rounded-2xl bg-white p-5 ring-1 ring-black/5 ${s.state === 'clear' && s.lines.length === 0 ? (clearCount >= 3 ? 'md:col-span-2' : 'md:col-span-3') : 'md:col-span-6'}`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-serif text-xl font-semibold text-ink">{s.title}</h3>
-                    <Chip s={s} />
-                  </div>
-                  <p className="mt-1 text-sm text-ink-soft">{s.summary}</p>
-                  {s.lines.length > 0 && (
-                    <ul className="mt-3 divide-y divide-black/5">
-                      {s.lines.map((l, i) => (
-                        <li key={i} className="flex gap-3 py-2.5">
-                          <span aria-hidden className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${DOT[l.tone]}`} />
-                          <div className="min-w-0">
-                            <div className="text-sm font-semibold text-ink">{l.title}</div>
-                            <div className="text-sm text-ink-soft">{l.detail}</div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="mt-3 text-[11px] text-ink-muted">Source: {s.source}</div>
-                </section>
-              ))}
-            </div>
+            <LienSections sections={r.sections} />
 
             <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-[#0b1730] to-[#1f3864] text-white shadow-[0_8px_30px_rgba(16,36,71,0.25)]">
               <div className="grid gap-6 p-6 md:grid-cols-2">
@@ -223,7 +188,7 @@ export default function LienSearchClient() {
                     <button type="submit" disabled={sent === 'sending'} className="mt-1 rounded-full bg-[#d9b46a] px-5 py-2.5 text-sm font-bold text-[#0b1730] hover:bg-[#e6c587] disabled:opacity-60">
                       {sent === 'sending' ? 'Sending…' : `Order full search, ${LIEN_SEARCH_PRICE}`}
                     </button>
-                    {sent === 'error' && <div className="text-xs text-red-200">Could not send. Call us at the number on palma.llc.</div>}
+                    {sent === 'error' && <div className="text-xs text-red-200">Could not send. Please call 305-393-0690.</div>}
                   </form>
                 )}
               </div>

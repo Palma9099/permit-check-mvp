@@ -8,7 +8,10 @@ export const dynamic = 'force-dynamic';
 const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const v = await getVerified(params.id);
+  // A failed lookup gets the generic title rather than the "no record" one:
+  // the page itself says we could not load it.
+  const look = await getVerified(params.id);
+  const v = look.ok ? look.record : null;
   return {
     title: v ? `${TIERS[v.tier ?? 'premium'].name}: ${v.address.split(',')[0]}` : 'Palma Verified',
     description: v ? `Permit and code records checked by Palma Building Solutions on ${fmt(v.verified_at)}.` : undefined,
@@ -31,7 +34,26 @@ function Seal({ live, color, word }: { live: boolean; color: string; word: strin
 // Public page for a Palma Verified record: what was checked, by whom, when,
 // and until when it holds. Shareable with buyers, agents and lenders.
 export default async function VerifiedPage({ params }: { params: { id: string } }) {
-  const v = await getVerified(params.id);
+  const look = await getVerified(params.id);
+  // "No record found" is a claim about a home the owner paid to certify. When
+  // the lookup failed we have not earned it, and a buyer reading it draws
+  // exactly the wrong conclusion.
+  if (!look.ok) {
+    return (
+      <main className="mx-auto max-w-xl px-4 py-20 text-center">
+        <h1 className="font-serif text-3xl font-semibold">We could not load this record</h1>
+        <p className="mt-3 text-ink-soft">
+          Something on our side is not answering. This is not a statement about the property: the record may be
+          perfectly valid.
+        </p>
+        <p className="mt-4 text-ink">
+          Try again in a minute, or call Palma at{' '}
+          <a className="font-semibold underline" href="tel:+13053930690">305-393-0690</a>.
+        </p>
+      </main>
+    );
+  }
+  const v = look.record;
   if (!v) {
     return (
       <main className="mx-auto max-w-xl px-4 py-20 text-center">
@@ -73,6 +95,25 @@ export default async function VerifiedPage({ params }: { params: { id: string } 
             <Seal live={live} color={instant ? '#0369a1' : '#047857'} word={tier.seal} />
           </div>
         </div>
+
+        {v.status === 'revoked' && (
+          // Expired and withdrawn are different facts and only one of them
+          // means the record was wrong. Every check is still listed below, so
+          // without this a reader takes "No longer verified" for an expiry.
+          <div className="border-b border-[#fecaca] bg-[#fef2f2] px-6 py-5 sm:px-10">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#7f1d1d]">
+              Withdrawn by Palma Building Solutions
+            </div>
+            <p className="mt-2 text-sm text-[#7f1d1d]">
+              This record was withdrawn{v.revoked_at ? ` on ${fmt(v.revoked_at)}` : ''} and should not be relied on.
+              It did not simply expire. What is listed below is what was checked at the time.
+            </p>
+            {v.revoked_reason ? <p className="mt-2 text-sm font-semibold text-[#7f1d1d]">{v.revoked_reason}</p> : null}
+            <p className="mt-2 text-sm text-[#7f1d1d]">
+              Palma Building Solutions · 305-393-0690 · office@palma.llc
+            </p>
+          </div>
+        )}
 
         <div className="px-6 py-8 sm:px-10">
           <h2 className="font-serif text-2xl font-semibold text-ink">{instant ? 'What the public records show' : 'What we checked'}</h2>
