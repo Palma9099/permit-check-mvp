@@ -22,138 +22,28 @@
 // Palma cannot pull is never reported as clear either: it is listed as work a
 // person completes before delivery.
 
-import { epochDay, queryLayer, queryOneWithCentroid, sq, str } from '../arcgis';
+import { queryLayer, queryOneWithCentroid, sq, str } from '../arcgis';
 import {
   cap,
   countTotals,
-  dt,
   section,
   type LienCoverage,
   type LienLine,
   type LienSearch,
   type StaffStep,
 } from '../lien-types';
+import { getCitySource, type CitySource } from './city-sources';
 
 const BCPA_TAXROLL =
   'https://services.arcgis.com/JMAJrTsHNLrSsWf5/ArcGIS/rest/services/PARCEL_POLY_BCPA_TAXROLL/FeatureServer/0';
 const CITY_BOUNDARIES =
   'https://services.arcgis.com/JMAJrTsHNLrSsWf5/ArcGIS/rest/services/Municipality_Boundaries_with_BMSD/FeatureServer/0';
 
-const FTL = 'https://gis.fortlauderdale.gov/arcgis/rest/services';
-const FTL_PARCELS = `${FTL}/Accela/Accela/MapServer/2`;
-const FTL_CODE_CASES = `${FTL}/CodeCaseTracker/CodeCase/MapServer/0`;
-const FTL_PERMITS = `${FTL}/BuildingPermitTracker/BuildingPermitTracker/MapServer/0`;
-const HWD_PERMITS_OPEN =
-  'https://maps.hollywoodfl.org/arcgis/rest/services/Accela_Permits_Map/MapServer/0';
-
 // Broward folio: 12 digits, written 50-42-34-00-0030.
 export const compactBrowardFolio = (f: string) => f.replace(/\D+/g, '').padStart(12, '0').slice(-12);
 const pretty = (f: string) => `${f.slice(0, 2)}-${f.slice(2, 4)}-${f.slice(4, 6)}-${f.slice(6, 8)}-${f.slice(8)}`;
 
-// A Fort Lauderdale permit status that means the permit is finished and no
-// longer encumbers the parcel. Anything else is reported as still open, which
-// is the safe direction for a lien search: over-report, never miss.
-const FTL_PERMIT_DONE = /^(complete|closed|void|withdrawn|purged|disapproved)/i;
-const EXPIRED = /expire/i;
-
-function ftlCodeCaseLine(r: any): LienLine {
-  const num = str(r.CASENUM) || 'number not shown';
-  const type = str(r.CASETYPE);
-  return {
-    title: `Open city code case ${num}`,
-    detail: `${type ? cap(type) : 'Fort Lauderdale code case'}, opened ${dt(epochDay(r.INITDATE))}. Still open with the city. Unpaid city fines can be recorded as a lien, so confirm the balance with Fort Lauderdale Code Compliance.`,
-    tone: 'red',
-  };
-}
-
-function ftlPermitLine(r: any): LienLine {
-  const stat = str(r.PERMITSTAT) || 'status not shown';
-  const expired = EXPIRED.test(stat);
-  const what = str(r.PERMITDESC) || str(r.PERMITTYPE) || 'Permit';
-  const issued = epochDay(r.APPROVEDT) ?? epochDay(r.SUBMITDT);
-  return {
-    title: `${expired ? 'Expired' : 'Open'} city permit ${str(r.PERMITID)}`.trim(),
-    detail: `${cap(what)}. ${issued ? `Dated ${dt(issued)}. ` : ''}City shows "${stat}"${str(r.COSTATUS) ? `, ${str(r.COSTATUS)}` : ''}.`,
-    tone: expired ? 'red' : 'amber',
-  };
-}
-
-function hwdPermitLine(r: any): LienLine {
-  const stat = str(r.RECORD_STATUS) || str(r.STATUS) || 'status not shown';
-  const expired = EXPIRED.test(stat);
-  const what = str(r.RECORD_TYPE) || 'Permit';
-  return {
-    title: `${expired ? 'Expired' : 'Open'} city permit ${str(r.RECORD_ID)}`.trim(),
-    detail: `${what}. Opened ${dt(epochDay(r.RECORD_OPEN_DATE))}. City shows "${stat}".`,
-    tone: expired ? 'red' : 'amber',
-  };
-}
-
-// Which city layers Palma can pull, keyed by the county's CITYNAME spelling.
-interface CityPull {
-  label: string;
-  codeCases?: (folio: string) => Promise<LienLine[]>;
-  permits?: (folio: string) => Promise<LienLine[]>;
-  codeSource?: string;
-  permitSource?: string;
-}
-
-async function ftlParcelId(folio: string): Promise<string | null> {
-  const rows = await queryLayer(FTL_PARCELS, {
-    where: `FOLIO=${sq(folio)}`,
-    outFields: 'FOLIO,PARCELID',
-    resultRecordCount: 1,
-    label: 'ftl-parcel',
-  });
-  return str(rows[0]?.PARCELID) || null;
-}
-
-const CITY_PULLS: Record<string, CityPull> = {
-  'FORT LAUDERDALE': {
-    label: 'Fort Lauderdale',
-    codeSource: 'City of Fort Lauderdale Code Case Tracker (city GIS)',
-    permitSource: 'City of Fort Lauderdale Building Permit Tracker (city GIS)',
-    async codeCases(folio) {
-      const pid = await ftlParcelId(folio);
-      if (!pid) return [];
-      const rows = await queryLayer(FTL_CODE_CASES, {
-        where: `PARCELID=${sq(pid)} AND CASESTATUS='O'`,
-        outFields: 'CASENUM,PARCELID,CASETYPE,CASESTATUS,INITDATE',
-        resultRecordCount: 200,
-        label: 'ftl-code',
-      });
-      return rows.map(ftlCodeCaseLine);
-    },
-    async permits(folio) {
-      const pid = await ftlParcelId(folio);
-      if (!pid) return [];
-      const rows = await queryLayer(FTL_PERMITS, {
-        where: `PARCELID=${sq(pid)}`,
-        outFields: 'PERMITID,PERMITTYPE,PERMITSTAT,PERMITDESC,SUBMITDT,APPROVEDT,COSTATUS',
-        resultRecordCount: 200,
-        label: 'ftl-permits',
-      });
-      return rows
-        .filter((r) => !FTL_PERMIT_DONE.test(str(r.PERMITSTAT)) && !/final co issued/i.test(str(r.COSTATUS)))
-        .map(ftlPermitLine);
-    },
-  },
-  HOLLYWOOD: {
-    label: 'Hollywood',
-    permitSource: 'City of Hollywood Accela permits layer (city GIS)',
-    async permits(folio) {
-      const rows = await queryLayer(HWD_PERMITS_OPEN, {
-        where: `FOLIO_NUMBER=${sq(folio)}`,
-        outFields: 'RECORD_ID,RECORD_TYPE,RECORD_STATUS,STATUS,RECORD_OPEN_DATE,FOLIO_NUMBER',
-        resultRecordCount: 200,
-        label: 'hwd-permits',
-      });
-      return rows.map(hwdPermitLine);
-    },
-  },
-};
-
-function coverageFor(pull: CityPull | null): LienCoverage {
+function coverageFor(pull: CitySource | null): LienCoverage {
   const automated = ['Parcel, owner and legal description, from the Broward County tax roll'];
   if (pull?.codeCases) automated.push(`Open ${pull.label} city code cases`);
   if (pull?.permits) automated.push(`Open and expired ${pull.label} city permits`);
@@ -229,7 +119,7 @@ export async function browardOpenLiens(folioIn: string): Promise<{ lines: LienLi
   });
   if (!parcel) return { lines: [], scope: 'no Broward parcel matched' };
   const city = await cityNameAt(parcel.lat, parcel.lng);
-  const pull = city ? CITY_PULLS[city.toUpperCase()] ?? null : null;
+  const pull = getCitySource('broward', city);
   if (!pull?.codeCases) {
     // Broward County publishes no case layer, and this city publishes none
     // either: nothing was checked, so nothing may be reported as clear.
@@ -257,7 +147,7 @@ export async function runBrowardLienSearch(folioIn: string): Promise<LienSearch>
       )
     : { ok: false as const, name: null };
   const cityName = cityLookup.name;
-  const pull = cityName ? CITY_PULLS[cityName.toUpperCase()] ?? null : null;
+  const pull = getCitySource('broward', cityName);
   const unincorporated = cityLookup.ok && (!cityName || /unincorporated|bmsd/i.test(cityName));
   const city = cityName ? cap(cityName) : 'the city';
 

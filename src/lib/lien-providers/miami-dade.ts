@@ -36,6 +36,7 @@ import {
   type LienSearch,
   type StaffStep,
 } from '../lien-types';
+import { getCitySource } from './city-sources';
 
 const pretty = (f: string) => `${f.slice(0, 2)}-${f.slice(2, 6)}-${f.slice(6, 9)}-${f.slice(9)}`;
 
@@ -56,6 +57,20 @@ export const MIAMI_DADE_COVERAGE: LienCoverage = {
     'City lien letter, for a parcel inside a municipality',
   ],
 };
+
+// The county layers cover county records. A parcel inside a city also carries
+// that city's cases and permits, which the county does not hold; where the
+// city publishes them they are pulled too, and the coverage block says so.
+function coverageWithCity(cityPermits: boolean): LienCoverage {
+  if (!cityPermits) return MIAMI_DADE_COVERAGE;
+  return {
+    level: 'cases',
+    automated: [...MIAMI_DADE_COVERAGE.automated, 'Open, expired, revoked and held City of Miami permits'],
+    byHand: MIAMI_DADE_COVERAGE.byHand.map((x) =>
+      x.startsWith('City lien letter') ? 'City lien letter: city code liens and city fines' : x,
+    ),
+  };
+}
 
 // County code-compliance cases (CCVIOL). Status codes: 1 Open, 2 Closed,
 // 4 Lien, 6 Civil, 8 Referred to Internal Compliance (collections), 9 Active LP.
@@ -236,6 +251,13 @@ export async function runMiamiDadeLienSearch(folioIn: string): Promise<LienSearc
             }),
         };
 
+  const p0 = pa.status === 'fulfilled' ? pa.value : null;
+  const muni = cleanString(p0?.PropertyInfo?.Municipality) || null;
+  const cityPull = getCitySource('miami-dade', muni);
+  const cityPermitsRes = await Promise.allSettled([
+    cityPull?.permits ? cityPull.permits(f) : Promise.resolve<LienLine[]>([]),
+  ]).then((r) => r[0]);
+
   const sections = [
     section('liens', 'Recorded liens and unpaid fines', 'Miami-Dade Code Compliance and Building violation records', liensRes, 'No open code or building liens and no fines in collections.'),
     section('code', 'Open code cases', 'Miami-Dade Code Compliance (both case systems)', codeRes, 'No open code cases.'),
@@ -243,9 +265,20 @@ export async function runMiamiDadeLienSearch(folioIn: string): Promise<LienSearc
     section('permits', 'Open and expired permits', 'Miami-Dade building permits (county permit table and GIS permit layer)', permitsRes, 'No open or expired county permits.'),
     section('environment', 'Environmental (DERM) cases', 'Miami-Dade Environmental Resources Management enforcement', envRes, 'No open environmental cases.'),
   ];
+  if (cityPull?.permits) {
+    sections.push(
+      section(
+        'cityPermits',
+        `Open and expired ${cityPull.label} permits`,
+        cityPull.permitSource ?? `${cityPull.label} permits`,
+        cityPermitsRes,
+        `No open or expired ${cityPull.label} permits.`,
+      ),
+    );
+  }
 
-  const p = pa.status === 'fulfilled' ? pa.value : null;
-  const municipality = cleanString(p?.PropertyInfo?.Municipality) || null;
+  const p = p0;
+  const municipality = muni;
   const unincorporated = !municipality || /unincorporated/i.test(municipality);
   const city = !municipality ? 'the city' : /^miami$/i.test(municipality) ? 'City of Miami' : cap(municipality);
   const staffSteps: StaffStep[] = [
@@ -264,14 +297,20 @@ export async function runMiamiDadeLienSearch(folioIn: string): Promise<LienSearc
     { key: 'utilities', title: 'Water and sewer', how: unincorporated ? 'Open balance or lien from Miami-Dade Water and Sewer.' : `Open balance or lien from Miami-Dade Water and Sewer or ${city}'s utility.` },
   ];
   if (!unincorporated) {
-    staffSteps.push({ key: 'city', title: `${city} lien letter`, how: `${city} code liens, city permits and city fees. The county records above do not cover city cases.` });
+    staffSteps.push({
+      key: 'city',
+      title: `${city} lien letter`,
+      how: cityPull?.permits
+        ? `${city} code liens, code fines and city fees. The county records above do not cover city cases, and the city publishes no code-case layer. Its permits are pulled live above.`
+        : `${city} code liens, city permits and city fees. The county records above do not cover city cases.`,
+    });
   }
 
   return {
     county: 'miami-dade',
     countyName: 'Miami-Dade County',
     parcelLabel: 'Folio',
-    coverage: MIAMI_DADE_COVERAGE,
+    coverage: coverageWithCity(Boolean(cityPull?.permits)),
     folio: f,
     prettyFolio: pretty(f),
     address: cleanString(p?.SiteAddress?.[0]?.Address) || null,

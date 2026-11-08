@@ -25,6 +25,9 @@ export interface Route {
   status?: number;
   /** Make fetch itself throw, the way a dropped connection does. */
   throws?: string;
+  /** An arbitrary body, for a source that is not a feature layer (the
+   *  Miami-Dade Property Appraiser proxy answers its own shape). */
+  json?: unknown;
 }
 
 export interface ArcgisStub {
@@ -51,6 +54,7 @@ export function installArcgisStub(routes: Route[]): ArcgisStub {
     if (r.throws) throw new TypeError(r.throws);
     if (r.status) return new Response('upstream said no', { status: r.status });
     if (r.errorBody) return Response.json({ error: r.errorBody });
+    if (r.json !== undefined) return Response.json(r.json);
     return Response.json({
       features: (r.rows ?? []).map((attributes) => ({
         attributes,
@@ -71,6 +75,20 @@ export const FTL_PERMITS = 'BuildingPermitTracker';
 export const HWD_PERMITS = 'Accela_Permits_Map/MapServer/0';
 export const CENSUS_PLACES = 'tigerweb.geo.census.gov';
 export const FDOR = 'Florida_Statewide_Cadastral';
+
+// Miami-Dade, by the part of the URL each source is reached at.
+export const MD_PA = 'apps.miamidadepa.gov';
+export const MD_ARCGIS = '8Pc9XBTAsYuxx9Ny';
+export const MD_PERMIT_LAYER = 'gisweb.miamidade.gov';
+export const MIAMI_CITY_PERMITS = 'Building_Permits_Since_2014';
+
+/** The Property Appraiser proxy's answer for one folio. */
+export const mdPaRecord = (municipality: string) => ({
+  PropertyInfo: { Municipality: municipality },
+  SiteAddress: [{ Address: '123 TEST ST' }],
+  OwnerInfos: [{ Name: 'TEST OWNER' }],
+  LegalDescription: { Description: 'TEST SUB LOT 1' },
+});
 
 /** One Broward tax-roll row, in the shape the layer really returns. */
 export const bcpaRow = (over: Record<string, any> = {}) => ({

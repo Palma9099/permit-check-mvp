@@ -14,8 +14,11 @@ export interface LienLine {
 }
 
 // 'liens' and 'code' exist in every county. The rest appear only where the
-// county publishes that data.
-export type LienSectionKey = 'liens' | 'code' | 'building' | 'permits' | 'environment';
+// county, or the city the parcel sits in, publishes that data. 'cityPermits'
+// is separate from 'permits' on purpose: a county permit and a city permit are
+// different records held by different offices, and collapsing them would hide
+// which one a reader still has to chase.
+export type LienSectionKey = 'liens' | 'code' | 'building' | 'permits' | 'environment' | 'cityPermits';
 
 export interface LienSection {
   key: LienSectionKey;

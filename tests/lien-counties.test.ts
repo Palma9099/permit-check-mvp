@@ -20,6 +20,11 @@ import {
   HWD_PERMITS,
   bcpaRow,
   installArcgisStub,
+  MD_ARCGIS,
+  MD_PA,
+  MD_PERMIT_LAYER,
+  mdPaRecord,
+  MIAMI_CITY_PERMITS,
   type ArcgisStub,
 } from './arcgis-stub';
 
@@ -267,5 +272,113 @@ describe('searches delivered before the product was multi-county', () => {
     } finally {
       sb.restore();
     }
+  });
+});
+
+describe('city permits inside Miami-Dade', () => {
+  // The county's own layers hold county records. A parcel inside a city also
+  // carries that city's permits, which the county does not have, and which
+  // used to be invisible until a person wrote the city.
+  const mdBase = (municipality: string, extra: Record<string, any> = {}) => {
+    const base: Record<string, any> = {
+      [MD_PA]: { json: mdPaRecord(municipality) },
+      [MD_ARCGIS]: { rows: [] },
+      [MD_PERMIT_LAYER]: { rows: [] },
+    };
+    return Object.entries({ ...base, ...extra }).map(([match, r]) => ({ match, ...(r as object) }));
+  };
+
+  it('pulls City of Miami permits and flags an expired one', async () => {
+    stub = installArcgisStub(
+      mdBase('MIAMI', {
+        [MIAMI_CITY_PERMITS]: {
+          rows: [
+            {
+              PermitNumber: 'BD12004467001BR001',
+              FolioNumber: 141040280130,
+              BuildingPermitStatusDescription: 'Expired',
+              BuildingPermitStatusReasonDescription: 'Permit is Expired',
+              IssuedDate: 1342010700000,
+              ScopeofWork: 'BUILDING ROOFING',
+            },
+          ],
+        },
+      }),
+    );
+    const r = await runLienSearch('0141040280130', 'miami-dade');
+    const city = r.sections.find((s) => s.key === 'cityPermits');
+    expect(city?.title).toMatch(/city of miami/i);
+    expect(city?.state).toBe('found');
+    expect(city?.lines[0].tone).toBe('red');
+    // The letter still goes, but it no longer has to ask for the permits.
+    expect(r.staffSteps.find((s) => s.key === 'city')?.how).toMatch(/pulled live/i);
+    expect(r.coverage.automated.join(' ')).toMatch(/City of Miami permits/i);
+  });
+
+  it('adds no city section for an unincorporated parcel', async () => {
+    stub = installArcgisStub(mdBase('UNINCORPORATED COUNTY'));
+    const r = await runLienSearch('3049260021120', 'miami-dade');
+    expect(r.sections.find((s) => s.key === 'cityPermits')).toBeUndefined();
+    expect(r.staffSteps.find((s) => s.key === 'city')).toBeUndefined();
+  });
+
+  it('marks the city section "could not be checked" when the city source fails', async () => {
+    stub = installArcgisStub(
+      mdBase('MIAMI', { [MIAMI_CITY_PERMITS]: { errorBody: { code: 500, message: 'Layer unavailable' } } }),
+    );
+    const r = await runLienSearch('0141040280130', 'miami-dade');
+    const city = r.sections.find((s) => s.key === 'cityPermits');
+    expect(city?.state).toBe('failed');
+    expect(r.failed).toBe(1);
+    // A failed source must never read as clear.
+    expect(city?.summary).toMatch(/did not answer/i);
+  });
+
+  it('still asks for the full city letter in a city that publishes nothing', async () => {
+    stub = installArcgisStub(mdBase('MIAMI BEACH'));
+    const r = await runLienSearch('0232340010010', 'miami-dade');
+    expect(r.sections.find((s) => s.key === 'cityPermits')).toBeUndefined();
+    expect(r.staffSteps.find((s) => s.key === 'city')?.how).toMatch(/city permits/i);
+  });
+});
+
+describe('the query actually sent to a city layer', () => {
+  // A stub that answers whatever it is asked would hide the worst failure
+  // here: a parcel number sent in the wrong shape matches nothing, and
+  // "nothing" reads as "no city permits". So the URL itself is asserted.
+  it('sends the Miami folio as an unquoted number, which is how the city stores it', async () => {
+    stub = installArcgisStub([
+      { match: MD_PA, json: mdPaRecord('MIAMI') },
+      { match: MD_ARCGIS, rows: [] },
+      { match: MD_PERMIT_LAYER, rows: [] },
+      { match: MIAMI_CITY_PERMITS, rows: [] },
+    ]);
+    await runLienSearch('0141040280130', 'miami-dade');
+    const asked = stub.urls.find((u) => u.includes(MIAMI_CITY_PERMITS));
+    expect(asked).toBeTruthy();
+    const where = decodeURIComponent(new URL(asked!).searchParams.get('where') ?? '');
+    // The leading zero is gone and there are no quotes: FolioNumber is a
+    // Double in the city's layer, so 'FolioNumber=...' with quotes errors and
+    // a padded 13-digit value never matches.
+    expect(where).toContain('FolioNumber=141040280130');
+    expect(where).not.toContain("FolioNumber='");
+    expect(where).toContain("BuildingPermitStatusDescription<>'Final'");
+  });
+
+  it('sends the Fort Lauderdale parcel id the city layer uses, not the county folio', async () => {
+    stub = installArcgisStub([
+      { match: BCPA, rows: [bcpaRow()], centroid: { lat: 26.1, lng: -80.16 } },
+      { match: BROWARD_CITIES, rows: [{ CITYNAME: 'FORT LAUDERDALE' }] },
+      { match: FTL_PARCELS, rows: [{ FOLIO: '504217080010', PARCELID: '0217080010' }] },
+      { match: FTL_CODE, rows: [] },
+      { match: FTL_PERMITS, rows: [] },
+    ]);
+    await runLienSearch('504217080010', 'broward');
+    const asked = stub.urls.find((u) => u.includes(FTL_CODE));
+    const where = decodeURIComponent(new URL(asked!).searchParams.get('where') ?? '');
+    // The city's id, resolved through the city's own parcel layer, never the
+    // 12-digit county folio.
+    expect(where).toContain("PARCELID='0217080010'");
+    expect(where).toContain("CASESTATUS='O'");
   });
 });
