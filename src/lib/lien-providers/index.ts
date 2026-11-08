@@ -26,6 +26,7 @@ export interface OpenLiens {
 }
 import { folioAtPoint as miamiDadeFolioAtPoint } from '../miami-dade-raw';
 import { browardFolioAtPoint, browardOpenLiens, compactBrowardFolio, runBrowardLienSearch } from './broward';
+import { CITY_SOURCES } from './city-sources';
 import { flRecordsParcelAtPoint, runFlRecordsLienSearch, type FlRecordsOptions } from './fl-records';
 import { miamiDadeOpenLiens, runMiamiDadeLienSearch } from './miami-dade';
 
@@ -122,6 +123,29 @@ export function getLienProvider(countyKey: string | null): LienProvider | null {
     run: (parcelId: string) => runFlRecordsLienSearch(countyKey, parcelId, opts),
     parcelAtPoint: (lat: number, lng: number) => flRecordsParcelAtPoint(countyKey, lat, lng),
   };
+}
+
+/**
+ * What is pulled live, for the page that tells people so. Counties first, then
+ * the cities whose own layers are pulled. Built from the registry rather than
+ * written out, so the page cannot drift from what the code actually does.
+ */
+export function liveCoverage(): {
+  counties: Array<{ key: string; name: string }>;
+  cities: Array<{ county: string; countyName: string; label: string; what: string[] }>;
+  /** Every county, for the picker a bare parcel number needs. */
+  allCounties: Array<{ key: string; name: string; level: 'cases' | 'records' }>;
+} {
+  const counties = Object.keys(CASE_LEVEL)
+    .map((key) => ({ key, name: CASE_LEVEL[key].countyName }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const cities = CITY_SOURCES.map((c) => ({
+    county: c.county,
+    countyName: getLienProvider(c.county)?.countyName ?? c.county,
+    label: c.label,
+    what: [c.codeCases ? 'code cases' : null, c.permits ? 'permits' : null].filter(Boolean) as string[],
+  })).sort((a, b) => a.countyName.localeCompare(b.countyName) || a.label.localeCompare(b.label));
+  return { counties, cities, allCounties: lienCounties() };
 }
 
 /** Every county a lien search can be run for, in name order. */

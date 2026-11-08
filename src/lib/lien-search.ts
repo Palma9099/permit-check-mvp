@@ -26,7 +26,7 @@ export type {
   StaffStep,
   StaffStepKey,
 } from './lien-types';
-export { getLienProvider, lienCounties, type LienProvider, type OpenLiens } from './lien-providers';
+export { getLienProvider, lienCounties, liveCoverage, type LienProvider, type OpenLiens } from './lien-providers';
 
 export const DEFAULT_LIEN_COUNTY = 'miami-dade';
 

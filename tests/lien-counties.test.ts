@@ -8,6 +8,7 @@
 // that matches in the wrong county is not a match at all.
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { NextRequest } from 'next/server';
 import { getLienProvider, lienCounties, openLiens, runLienSearch } from '@/lib/lien-search';
 import {
   BCPA,
@@ -380,5 +381,75 @@ describe('the query actually sent to a city layer', () => {
     // 12-digit county folio.
     expect(where).toContain("PARCELID='0217080010'");
     expect(where).toContain("CASESTATUS='O'");
+  });
+});
+
+describe('what the page says is pulled live', () => {
+  // The page is built from the registry, so this test exists to catch the
+  // drift that would matter most: a city or county quietly dropping out of
+  // the code while the page still advertises it, or the reverse.
+  it('lists exactly the counties and cities that actually have live sources', async () => {
+    const { liveCoverage } = await import('@/lib/lien-search');
+    const { counties, cities } = liveCoverage();
+    expect(counties.map((c) => c.key).sort()).toEqual(['broward', 'miami-dade']);
+    expect(cities.map((c) => c.label).sort()).toEqual(['City of Miami', 'Fort Lauderdale', 'Hollywood']);
+    // Each city says which of the two things it answers, never both when it
+    // only publishes one.
+    const ftl = cities.find((c) => c.label === 'Fort Lauderdale')!;
+    expect(ftl.what.sort()).toEqual(['code cases', 'permits']);
+    expect(cities.find((c) => c.label === 'Hollywood')!.what).toEqual(['permits']);
+    expect(cities.find((c) => c.label === 'City of Miami')!.what).toEqual(['permits']);
+  });
+});
+
+describe('a bare parcel number with no county named', () => {
+  // The dangerous outcome is not "not found", it is finding the WRONG
+  // property: a 12-digit Broward folio padded to 13 is a valid-looking
+  // Miami-Dade folio, and could match a different lot in a different county.
+  const post = async (body: Record<string, unknown>) => {
+    const { POST } = await import('@/app/api/lien-search/route');
+    const req = new NextRequest('https://test.palma.invalid/api/lien-search', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    });
+    return POST(req);
+  };
+
+  it('reads a 12-digit number as a Broward folio, not a padded Miami-Dade one', async () => {
+    stub = installArcgisStub([
+      { match: BCPA, rows: [bcpaRow()], centroid: { lat: 26.1, lng: -80.16 } },
+      { match: BROWARD_CITIES, rows: [{ CITYNAME: 'FORT LAUDERDALE' }] },
+      { match: FTL_PARCELS, rows: [{ FOLIO: '504217080010', PARCELID: '0217080010' }] },
+      { match: FTL_CODE, rows: [] },
+      { match: FTL_PERMITS, rows: [] },
+    ]);
+    const res = await post({ query: '504217080010' });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.county).toBe('broward');
+    expect(body.address).toBe('1400 SW 29 TER');
+  });
+
+  it('still reads a 13-digit number as Miami-Dade', async () => {
+    stub = installArcgisStub([
+      { match: MD_PA, json: mdPaRecord('UNINCORPORATED COUNTY') },
+      { match: MD_ARCGIS, rows: [] },
+      { match: MD_PERMIT_LAYER, rows: [] },
+    ]);
+    const res = await post({ query: '3049260021120' });
+    const body = await res.json();
+    expect(body.county).toBe('miami-dade');
+  });
+
+  it('lets an explicitly named county win over the shape', async () => {
+    stub = installArcgisStub([
+      { match: FDOR, rows: [{ CO_NO: 54, PARCEL_ID: '504217080010', OWN_NAME: 'KEYS OWNER', PHY_ADDR1: '1 OVERSEAS HWY' }], centroid: { lat: 24.5, lng: -81.7 } },
+      { match: CENSUS_PLACES, rows: [] },
+    ]);
+    const res = await post({ query: '504217080010', county: 'monroe' });
+    const body = await res.json();
+    expect(body.county).toBe('monroe');
+    expect(body.owner).toMatch(/keys owner/i);
   });
 });

@@ -4,13 +4,15 @@ import { useEffect, useState } from 'react';
 import type { LienSearch } from '@/lib/lien-search';
 import LienSections from './LienSections';
 import LienCoverage from './LienCoverage';
+import WhatIsLive from './WhatIsLive';
+import type { liveCoverage } from '@/lib/lien-search';
 import { LIEN_SEARCH_PRICE, LIEN_SEARCH_TURNAROUND } from '@/lib/lien-search-config';
 
 
 
 // Title companies: run the county part of a lien search in seconds, download it,
 // and order the full search (taxes, Official Records, utilities) from Palma.
-export default function LienSearchClient() {
+export default function LienSearchClient({ coverage }: { coverage: ReturnType<typeof liveCoverage> }) {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -32,6 +34,11 @@ export default function LienSearchClient() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Digits, spaces and dashes: the same test the route applies, so the picker
+  // appears exactly when the county cannot be read off the input.
+  const looksLikeParcel = /^[\d\s-]{10,}$/.test(query.trim());
+  const counties = coverage.allCounties;
 
   function run(e: React.FormEvent) {
     e.preventDefault();
@@ -98,7 +105,22 @@ export default function LienSearchClient() {
 
       <div className="mx-auto -mt-16 max-w-4xl px-4">
         <form onSubmit={run} className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-[0_20px_60px_rgba(16,36,71,0.18)] ring-1 ring-black/5 sm:flex-row">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Any Florida address, or a Miami-Dade folio" className={input} aria-label="Address or parcel number" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Any Florida address, or a parcel number" className={input} aria-label="Address or parcel number" />
+          {looksLikeParcel && (
+            <select
+              value={county}
+              onChange={(e) => setCounty(e.target.value)}
+              aria-label="County for this parcel number"
+              className="shrink-0 rounded-xl border border-black/10 bg-white px-3 py-3 text-base text-ink shadow-sm outline-none focus:border-[#1f3864] focus:ring-2 focus:ring-[#1f3864]/15 sm:max-w-[13rem]"
+            >
+              <option value="">County: detect</option>
+              {counties.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button type="submit" disabled={busy || !query.trim()} className="shrink-0 rounded-xl bg-[#1f3864] px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-[#102447] disabled:opacity-50">
             {busy ? 'Searching…' : 'Run search'}
           </button>
@@ -207,6 +229,8 @@ export default function LienSearchClient() {
             </p>
           </div>
         )}
+
+        <WhatIsLive coverage={coverage} />
       </div>
     </main>
   );

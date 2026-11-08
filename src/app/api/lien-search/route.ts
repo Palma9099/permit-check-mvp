@@ -31,11 +31,15 @@ export async function POST(req: NextRequest) {
   // A county whose ids contain letters is searched by address instead.
   const looksLikeParcel = /^[\d\s-]+$/.test(query) && digits.length >= 10 && digits.length <= 24;
 
-  // A bare parcel number carries no county, so it is searched in the county
-  // the caller names, defaulting to Miami-Dade (13-digit folios, where the
-  // product started).
+  // A bare parcel number carries no county. The caller can name one; failing
+  // that the two counties with live sources are told apart by the shape of
+  // their folio, which is unambiguous: Miami-Dade writes 13 digits, Broward
+  // 12. Guessing by padding a 12-digit Broward folio to 13 would silently
+  // search a different property in Miami-Dade, which is the one outcome worth
+  // ruling out here.
   if (looksLikeParcel) {
-    const countyKey = String(body.county ?? '').trim() || DEFAULT_LIEN_COUNTY;
+    const named = String(body.county ?? '').trim();
+    const countyKey = named || (digits.length === 12 ? 'broward' : DEFAULT_LIEN_COUNTY);
     const provider = getLienProvider(countyKey);
     if (!provider) return NextResponse.json({ error: `No lien search is set up for "${countyKey}".` }, { status: 400 });
     // Pass the number through as typed outside Miami-Dade: each county's own
