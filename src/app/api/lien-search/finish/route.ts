@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminKeyOk } from '@/lib/verified';
 import { compactFolio } from '@/lib/miami-dade-raw';
-import { runLienSearch } from '@/lib/lien-search';
+import { DEFAULT_LIEN_COUNTY, getLienProvider, runLienSearch } from '@/lib/lien-search';
 import { publishLienRecord, recordFound, type StaffResult } from '@/lib/lien-records';
 import { SITE_ORIGIN } from '@/lib/record-token';
 
@@ -17,13 +17,19 @@ const clean = (v: unknown, max = 240) => (typeof v === 'string' ? v.replace(/\s+
 export async function POST(req: NextRequest) {
   if (!adminKeyOk(req.headers.get('x-admin-key'))) return NextResponse.json({ error: 'Staff key required.' }, { status: 401 });
   const body = await req.json().catch(() => ({}));
-  const digits = String(body?.folio ?? '').replace(/\D+/g, '');
-  if (digits.length < 12 || digits.length > 13) return NextResponse.json({ error: 'A 13-digit folio is required.' }, { status: 400 });
+  const raw = String(body?.folio ?? '').trim();
+  const digits = raw.replace(/\D+/g, '');
+  const countyKey = String(body?.county ?? '').trim() || DEFAULT_LIEN_COUNTY;
+  const provider = getLienProvider(countyKey);
+  if (!provider) return NextResponse.json({ error: `No lien search is set up for "${countyKey}".` }, { status: 400 });
+  if (digits.length < 10 || digits.length > 24) {
+    return NextResponse.json({ error: `A ${provider.countyName} ${provider.parcelLabel.toLowerCase()} is required.` }, { status: 400 });
+  }
   const reviewer = clean(body?.reviewer, 80);
   if (!reviewer) return NextResponse.json({ error: 'Add the reviewer name.' }, { status: 400 });
 
-  const search = await runLienSearch(compactFolio(digits));
-  if (!search.address) return NextResponse.json({ error: 'No Miami-Dade parcel found for that folio.' }, { status: 404 });
+  const search = await runLienSearch(countyKey === 'miami-dade' ? compactFolio(digits) : raw, countyKey);
+  if (!search.address) return NextResponse.json({ error: `No ${provider.countyName} parcel found for that ${provider.parcelLabel.toLowerCase()}.` }, { status: 404 });
   if (search.failed) {
     return NextResponse.json({ error: 'A county source did not answer just now, so the search cannot be finished. Try again in a few minutes.' }, { status: 503 });
   }
@@ -73,7 +79,7 @@ export async function POST(req: NextRequest) {
     const from = process.env.RESEND_FROM || 'Palma Building Solutions <notifications@send.palma.llc>';
     const n = recordFound(rec);
     const text = [
-      `Your Miami-Dade lien search for ${search.address.split(',')[0]} (folio ${search.prettyFolio}) is ready.`,
+      `Your ${search.countyName} lien search for ${search.address.split(',')[0]} (${search.parcelLabel.toLowerCase()} ${search.prettyFolio}) is ready.`,
       n ? `${n} item${n > 1 ? 's' : ''} found. Details and Official Records references are in the search.` : 'Nothing found to resolve.',
       '',
       `View it: ${url}`,

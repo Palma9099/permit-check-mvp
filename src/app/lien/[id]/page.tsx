@@ -1,5 +1,6 @@
 import { getLienRecord, recordFound } from '@/lib/lien-records';
 import LienSections from '../../lien-search/LienSections';
+import LienCoverage from '../../lien-search/LienCoverage';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,7 +47,7 @@ export default async function LienRecordPage({ params }: { params: { id: string 
             <h1 className="mt-3 font-serif text-4xl font-semibold leading-tight">
               {rec.address.split(',')[0]}
             </h1>
-            <div className="mt-1 text-sm text-white/80">Record {rec.id} · folio {rec.search.prettyFolio}</div>
+            <div className="mt-1 text-sm text-white/80">Record {rec.id} · {rec.search.countyName} · {rec.search.parcelLabel.toLowerCase()} {rec.search.prettyFolio}</div>
           </div>
         </div>
 
@@ -102,7 +103,7 @@ export default async function LienRecordPage({ params }: { params: { id: string 
     <main className="min-h-screen bg-[#f6f4ef] pb-16">
       <div className="bg-[#0b1730] text-white">
         <div className="mx-auto max-w-4xl px-4 pb-24 pt-12">
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d9b46a]">Final lien search · Miami-Dade County</div>
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d9b46a]">Final lien search · {r.countyName}</div>
           <h1 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">{street}</h1>
           <div className="mt-1 text-sm text-white/75">{place}</div>
           <div className="mt-4 text-sm text-white/75">
@@ -115,7 +116,7 @@ export default async function LienRecordPage({ params }: { params: { id: string 
         <section className="overflow-hidden rounded-2xl bg-white shadow-[0_20px_60px_rgba(16,36,71,0.18)] ring-1 ring-black/5">
           <div className="flex flex-col gap-4 px-6 py-6 sm:flex-row sm:items-start sm:justify-between">
             <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5 text-sm">
-              <dt className="font-semibold text-ink-muted">Folio</dt>
+              <dt className="font-semibold text-ink-muted">{r.parcelLabel}</dt>
               <dd className="text-ink">{r.prettyFolio}</dd>
               <dt className="font-semibold text-ink-muted">Owner</dt>
               <dd className="text-ink">{r.owner ?? 'Not shown'}</dd>
@@ -172,6 +173,10 @@ export default async function LienRecordPage({ params }: { params: { id: string 
 
         <LienSections sections={r.sections} />
 
+        <div className="mt-6">
+          <LienCoverage search={r} />
+        </div>
+
         {rec.notes && (
           <section className="rounded-2xl bg-white p-5 ring-1 ring-black/5">
             <h3 className="font-serif text-xl font-semibold text-ink">Notes</h3>
@@ -180,7 +185,7 @@ export default async function LienRecordPage({ params }: { params: { id: string 
         )}
 
         <p className="text-xs text-ink-muted">
-          A search of Miami-Dade County public records by folio, on the dates shown. It is not title insurance, a payoff letter, an estoppel letter or a
+          A search of {r.countyName} public records by {r.parcelLabel.toLowerCase()}, on the dates shown. It is not title insurance, a payoff letter, an estoppel letter or a
           guarantee. Amounts owed are confirmed with the agency that holds the lien. Questions: 305-393-0690.
         </p>
       </div>

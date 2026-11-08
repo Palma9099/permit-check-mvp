@@ -15,6 +15,7 @@ import { createRecordToken } from './record-token';
 import { mapillarySidesForReport } from './images/mapillary';
 import { fetchMiamiDadeExtras } from './counties/miami-dade-extras';
 import { openLiens } from './lien-search';
+import type { LienLine } from './lien-types';
 import type {
   DiagnosticReport,
   Flag,
@@ -587,12 +588,14 @@ export async function runDiagnostic(input: {
       allFrames: [],
       failureReason: 'Mapillary lookup failed.' as string | null,
     })),
-    // Miami-Dade only: recorded liens and unpaid fines. A failed source is
-    // "not checked", never "no liens".
-    countyKey === 'miami-dade' && adapterResult.propertyBasics.folio
-      ? openLiens(adapterResult.propertyBasics.folio)
-          .then((lines) => ({ lines, checked: true }))
-          .catch(() => ({ lines: [], checked: false }))
+    // Recorded liens and unpaid fines, for the counties with a live source
+    // (see lib/lien-providers). A failed source is "not checked", never
+    // "no liens"; a county with no live source returns null, which the report
+    // renders as nothing rather than as "clear".
+    adapterResult.propertyBasics.folio
+      ? openLiens(adapterResult.propertyBasics.folio, countyKey ?? '')
+          .then((got) => (got ? { lines: got.lines, checked: true, scope: got.scope, county: countyKey ?? '' } : null))
+          .catch(() => ({ lines: [] as LienLine[], checked: false, scope: '', county: countyKey ?? '' }))
       : Promise.resolve(null),
   ]);
   const streetViewImages = svEngine.current;

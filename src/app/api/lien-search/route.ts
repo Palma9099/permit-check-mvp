@@ -1,57 +1,117 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { compactFolio, folioAtPoint, paByAddress } from '@/lib/miami-dade-raw';
+import { compactFolio, paByAddress } from '@/lib/miami-dade-raw';
 import { geocode } from '@/lib/geocode';
-import { runLienSearch } from '@/lib/lien-search';
+import { DEFAULT_LIEN_COUNTY, getLienProvider, runLienSearch } from '@/lib/lien-search';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-// Public: run the automated part of a Miami-Dade lien search for an address or
-// folio. County records only, no AI, so it is fast and free to run.
+// Public: run the automated part of a lien search for an address or parcel
+// number, in whichever Florida county the address is in. County records only,
+// no AI, so it is fast and free to run.
+//
+// Which county is resolved from the parcel point, never from the postal city:
+// a mailing address in "Miami, FL" is usually not in the City of Miami, and
+// county lines run through postal areas too.
 export async function POST(req: NextRequest) {
-  let body: { query?: string };
+  let body: { query?: string; county?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Body must be JSON.' }, { status: 400 });
   }
   const query = String(body.query ?? '').trim().slice(0, 200);
-  if (!query) return NextResponse.json({ error: 'Enter an address or folio number.' }, { status: 400 });
+  if (!query) return NextResponse.json({ error: 'Enter an address or parcel number.' }, { status: 400 });
 
-  // A folio is 13 digits, often written 30-4926-002-1120.
   const digits = query.replace(/\D+/g, '');
-  let folio: string | null = null;
-  let matchNote: string | null = null;
-  if (/^[\d\s-]+$/.test(query) && (digits.length === 13 || digits.length === 12)) {
-    folio = compactFolio(digits);
-  } else {
-    // Typed address first, then the geocoder's spelling of it, then the lot
-    // under a rooftop-accurate map point. A map match is flagged so the reader
-    // confirms the folio before relying on it.
-    const zip = query.match(/\b(\d{5})(?:-\d{4})?\s*$/)?.[1] ?? null;
-    folio = (await paByAddress(query, zip)).folio;
-    if (!folio) {
-      const g = await geocode(query).catch(() => null);
-      if (g && g.county === 'miami-dade') {
-        folio = (await paByAddress(g.formattedAddress, g.matchedZip ?? zip)).folio;
-        if (!folio && g.confidence === 'high' && g.locationType === 'ROOFTOP') {
-          folio = await folioAtPoint(g.lat, g.lng).catch(() => null);
-          if (folio) matchNote = 'Matched by map location, not by address. Confirm the folio and address before relying on this search.';
-        }
-      }
+  // Digits, spaces and dashes only: a Miami-Dade folio, a Broward folio, or
+  // another county's parcel id, which in several counties carries its spaces
+  // as part of the stored value (Monroe's look like "1362 38 00483401009200").
+  // A county whose ids contain letters is searched by address instead.
+  const looksLikeParcel = /^[\d\s-]+$/.test(query) && digits.length >= 10 && digits.length <= 24;
+
+  // A bare parcel number carries no county, so it is searched in the county
+  // the caller names, defaulting to Miami-Dade (13-digit folios, where the
+  // product started).
+  if (looksLikeParcel) {
+    const countyKey = String(body.county ?? '').trim() || DEFAULT_LIEN_COUNTY;
+    const provider = getLienProvider(countyKey);
+    if (!provider) return NextResponse.json({ error: `No lien search is set up for "${countyKey}".` }, { status: 400 });
+    // Pass the number through as typed outside Miami-Dade: each county's own
+    // layer decides how to normalize it, and stripping the spaces here would
+    // stop a Monroe parcel id from matching at all.
+    const parcelId = countyKey === 'miami-dade' ? compactFolio(digits) : query;
+    const result = await runLienSearch(parcelId, countyKey);
+    if (!result.address) {
+      return NextResponse.json(
+        { error: `No ${provider.countyName} parcel found for ${provider.parcelLabel.toLowerCase()} ${result.prettyFolio}.` },
+        { status: 404 },
+      );
     }
+    return NextResponse.json({ ...result, matchNote: null });
   }
-  if (!folio) {
+
+  // An address: Miami-Dade's Property Appraiser address search first, since it
+  // matches the typed house number exactly. Everything else goes through the
+  // geocoder to a point, then the county's own parcel layer.
+  const zip = query.match(/\b(\d{5})(?:-\d{4})?\s*$/)?.[1] ?? null;
+  const mdFolio = await paByAddress(query, zip).then((r) => r.folio).catch(() => null);
+  if (mdFolio) {
+    const result = await runLienSearch(mdFolio, 'miami-dade');
+    if (result.address) return NextResponse.json({ ...result, matchNote: null });
+  }
+
+  const g = await geocode(query).catch(() => null);
+  if (!g) {
+    return NextResponse.json({ error: 'That address could not be located. Try the parcel number.' }, { status: 404 });
+  }
+  const provider = getLienProvider(g.county);
+  if (!provider) {
     return NextResponse.json(
-      { error: 'That address was not found in the Miami-Dade Property Appraiser records. Try the folio number.' },
+      {
+        error: g.county
+          ? `That address is in ${g.county}, which is outside Florida or not a county we search.`
+          : 'That address is not in a Florida county we search.',
+      },
       { status: 404 },
     );
   }
 
-  const result = await runLienSearch(folio);
-  if (!result.address) {
-    return NextResponse.json({ error: `No Miami-Dade parcel found for folio ${result.prettyFolio}.` }, { status: 404 });
+  // Miami-Dade gets one more try at its own address search with the
+  // geocoder's spelling before falling back to the map point.
+  if (provider.county === 'miami-dade') {
+    const f = await paByAddress(g.formattedAddress, g.matchedZip ?? zip).then((r) => r.folio).catch(() => null);
+    if (f) {
+      const result = await runLienSearch(f, 'miami-dade');
+      if (result.address) return NextResponse.json({ ...result, matchNote: null });
+    }
   }
-  return NextResponse.json({ ...result, matchNote });
+
+  // A map point is only trustworthy on a rooftop-accurate, high-confidence
+  // match, and even then the reader is told to confirm the parcel.
+  if (g.confidence !== 'high' || g.locationType !== 'ROOFTOP') {
+    return NextResponse.json(
+      { error: `That address could not be matched to a single ${provider.countyName} parcel. Try the ${provider.parcelLabel.toLowerCase()}.` },
+      { status: 404 },
+    );
+  }
+  const parcelId = await provider.parcelAtPoint(g.lat, g.lng).catch(() => null);
+  if (!parcelId) {
+    return NextResponse.json(
+      { error: `No ${provider.countyName} parcel was found at that address. Try the ${provider.parcelLabel.toLowerCase()}.` },
+      { status: 404 },
+    );
+  }
+  const result = await runLienSearch(parcelId, provider.county);
+  if (!result.address) {
+    return NextResponse.json(
+      { error: `No ${provider.countyName} parcel found for ${provider.parcelLabel.toLowerCase()} ${result.prettyFolio}.` },
+      { status: 404 },
+    );
+  }
+  return NextResponse.json({
+    ...result,
+    matchNote: `Matched by map location, not by address. Confirm the ${provider.parcelLabel.toLowerCase()} and address before relying on this search.`,
+  });
 }

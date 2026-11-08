@@ -64,17 +64,18 @@ export async function lienSearchPdf(r: LienSearch, final?: FinalInfo): Promise<B
 
   // Header band.
   doc.rect(0, 0, W, 150).fill(C.navy);
-  doc.fillColor(C.gold).font('Helvetica-Bold').fontSize(9).text(final ? 'FINAL LIEN SEARCH  ·  MIAMI-DADE COUNTY' : 'PALMA LIEN SEARCH  ·  MIAMI-DADE COUNTY', M, 34, { characterSpacing: 1.5 });
+  const band = `${final ? 'FINAL LIEN SEARCH' : 'PALMA LIEN SEARCH'}  ·  ${r.countyName.toUpperCase()}`;
+  doc.fillColor(C.gold).font('Helvetica-Bold').fontSize(9).text(band, M, 34, { characterSpacing: 1.5 });
   const [street, ...rest] = clean(r.address).split(',');
   doc.fillColor('#ffffff').font('Times-Bold').fontSize(28).text(street, M, 52, { width: CW });
   doc.fillColor('#c8d5ee').font('Helvetica').fontSize(10).text(rest.join(',').replace(/-0000\b/, '').trim(), M, doc.y + 2, { width: CW });
-  doc.fillColor('#c8d5ee').fontSize(9).text(`County records searched ${et(r.searchedAt)} ET`, M, final ? 112 : 122);
+  doc.fillColor('#c8d5ee').fontSize(9).text(`Public records searched ${et(r.searchedAt)} ET`, M, final ? 112 : 122);
   if (final) doc.text(`Completed ${et(final.completedAt)} ET by ${clean(final.reviewer)}, Palma Building Solutions  ·  Record ${final.id}`, M, 126);
 
   // Property facts.
   doc.y = 172;
   const facts: Array<[string, string]> = [
-    ['Folio', r.prettyFolio],
+    [r.parcelLabel, r.prettyFolio],
     ['Owner of record', clean(r.owner) || 'Not shown'],
     ['Municipality', clean(r.municipality) || 'Not shown'],
     ['Legal description', clean(r.legal) || 'Not shown'],
@@ -95,9 +96,14 @@ export async function lienSearchPdf(r: LienSearch, final?: FinalInfo): Promise<B
   const total = r.found + staffFound;
   const bad = total > 0;
   const by = doc.y;
-  doc.roundedRect(M, by, CW, 44, 8).fill(bad ? C.redBg : r.failed ? C.amberBg : C.greenBg);
+  // A preliminary search in a county that publishes no case records has
+  // checked nothing, so it must not wear the green that means "clear". Green
+  // is earned only when a live source answered and came back empty.
+  const nothingPulled = !final && r.coverage.level === 'records';
+  const tone = bad ? 'red' : r.failed || nothingPulled ? 'amber' : 'green';
+  doc.roundedRect(M, by, CW, 44, 8).fill(tone === 'red' ? C.redBg : tone === 'amber' ? C.amberBg : C.greenBg);
   doc
-    .fillColor(bad ? C.red : r.failed ? C.amber : C.green)
+    .fillColor(tone === 'red' ? C.red : tone === 'amber' ? C.amber : C.green)
     .font('Helvetica-Bold')
     .fontSize(13)
     .text(
@@ -106,10 +112,12 @@ export async function lienSearchPdf(r: LienSearch, final?: FinalInfo): Promise<B
           ? `${total} item${total > 1 ? 's' : ''} to resolve before closing`
           : 'Clear: nothing found to resolve'
         : bad
-        ? `${r.found} item${r.found > 1 ? 's' : ''} found in county records`
+        ? `${r.found} item${r.found > 1 ? 's' : ''} found in the records pulled live`
         : r.failed
-        ? 'Some county sources did not answer'
-        : 'County records are clear',
+        ? 'Some sources did not answer'
+        : r.coverage.level === 'records'
+        ? 'Parcel confirmed. The records are pulled by Palma staff.'
+        : 'The records pulled live are clear',
       M + 16,
       by + 9,
     );
@@ -119,8 +127,12 @@ export async function lienSearchPdf(r: LienSearch, final?: FinalInfo): Promise<B
     .fontSize(9)
     .text(
       final
-        ? 'County records, property taxes, Official Records and utilities, checked on the dates shown.'
-        : 'Preliminary: county records only. Taxes, Official Records and utilities are completed by Palma staff before delivery.',
+        ? 'Every source listed below, checked on the dates shown.'
+        : r.coverage.level === 'records'
+        ? `Preliminary: the parcel itself. ${r.countyName} publishes no parcel-keyed case records, so every record below is pulled by Palma staff before delivery.`
+        : `Preliminary: only the records listed below as pulled live. ${r.staffSteps
+            .map((x) => x.title)
+            .join(', ')} are completed by Palma staff before delivery.`,
       M + 16,
       by + 27,
       { width: CW - 32 },
@@ -192,6 +204,37 @@ export async function lienSearchPdf(r: LienSearch, final?: FinalInfo): Promise<B
 
   if (!final) drawStaff();
 
+  // What was pulled live and what a person pulled. Printed on every search so
+  // the reader never has to guess which half of the search they are holding,
+  // and so a county with no public case data cannot read as a clean sweep.
+  const cov = r.coverage;
+  room(60 + (cov.automated.length + cov.byHand.length) * 12);
+  doc.y += 16;
+  doc.fillColor(C.ink).font('Times-Bold').fontSize(14).text('How this search was done', M, doc.y);
+  doc
+    .fillColor(C.soft)
+    .font('Helvetica')
+    .fontSize(9.5)
+    .text(
+      cov.level === 'cases'
+        ? `${r.countyName} publishes the case records below, so they are pulled live by ${r.parcelLabel.toLowerCase()} at the time shown.`
+        : `${r.countyName} publishes no parcel-keyed case records. The parcel is pulled live; every record is read by a person.`,
+      M,
+      doc.y + 2,
+      { width: CW },
+    );
+  const bullets = (label: string, items: string[], color: string) => {
+    if (!items.length) return;
+    doc.fillColor(C.muted).font('Helvetica-Bold').fontSize(8).text(label.toUpperCase(), M, doc.y + 8, { characterSpacing: 0.6 });
+    for (const it of items) {
+      const y = doc.y + 3;
+      doc.circle(M + 3, y + 4, 2).fill(color);
+      doc.fillColor(C.soft).font('Helvetica').fontSize(9).text(clean(it), M + 12, y, { width: CW - 12 });
+    }
+  };
+  bullets('Pulled live', cov.automated, C.green);
+  bullets('Read by a person', cov.byHand, C.amber);
+
   // Disclaimer.
   room(70);
   doc.y += 16;
@@ -200,7 +243,7 @@ export async function lienSearchPdf(r: LienSearch, final?: FinalInfo): Promise<B
     .font('Helvetica')
     .fontSize(7.5)
     .text(
-      'A search of Miami-Dade County public records on the date and time shown, by folio. It reports what those records show and is not title insurance, a payoff letter, an estoppel letter or a guarantee. Amounts owed are confirmed with the agency that holds the lien. Palma Building Solutions, palma.llc.',
+      `A search of ${r.countyName} public records on the date and time shown, by ${r.parcelLabel.toLowerCase()}. It reports what those records show and is not title insurance, a payoff letter, an estoppel letter or a guarantee. Amounts owed are confirmed with the agency that holds the lien. Palma Building Solutions, palma.llc.`,
       M,
       doc.y,
       { width: CW },
