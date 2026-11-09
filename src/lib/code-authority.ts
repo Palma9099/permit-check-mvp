@@ -38,7 +38,7 @@ export type CodeVerdict =
   /** Something was found. */
   | { kind: 'hits'; open: number; liens: number }
   /** The authority that decides was NOT searched. Never render this green. */
-  | { kind: 'unchecked'; authority: string; searched: string | null };
+  | { kind: 'unchecked'; authority: string; searched: string | null; portalUrl: string | null };
 
 const UNINCORPORATED = /unincorp|^none$|^n\/?a$/i;
 
@@ -85,12 +85,13 @@ export function codeVerdict(
       kind: 'unchecked',
       authority: city,
       searched: authority.countyChecked ? 'the county' : null,
+      portalUrl: cityCodePortal(authority.municipality)?.url ?? null,
     };
   }
 
   // Nobody searched anything at all: also not clear.
   if (!authority.cityChecked && !authority.countyChecked) {
-    return { kind: 'unchecked', authority: 'the code authority', searched: null };
+    return { kind: 'unchecked', authority: 'the code authority', searched: null, portalUrl: null };
   }
 
   return { kind: 'clear' };
@@ -134,8 +135,12 @@ export function verdictBuyerNote(v: CodeVerdict): string {
   switch (v.kind) {
     case 'hits':
       return 'Open cases can carry daily fines and liens that transfer to the new owner. Make the seller close them before closing.';
-    case 'unchecked':
-      return `${v.authority} is the code authority for this address, and we could not search its records. This is NOT a clean result - it means nobody has looked. A violation here would not show up above. Ask ${v.authority} directly, or order the full lien search.`;
+    case 'unchecked': {
+      const portal = v.portalUrl
+        ? ` ${v.authority} publishes its cases at ${v.portalUrl} - search it before you rely on anything above.`
+        : ` Ask ${v.authority} directly, or order the full lien search.`;
+      return `${v.authority} is the code authority for this address, and we could not search its records. This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${portal}`;
+    }
     case 'clear':
       return 'No open violations means no fines or liens tied to this address right now.';
   }
@@ -163,4 +168,48 @@ export function verdictTone(v: CodeVerdict): 'green' | 'amber' | 'red' {
     case 'clear':
       return 'green';
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// Known city code-case portals.
+//
+// When we cannot search a city ourselves, the next best thing is to send the
+// reader straight to the search that WILL answer, rather than leaving "not
+// checked" as a dead end. Each entry here has been opened and confirmed to
+// return code cases for a real address without a login.
+// ---------------------------------------------------------------------------
+
+export interface CityCodePortal {
+  /** Municipality exactly as the property appraiser spells it. */
+  municipality: string;
+  county: string;
+  label: string;
+  url: string;
+  /** The platform, for whoever writes the adapter next. */
+  platform: string;
+  /** Can an adapter read it without an account? */
+  publicSearch: boolean;
+}
+
+export const CITY_CODE_PORTALS: CityCodePortal[] = [
+  {
+    // Verified 2026-11-09 against 135 W 60 ST: module 5 ("Code Case") is
+    // enabled and anonymous, and the search returned case BWOP-001873-2025,
+    // "Building Without A Permit", status Lien, parcel 0421310020800 - the
+    // violation a county-only check reported as "None open".
+    municipality: 'HIALEAH',
+    county: 'miami-dade',
+    label: 'Hialeah code case search',
+    url: 'https://hialeahfl-energovpub.tylerhost.net/apps/selfservice#/search',
+    platform: 'Tyler EnerGov Citizen Self Service',
+    publicSearch: true,
+  },
+];
+
+/** The city's own code search, when we know of one. */
+export function cityCodePortal(municipality: string | null): CityCodePortal | null {
+  const m = (municipality ?? '').trim().toUpperCase();
+  if (!m) return null;
+  return CITY_CODE_PORTALS.find((p) => p.municipality.toUpperCase() === m) ?? null;
 }

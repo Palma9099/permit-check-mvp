@@ -22,6 +22,7 @@ import {
   verdictTone,
   verdictBuyerNote,
   verdictOwnerNote,
+  cityCodePortal,
   type CodeAuthority,
 } from '@/lib/code-authority';
 
@@ -145,5 +146,28 @@ describe('wording details that matter in print', () => {
   it('omits the "we searched X" clause when nothing was searched', () => {
     const v = codeVerdict({ ...hialeah, countyChecked: false }, 0, 0);
     expect(verdictDetail(v, true)).not.toMatch(/We searched/);
+  });
+});
+
+describe('pointing the reader at the city search we could not run', () => {
+  it('links Hialeah to the portal that holds its cases', () => {
+    const v = codeVerdict(hialeah, 0, 0);
+    expect(v.kind).toBe('unchecked');
+    const note = verdictBuyerNote(v);
+    expect(note).toMatch(/hialeahfl-energovpub\.tylerhost\.net/);
+    expect(note).toMatch(/search it before you rely on anything above/i);
+  });
+
+  it('falls back to plain advice for a city we have no portal for', () => {
+    const v = codeVerdict({ ...hialeah, municipality: 'OPA-LOCKA' }, 0, 0);
+    expect(verdictBuyerNote(v)).toMatch(/Ask Opa-Locka directly/i);
+    expect(verdictBuyerNote(v)).not.toMatch(/tylerhost/);
+  });
+
+  it('knows the Hialeah portal is an anonymous search, for whoever writes the adapter', () => {
+    const p = cityCodePortal('HIALEAH')!;
+    expect(p.publicSearch).toBe(true);
+    expect(p.platform).toMatch(/EnerGov/);
+    expect(cityCodePortal('UNKNOWN CITY')).toBeNull();
   });
 });
