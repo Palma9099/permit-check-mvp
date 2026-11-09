@@ -305,6 +305,75 @@ cd worker && npm run smoke:energov
 
 Offline tests, with the real Hialeah response as the fixture, are in
 `tests/energov-adapter.test.ts`.
+### citizenserve (Alachua, Sumter, Franklin + 7 cities)
+The one platform with an open registry: every tenant is the same URL with an
+integer `installationID`, so Florida's whole tenant list was enumerable (39
+tenants between id 97 and 650).
+
+```
+https://<shard>.citizenserve.com/Portal/PortalController
+  ?Action=showSearchPage&ctzPagePrefix=Portal_&installationID=<N>
+```
+
+Flow: set **File Type** to `Code`, which fires the page's own
+`getSearchFieldsOnFileType()` and renders the criteria fields (`#address`,
+`#parcelNumber`, type, status, description); fill the address; SUBMIT runs
+`validateAndSearch()`, which POSTs and navigates; read the results grid
+(File#, Address, Type, Status, Open Date, Close Date, Description).
+
+**Being on citizenserve says nothing about whether code cases are public.** The
+file types a tenant exposes are per-tenant configuration. Surveyed live
+2026-11-09 across the 17 confirmed Florida tenants: **10 expose Code, 7 do
+not.** Walton County offers Development only; Cocoa and Southwest Ranches offer
+Permit only; Eatonville's search offers nothing at all. The adapter refuses up
+front for those rather than searching a module the county never enabled.
+
+Reach of the 10, counting counties at their **unincorporated** population:
+**340,783** — 225,353 county plus 115,430 city. Only the three counties are
+wired, because this registry is keyed by county and there is no city-level
+routing yet; the seven city tenants sit in `CITIZENSERVE_CITY_AGENCIES` ready
+for when there is, which is 115,430 people currently left on the table.
+
+Traps, each of which produced wrong output before it was fixed:
+
+- **`"No records found"` is inside a `<script>` tag** on every results page, so
+  `body.innerText` contains it even when the grid is full. Count parsed rows;
+  never test the text.
+- **A missing grid is not zero cases.** `readTables` drops a table with no data
+  rows, so "no grid" covers both a clean property and a broken parse. The first
+  version reported an address with a known open case as clean. It now requires
+  the portal's explicit empty state before claiming zero.
+- **The shards are not interchangeable in health.** Measured for id 318:
+  `www, www2, www3, www5, www8` serve the full page; **`www4` times out**;
+  `www7` answers 200 with a 2.6 KB stub and no form. The portal's own links
+  point at `www4`. Try shards in turn and treat *the form rendering* as the
+  test, not the status code.
+- **`waitForSelector` defaults to `visible`.** This page is script-rendered and
+  `#filetype` is attached long before it paints; waiting for visibility timed
+  out on healthy shards and made the adapter declare every shard dead.
+- **SUBMIT navigates after `networkidle` returns**, so the parse races it. Pair
+  the click with `waitForNavigation`.
+
+**Known limitation, 2026-11-09: the live grid parse is NOT verified end to
+end.** Partway through this work the platform began JS-redirecting every
+browser to the `www6` shard, which is down (`curl` to it returns nothing after
+20s while `www3` answers in 0.9s). The redirect fires ~10s after load and
+aborts, which breaks the portal in any real browser, headless or not — `curl`
+only works because it never runs the redirect. The search flow itself was
+confirmed by hand against the live Alachua portal earlier the same day (an
+address search returned case 23-013194 at 100 SW 122ND ST, and a type+status
+search returned 34 open "Work without Permit" cases), so the contract is right;
+what is unproven is this Playwright implementation completing it. Re-run
+`npm run smoke:citizenserve` once `www6` is back.
+
+Live selector check (needs network):
+
+```
+cd worker && npm run smoke:citizenserve
+```
+
+Offline tests, with real Alachua rows as fixtures, are in
+`tests/citizenserve-adapter.test.ts`.
 
 ### Why the adapters are split into `*-parse.ts`
 
