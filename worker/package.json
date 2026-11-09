@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "smoke:pbc": "tsx src/smoke-pbc.ts",
     "smoke:broward": "tsx src/smoke-broward.ts",
-    "smoke:energov": "tsx src/smoke-energov.ts"
+    "smoke:energov": "tsx src/smoke-energov.ts",
+    "smoke:citizenserve": "tsx src/smoke-citizenserve.ts"
   },
   "dependencies": {
     "playwright": "1.48.2",

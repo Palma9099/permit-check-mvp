@@ -13,6 +13,7 @@
 
 import type { PortalLink } from '../types.js';
 import type { PortalConfig } from './portal-config.js';
+import type { CitizenserveAgency } from './citizenserve-parse.js';
 import { searchUrl as energovSearchUrl, type EnergovTenant } from './energov-parse.js';
 import { COUNTY_CONFIGS } from './counties.js';
 
@@ -32,6 +33,15 @@ export interface EnergovJurisdiction {
   county: string;
   name: string;
   tenant: EnergovTenant;
+  portalLinks: PortalLink[];
+  source: string;
+}
+
+export interface CitizenserveJurisdiction {
+  platform: 'citizenserve';
+  county: string;
+  name: string;
+  agency: CitizenserveAgency;
   portalLinks: PortalLink[];
   source: string;
 }
@@ -62,6 +72,7 @@ export interface GenericJurisdiction {
 export type Jurisdiction =
   | AccelaJurisdiction
   | EnergovJurisdiction
+  | CitizenserveJurisdiction
   | BrowardJurisdiction
   | PbcJurisdiction
   | GenericJurisdiction;
@@ -114,6 +125,48 @@ export const JURISDICTIONS: Record<string, Jurisdiction> = {
     name: 'Miami-Dade County',
     config: COUNTY_CONFIGS['miami-dade'],
   },
+  alachua: {
+    platform: 'citizenserve',
+    county: 'alachua',
+    name: 'Alachua County',
+    agency: {
+      installationID: 318,
+      name: 'Alachua County',
+      kind: 'county',
+      fileTypes: ['Permit', 'License', 'Development', 'Code'],
+    },
+    portalLinks: csLinks(318, 'https://www.acpafl.org/'),
+    source: 'Alachua County citizenserve portal (code enforcement cases, unincorporated county)',
+  },
+
+  sumter: {
+    platform: 'citizenserve',
+    county: 'sumter',
+    name: 'Sumter County',
+    agency: {
+      installationID: 445,
+      name: 'Sumter County',
+      kind: 'county',
+      fileTypes: ['Permit', 'Development', 'Code'],
+    },
+    portalLinks: csLinks(445, 'https://www.sumterpa.com/'),
+    source: 'Sumter County citizenserve portal (code enforcement cases, unincorporated county)',
+  },
+
+  franklin: {
+    platform: 'citizenserve',
+    county: 'franklin',
+    name: 'Franklin County',
+    agency: {
+      installationID: 389,
+      name: 'Franklin County',
+      kind: 'county',
+      fileTypes: ['Permit', 'License', 'Development', 'Code'],
+    },
+    portalLinks: csLinks(389, 'https://www.franklincountypa.gov/'),
+    source: 'Franklin County citizenserve portal (code enforcement cases, unincorporated county)',
+  },
+
 };
 
 // --- Tyler EnerGov Citizen Self Service ------------------------------------
@@ -244,5 +297,66 @@ export function resolveJurisdiction(
   }
   return JURISDICTIONS[c];
 }
+
+// --- citizenserve -----------------------------------------------------------
+//
+// The one platform with an open registry: every tenant is the same URL with an
+// integer installationID, so Florida's whole tenant list was enumerable (39
+// tenants between id 97 and 650).
+//
+// But being on citizenserve says NOTHING about whether code cases are public.
+// The file types a tenant exposes are per-tenant configuration. Surveyed live
+// on 2026-11-09 across the 17 confirmed Florida tenants:
+//
+//   Code exposed (10)   318 Alachua Co, 445 Sumter Co, 389 Franklin Co,
+//                       403 Titusville, 221 Casselberry, 441 Seminole,
+//                       261 West Park, 401 Montverde, 237 Bradenton Beach,
+//                       326 Key Colony Beach
+//   No Code (7)         245 Walton Co (Development only), 175 Wakulla Co,
+//                       197 Gulf Co, 331 Cocoa (Permit only),
+//                       117 Southwest Ranches (Permit only), 171 Anna Maria,
+//                       391 Eatonville (search offers nothing)
+//
+// Reach of the 10, counting counties at their UNINCORPORATED population only:
+// 340,783 people - 225,353 unincorporated county plus 115,430 city.
+//
+// Only the three counties are wired below, because this registry is keyed by
+// county and the worker has no city-level routing yet. The seven city tenants
+// are listed in CITIZENSERVE_CITY_AGENCIES, ready for when it does; that is
+// 115,430 people currently left on the table.
+
+// A function declaration, not a const arrow: JURISDICTIONS is declared above
+// this block and calls it, so it has to hoist.
+function csLinks(id: number, site?: string): PortalLink[] {
+  return [
+    {
+      label: 'Code case search (citizenserve portal)',
+      url: `https://www6.citizenserve.com/Portal/PortalController?Action=showSearchPage&ctzPagePrefix=Portal_&installationID=${id}`,
+    },
+    ...(site ? [{ label: 'Property Appraiser', url: site }] : []),
+  ];
+}
+
+/** City tenants that publish code cases, pending city-level routing. */
+export const CITIZENSERVE_CITY_AGENCIES: CitizenserveAgency[] = [
+  { installationID: 403, name: 'Titusville', kind: 'city', fileTypes: ['Code'] },
+  { installationID: 221, name: 'Casselberry', kind: 'city', fileTypes: ['Permit', 'License', 'Development', 'Code'] },
+  { installationID: 441, name: 'City of Seminole', kind: 'city', fileTypes: ['Permit', 'License', 'Code'] },
+  { installationID: 261, name: 'West Park', kind: 'city', fileTypes: ['Permit', 'Development', 'Code'] },
+  { installationID: 401, name: 'Montverde', kind: 'city', fileTypes: ['Permit', 'Development', 'Code'] },
+  { installationID: 237, name: 'Bradenton Beach', kind: 'city', fileTypes: ['Permit', 'License', 'Development', 'Code'] },
+  { installationID: 326, name: 'Key Colony Beach', kind: 'city', fileTypes: ['Permit', 'License', 'Development', 'Code'] },
+];
+
+/** Florida citizenserve tenants that do NOT publish code cases. */
+export const CITIZENSERVE_NO_CODE: CitizenserveAgency[] = [
+  { installationID: 245, name: 'Walton County', kind: 'county', fileTypes: ['Development'] },
+  { installationID: 175, name: 'Wakulla County', kind: 'county', fileTypes: ['Permit', 'License', 'Development'] },
+  { installationID: 197, name: 'Gulf County', kind: 'county', fileTypes: ['Permit', 'License'] },
+  { installationID: 331, name: 'City of Cocoa', kind: 'city', fileTypes: ['Permit'] },
+  { installationID: 117, name: 'Southwest Ranches', kind: 'city', fileTypes: ['Permit'] },
+  { installationID: 171, name: 'Anna Maria', kind: 'city', fileTypes: ['Permit', 'License', 'Development'] },
+  { installationID: 391, name: 'Eatonville', kind: 'city', fileTypes: [] },
+];
 
 export const SUPPORTED_JURISDICTIONS = Object.keys(JURISDICTIONS);
