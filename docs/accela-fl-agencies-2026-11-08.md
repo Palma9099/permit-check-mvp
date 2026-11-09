@@ -1,122 +1,186 @@
-# Accela agencies in Florida, enumerated 2026-11-08
+# Florida permit-platform map, enumerated 2026-11-08, extended 2026-11-09
 
 ## Why this exists
 
-The statewide lien survey (`lien-source-survey-2026-11-08.md`) found that Florida
-permit and code-enforcement data is not published to GIS by almost any government.
-It is held in about five vendor platforms. Accela is the largest in Florida.
-
-Accela's own API says it supports anonymous public access:
+The statewide lien survey (`lien-source-survey-2026-11-08.md`) found that almost no
+Florida government publishes code-enforcement or permit data to GIS. It lives in
+vendor permitting platforms. Accela is the largest, and its API states it supports
+anonymous public access:
 
 > `GET https://apis.accela.com/v4/agencies` with no credentials returns:
 > "App ID or access token is required... Please set App ID to request HTTP header
 > `x-accela-appid` for anonymous access"
 
 So one adapter plus one registered App ID could reach every Accela agency that
-enables public record search, instead of one scraper per city. This document sizes
-that prize before anyone registers or pays for anything.
+enables public search, instead of one scraper per city. This document sizes that,
+and maps what the non-Accela jurisdictions run instead.
 
-## Method
+## Confirmed Florida Accela agencies (27)
 
-The agency directory endpoint needs a real App ID (a fabricated one returns HTTP
-500), so agencies were enumerated by probing `https://aca-prod.accela.com/<CODE>/Default.aspx`.
-The discriminator is clean and was validated against knowns first:
+`https://aca-prod.accela.com/<CODE>/Default.aspx`. County agencies cover the whole
+county; city agencies cover only that city. Population is 2020 Census (POP100).
 
-| probe | result |
-|---|---|
-| `FTL` | 200, 14,908 bytes |
-| `HOLLYWOOD` | 200, 64,529 bytes |
-| `MIAMIDADE` | 404, 1,933 bytes |
-| `ZZQQXNOTREAL` | 404, 1,936 bytes |
+| Code | Jurisdiction | Level | 2020 pop | How identity was confirmed |
+|---|---|---|---|---|
+| HCFL | Hillsborough County | county | 1,459,762 | body text "Hillsborough" + "Florida"; county guide links HCFL |
+| PINELLAS | Pinellas County | county | 959,107 | `pinellas.gov` + 727 area code |
+| LEECO | Lee County | county | 760,822 | `fl-leecounty.civicplus.com` + 239 |
+| POLKCO | Polk County | county | 725,046 | page title "Polk County Citizen Access" |
+| BREVARD | Brevard County | county | 606,612 | `sites.brevardcounty.us` + 321 |
+| PASCO | Pasco County | county | 561,891 | page title "Pasco County" |
+| SARASOTACO | Sarasota County | county | 434,006 | 941 + `scgov.net` links the portal |
+| MANATEE | Manatee County | county | 399,710 | body text + Accela press release (Manatee Co FL) |
+| OSCEOLA | Osceola County | county | 388,656 | 407 |
+| TAMPA | City of Tampa | city | 384,959 | "City of Tampa Production ACA" |
+| LEONCO | Leon County | county | 292,198 | title "Leon County Permits Online"; `leoncountyfl.gov` form |
+| BOCC | Charlotte County | county | 186,847 | `charlottecountyfl.gov` |
+| FTL | Fort Lauderdale | city | 182,760 | "Fort Lauderdale Portal"; branded LauderBuild |
+| MARTINCO | Martin County | county | 158,431 | "Florida" in body |
+| CITRUS | Citrus County | county | 153,843 | body text + Accela press release (Citrus Co FL) |
+| HOLLYWOOD | City of Hollywood | city | 153,067 | "City of Hollywood" |
+| CLEARWATER | City of Clearwater | city | 117,292 | "City of Clearwater ePermitting System" |
+| NASSAU | Nassau County | county | 90,352 | 904 |
+| NORTHPORT | City of North Port | city | 74,793 | "City of North Port" + FL 34286 |
+| WESTON | City of Weston | city | 68,107 | "City of Weston" |
+| BRADENTON | Bradenton | city | 55,698 | 941 + city site confirms Accela |
+| DELAND | DeLand | city | 37,351 | 386 |
+| COOPER | Cooper City | city | 34,401 | `broward.org` |
+| WINTER | Winter Park | city | 29,795 | `wpgov.com` |
+| KEYBISCAYNE | Village of Key Biscayne | city | 14,809 | "Village of Key Biscayne" + Florida |
+| LONGBOAT | Town of Longboat Key | city | 7,505 | "Town of Longboat Key Citizen Portal" |
+| MULBERRY | Mulberry | city | 3,952 | 863 |
 
-2,009 candidate codes were generated from the 411 Florida incorporated place names
-in the Census TIGERweb places layer plus the 67 county names, with common code
-variants (compact, `CITYOF`+name, first word, initials, `FT`/`ST`/directional
-abbreviations, `COUNTY`/`CO` suffixes). 35 returned 200.
+**27 agencies, 8,341,772 residents, 38.7% of Florida.**
 
-**`aca-prod.accela.com` is Accela's national multi-tenant host, not a Florida one.**
-Florida place names collide with other states, so every hit was then identified by
-agency name, linked `.gov` domain, and Florida area code before being counted.
+### Self-hosted Accela (1 confirmed)
 
-## Confirmed Florida agencies (22)
+Not every Accela agency is on `aca-prod`. Some self-host, and no amount of probing
+`aca-prod` will ever find them.
 
-County-level agencies cover the whole county. City agencies cover only that city.
-
-| Code | Jurisdiction | Level | 2020 pop |
+| Host | Jurisdiction | 2020 pop | Evidence |
 |---|---|---|---|
-| PINELLAS | Pinellas County | county | 959,107 |
-| LEECO | Lee County | county | 760,822 |
-| POLKCO | Polk County | county | 725,046 |
-| BREVARD | Brevard County | county | 606,612 |
-| PASCO | Pasco County | county | 561,891 |
-| SARASOTACO | Sarasota County | county | 434,006 |
-| OSCEOLA | Osceola County | county | 388,656 |
-| TAMPA | City of Tampa | city | 384,959 |
-| FTL | Fort Lauderdale | city | 182,760 |
-| MARTINCO | Martin County | county | 158,431 |
-| HOLLYWOOD | City of Hollywood | city | 153,067 |
-| CLEARWATER | City of Clearwater | city | 117,292 |
-| NASSAU | Nassau County | county | 90,352 |
-| NORTHPORT | City of North Port | city | 74,793 |
-| WESTON | City of Weston | city | 68,107 |
-| BRADENTON | Bradenton | city | 55,698 |
-| DELAND | DeLand | city | 37,351 |
-| COOPER | Cooper City | city | 34,401 |
-| WINTER | Winter Park | city | 29,795 |
-| KEYBISCAYNE | Village of Key Biscayne | city | 14,809 |
-| LONGBOAT | Town of Longboat Key | city | 7,505 |
-| MULBERRY | Mulberry | city | 3,952 |
+| `aca.plantation.org/CitizenAccess` | City of Plantation (Broward) | 91,750 | title "Plantation E-Permit Online Portal" + Florida |
 
-Gross reach: **5,849,412 (27.2% of Florida)**.
+With Plantation: **39.2% of Florida**. There is no uniform hostname pattern for
+self-hosted instances (`aca.<domain>/CitizenAccess` was tried against nine other
+Florida governments and resolved for none), so this tier has to be found per city.
 
-## Likely Florida, identity not yet confirmed (5)
+## Not confirmed, deliberately excluded from the totals
 
-The portal shell carried no agency name, domain or phone to confirm the state.
-All five are distinctly Florida names, but they are not counted above.
+| Code | Shows | Why not counted |
+|---|---|---|
+| LAKECO | "Lake County CommunityDevelopment" | Lake County exists in ~12 states; no FL domain, area code or zip on the page |
+| SEMINOLECO | "SEMINOLE" | Seminole County exists in FL, OK and GA. A news report says Seminole County FL launched an Accela portal 2026-10-19, which is suggestive, not proof this code is it |
+| BCC | nothing | No name, domain, phone or branding on the page |
 
-CITRUS (Citrus Co, 153,843) · LAKECO (Lake Co, 383,956) · LEONCO (Leon Co, 292,198)
-· MANATEE (Manatee Co, 399,710) · SEMINOLECO (Seminole Co, 470,856)
+If LAKECO and SEMINOLECO confirm, coverage reaches **43.1%**.
 
-If all five confirm, reach rises to **7,549,975 (35.1%)**.
+## Rejected, with reasons
 
-## Rejected hits, with reasons
+`aca-prod.accela.com` is Accela's **national** multi-tenant host. A 200 proves an
+agency exists, not that it is in Florida. Florida place names collide heavily.
 
 | Code | Actually |
 |---|---|
-| CHARLOTTE | Charlotte, **North Carolina** (`charlottenc.gov`), not Charlotte County FL |
+| CHARLOTTE | Charlotte, **North Carolina** (`charlottenc.gov`). Charlotte County FL is `BOCC` |
+| CAPECO | Cape May County, **New Jersey** (`CapeMayCountyNJ.gov`, 609) — not Cape Coral |
+| OAKLANDCO | Oakland County, **Michigan** (248) |
+| COF | City of Fremont, **California** |
+| COR | City of Roseville, **California** |
+| BOCO | Boulder County, **Colorado** |
+| SBCO | Santa Barbara County, **California** (`countyofsb.org`) |
 | COSPRINGS | Colorado Springs, CO |
 | HILLSBORO | Hillsboro, Oregon |
-| MADISON | City of Madison licenses, Wisconsin |
+| MADISON | City of Madison, Wisconsin |
 | GOLDEN | City of Golden, Colorado |
 | FRANKLIN | Village of Franklin Park, Illinois |
-| HAINES | "City of Metropolis", Accela's demo tenant |
-| HAMILTONCOUNTY | "City of Metropolis", Accela's demo tenant |
-| OAKLAND | "Oakland Online Portal", state unresolved (Oakland CA vs Oakland Park FL) |
+| DAYTON | Dayton, Ohio |
+| POL | State of Montana |
+| OAKLAND | "Oakland Online Portal", state unresolved |
+| HAINES, HAMILTONCOUNTY, LACO, PGCO, SDCO | all return "City of Metropolis", Accela's **demo tenant** |
 
-## Limits of this enumeration, stated plainly
+### One claim that was asserted and is false
 
-1. **Recall is unknown and the count is a floor, not a census.** The generator did
-   not produce `FTL`, a known-good agency; it was only in the results because it
-   was added by hand. Codes that do not follow a place-name pattern were missed.
-   A search-engine sweep for indexed `aca-prod.accela.com/<CODE>` URLs would raise
-   recall and should be done before treating 22 as the number.
+A commercial permit-data site states that Palm Beach County publishes its permit
+search at `https://aca-prod.accela.com/PBCGOV/Default.aspx` "running on Accela
+Citizen Access". It does not. `PBCGOV`, `PBC`, `PALMBEACH` and `PBCFL` all return
+HTTP 404 "The resource cannot be found." Palm Beach County runs its own **ePZB**
+system. Aggregator coverage pages are marketing, not sources.
+
+## What the non-Accela jurisdictions run
+
+The "about five vendors" estimate was too tidy. The real picture includes several
+homegrown systems at the largest jurisdictions, which no vendor adapter will reach.
+
+| Jurisdiction | 2020 pop | Platform | Note |
+|---|---|---|---|
+| Miami-Dade County | 2,701,767 | county-run | already integrated live |
+| Palm Beach County | 1,492,191 | **ePZB** (homegrown) | publishes a *certified* Fine/Lien, Open Permit and Code Compliance Open Violation search, public, by address or property control number, for unincorporated PBC. Highest-value single target found in this sweep. |
+| Orange County | 1,429,908 | **Fast Track** (`fasttrack.ocfl.net`) | public, no account needed, **but search forms carry a CAPTCHA**, which is a hard stop: bypassing bot checks is out of scope, so this needs an official data request |
+| Duval / Jacksonville | 995,567 | **JaxEPICS** (`jaxepics.coj.net`) | public search covers permits, property, citations **and violations** |
+| Collier County | 375,752 | **CityView** (`cvportal.collier.gov`) | returned HTTP 406 to a plain request; county warns much permit data is not current |
+| Jupiter, Wellington, Riviera Beach, Lake Park | — | Tyler EnerGov Self Service | unverified, from a third-party guide |
+| Royal Palm Beach | — | Click2Gov | unverified |
+| City of Orlando | 307,573 | OpenGov or BS&A | sources conflict; unverified |
+| Pompano Beach | 112,046 | Click2Gov (`c2g.pompanobeachfl.gov`) | unverified |
+| Miami Beach | 82,890 | Civic Access / CSS | unverified |
+
+## Method, and what limits it
+
+Two instruments were used, and one clearly beat the other.
+
+**Brute-force probing.** 2,009 candidate codes in round one from the 411 Census
+incorporated places plus 67 counties; 5,880 more in round two after the search
+sweep revealed two new code patterns (`BOCC` = Board of County Commissioners, and
+county-initials + `FL` = `HCFL`). The discriminator is clean and was validated
+first: `FTL` 200/14,908 bytes, `HOLLYWOOD` 200/64,529, `MIAMIDADE` 404/1,933,
+`ZZQQXNOTREAL` 404/1,936.
+
+**Round two found zero new Florida agencies.** Its only Florida hits, `BOCC` and
+`HCFL`, were already known from the search sweep, and its other eleven hits were
+all out of state or demo tenants. Name-pattern brute force is saturated.
+
+**Search-engine sweep.** Found `BOCC` and `HCFL`, which round one could not guess,
+and resolved five of the six previously-unconfirmed identities. This is now the
+better instrument, and the remaining unfound agencies are most likely ones whose
+code has no relationship to the jurisdiction name.
+
+Accela offers no index to enumerate against: `/v4/agencies` needs a real App ID (a
+fabricated one returns HTTP 500), and the host has no `robots.txt`, no `sitemap.xml`
+and no root listing.
+
+### Limits, stated plainly
+
+1. **27 is a floor, not a census.** Round one never generated `FTL`, a known-good
+   agency. Codes unrelated to jurisdiction names are invisible to pattern probing,
+   and `BOCC` proves such codes exist.
 2. **A live portal does not prove usable data.** HTTP 200 proves the agency runs
-   Accela Citizen Access. It does not yet prove that public record search is
-   enabled, that code-enforcement cases (not just permits) are exposed, or that a
-   status field is trustworthy. Each agency still has to clear the same four
-   criteria as the GIS survey, and the same reject rule applies: a stale or blank
-   status reads as "nothing open", which is the one answer this product must never
-   get wrong.
-3. Population is 2020 Census (`tigerWMS_Census2020`, POP100). The ACS API now
-   requires a registered key.
+   Citizen Access. Public search access varies per agency and must be checked one
+   by one: Clearwater states "You do NOT have to be a registered user to perform
+   searches", and Brevard states non-registered users can search "building,
+   development, and **enforcement** records" — but Sarasota County states an
+   account is required to search at all.
+3. The same reject rule as the GIS survey still applies to every agency: a stale or
+   blank status field reads as "nothing open", which is the one answer this product
+   must never get wrong.
 
 ## What this changes
 
-Two jurisdictions rejected in the GIS survey are reachable here. **Tampa** was
-rejected for an empty GIS folder and **Pinellas County** for a permit layer with no
-status field, yet both run Accela. That is the thesis holding up: the data exists,
-it is just not in GIS. Coverage should be pursued per vendor, not per county.
+Three jurisdictions rejected in the GIS survey are reachable here. **Tampa** was
+rejected for an empty GIS folder, **Pinellas County** for a permit layer with no
+status field, and **Hillsborough County** for a status column that copies the permit
+number on 43k rows. All three run Accela. The data existed the whole time; it just
+was not in GIS.
 
-Next step is not more enumeration. It is one agency, end to end: confirm that
-anonymous Accela search returns open code cases for a known parcel in a county-level
-agency (Pinellas is the largest), then write the adapter once.
+## Next, in order
+
+1. Register the Accela developer App ID (account creation, Adrian's action).
+2. Prove one agency end to end: confirm anonymous Accela search returns **open code
+   cases** with a trustworthy status for a known parcel. Use Hillsborough County
+   (HCFL, 1.46M) or Pinellas (959k).
+3. Write the Accela adapter once, against the 27 confirmed agencies.
+4. Investigate Palm Beach County's ePZB certified lien and open-violation search
+   separately. It is one jurisdiction, 1.49M people, and it publishes exactly this
+   product's data officially.
+5. Only then chase the long tail: self-hosted Accela instances, and the remaining
+   unconfirmed counties (Volusia, Marion, St Lucie, Escambia, Alachua).
