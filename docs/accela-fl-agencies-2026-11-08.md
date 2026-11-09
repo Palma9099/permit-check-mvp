@@ -131,7 +131,7 @@ HTTP 404 "The resource cannot be found." Palm Beach County runs its own **ePZB**
 system. Aggregator coverage pages are marketing, not sources.
 
 
-## citizenserve: a second centrally enumerable platform (17 Florida agencies)
+## citizenserve: a second centrally enumerable platform (17 Florida tenants, 10 with code cases)
 
 Chasing Alachua County turned up a platform that matters as much as Accela,
 because it has the one thing Accela refuses to give: **a central tenant registry
@@ -175,6 +175,59 @@ it offers "Request a Lien Search" directly. That is this product's data.
 | 237 | Bradenton Beach | 908 |
 | 326 | Key Colony Beach | 790 |
 
+### Which tenants actually publish code cases, surveyed 2026-11-09
+
+Every Florida citizenserve tenant answers at the same URL with the same search
+page, but **what that page offers is per-tenant configuration**, read straight
+off the `filetype` select:
+
+| ID | Agency | File types exposed | Code? |
+|---|---|---|---|
+| 318 | Alachua County | Permit, License, Development, Code | yes |
+| 445 | Sumter County | Permit, Development, Code | yes |
+| 389 | Franklin County | Permit, License, Development, Code | yes |
+| 403 | Titusville | Code | yes |
+| 221 | Casselberry | Permit, License, Development, Code | yes |
+| 441 | City of Seminole | Permit, License, Code | yes |
+| 261 | West Park | Permit, Development, Code | yes |
+| 401 | Montverde | Permit, Development, Code | yes |
+| 237 | Bradenton Beach | Permit, License, Development, Code | yes |
+| 326 | Key Colony Beach | Permit, License, Development, Code | yes |
+| 245 | Walton County | Development | **no** |
+| 175 | Wakulla County | Permit, License, Development | **no** |
+| 197 | Gulf County | Permit, License | **no** |
+| 331 | City of Cocoa | Permit | **no** |
+| 117 | Southwest Ranches | Permit | **no** |
+| 171 | Anna Maria | Permit, License, Development | **no** |
+| 391 | Eatonville | *(none)* | **no** |
+
+**10 of 17.** Counting the counties at their unincorporated population, because
+a county portal does not hold a city's cases:
+
+| | Residents |
+|---|---|
+| Alachua County unincorporated (278,468 − 169,328) | 109,140 |
+| Sumter County unincorporated (129,752 − 21,043) | 108,709 |
+| Franklin County unincorporated (12,451 − 4,947) | 7,504 |
+| Seven cities, whole population | 115,430 |
+| **total reachable** | **340,783** |
+
+What the data looks like, from a live Alachua search for open
+"Work without Permit" cases (34 of them):
+
+```
+File#      Address             Type                 Status  Opened      Description
+23-013194  100 SW 122ND ST     Work without Permit  Open    02/20/2023  SM23-046 Work without permits,
+                                                                        building some sort of elevated
+                                                                        accessory structure in back yard
+(blank)    15514 NW 94TH AVE   Work without Permit  Open    12/26/2023  Construction / Concrete w/o a permit
+```
+
+Note the blank File# - live data has cases with no file number, so rows are
+kept on having an address. The type list is per-tenant too, and Alachua's
+includes "Work without Permit" and "Hazardous Land/Dangerous Structure"; its
+status list includes "Special Magistrate", the escalation that precedes a lien.
+
 ### Excluded, and why it mattered
 
 Name extraction on this platform is unreliable in **both** directions, and trusting
@@ -203,10 +256,21 @@ portal" with no extractable agency name. They are real Florida tenants and are
 |---|---|---|---|
 | Accela (`aca-prod`) | 28 | 8,812,628 | 40.9% |
 | Accela self-hosted | 1 (Plantation) | 91,750 | +0.4% |
-| citizenserve | 17 | 689,327 | +3.2% |
+| citizenserve, tenants that exist | 17 | 689,327 | +3.2% |
 | **total confirmed** | **46** | **9,593,705** | **44.5%** |
 
 Against 14.1% live today.
+
+> **Correction, 2026-11-09.** The citizenserve row counts tenants that *exist*,
+> which is not the same as agencies whose code cases are public, and the
+> difference is large. See the citizenserve section below: only **10 of the 17**
+> expose a Code Administration search at all, and counting counties at their
+> unincorporated population the real reach is **340,783**, not 689,327. The
+> Accela rows have the same shape of risk and have not been re-checked this way:
+> an agency answering on `aca-prod` has not been shown to publish code cases to
+> an anonymous visitor. Treat every number in this table as "a tenant exists"
+> until an adapter proves otherwise, which is what happened with Palm Beach,
+> Broward, St Lucie, Duval and Collier.
 
 ## What the other jurisdictions run
 
@@ -413,9 +477,14 @@ build next.
 
 | | Agencies | Residents | % of FL |
 |---|---|---|---|
-| Accela + citizenserve (earlier) | 46 | 9,593,705 | 44.5% |
+| Accela + citizenserve (tenants that exist) | 46 | 9,593,705 | 44.5% |
 | + Palm Beach County unincorporated | 47 | 10,243,481 | **47.6%** |
 | + Broward County unincorporated | 48 | 10,260,369 | 47.6% |
+
+What is actually **built and merged** is a much smaller and much more honest
+number: Palm Beach (649,776) and Broward (16,888), both live, both reading free
+public searches. citizenserve adds 340,783 once its adapter is verified. Every
+other line above is a tenant that exists, not a search anyone has run.
 
 ### Adapter notes
 
