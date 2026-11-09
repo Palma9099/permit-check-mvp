@@ -216,7 +216,7 @@ homegrown systems at the largest jurisdictions, which no vendor adapter will rea
 | Jurisdiction | 2020 pop | Platform | Note |
 |---|---|---|---|
 | Miami-Dade County | 2,701,767 | county-run | already integrated live |
-| Palm Beach County | 1,492,191 | **ePZB** (homegrown) | publishes a *certified* Fine/Lien, Open Permit and Code Compliance Open Violation search, public, by address or property control number, for unincorporated PBC. Highest-value single target found in this sweep. |
+| Palm Beach County | 1,492,191 | **ePZB** (homegrown) | TESTED 2026-11-09, see its own section below. The *certified* Fine/Lien search is a paid manual service and not a data source. But two **free guest searches** expose full code cases and full permit history by PCN, for unincorporated PBC (649,776). |
 | Orange County | 1,429,908 | **Fast Track** (`fasttrack.ocfl.net`) | public, no account needed, **but search forms carry a CAPTCHA**, which is a hard stop: bypassing bot checks is out of scope, so this needs an official data request |
 | Duval / Jacksonville | 995,567 | **JaxEPICS** (`jaxepics.coj.net`) | public search covers permits, property, citations **and violations** |
 | Collier County | 375,752 | **CityView** (`cvportal.collier.gov`) | returned HTTP 406 to a plain request; county warns much permit data is not current |
@@ -324,6 +324,123 @@ It also means the GIS survey's rejections should each be re-read as "not in GIS"
 never as "the government does not publish it". Tampa, Pinellas, Hillsborough and
 now Broward County have all turned out that way.
 
+## Palm Beach County ePZB, tested 2026-11-09
+
+The earlier note called PBC's "certified Fine/Lien search" the highest-value single
+target in the sweep. That was half wrong and half an understatement.
+
+### The certified lien search is a competitor, not a source
+
+Read from the county's own page, `discover.pbc.gov/pzb/administration/Pages/Lien-Permit-Searches.aspx`:
+
+| Search | Price | Turnaround |
+|---|---|---|
+| Fine/Lien | $65, rush $97 | 7 to 10 business days, rush 3 |
+| Open building permit (certified) | $65, rush $97 | same |
+| Open code compliance violation | $50, rush $75 | same |
+
+It is a manual service performed by PZB staff, paid by card through a registered
+portal account or by cheque to the Board of County Commissioners. It is not an API,
+not a feed, and not scrapeable. It is the product this project sells, priced by the
+county at $65 with a ten-day turnaround.
+
+Scope, quoted: "All search results represent unincorporated Palm Beach County" and
+"Searches do not include properties located in municipalities except those annexed
+from the county by a municipality."
+
+### The free guest searches are the actual prize
+
+ePZB exposes two public, no-sign-in searches, each reached through an iframe inside
+the portal shell:
+
+- Code compliance: `pbc.gov/iPZB.CodeCompliance.Service/search`
+- Building permits: `pbc.gov/iPZB.Building/guest/searchpermits`
+
+Both search by **PCN** (Palm Beach's parcel key), and both also take address, owner
+and company. Code compliance adds respondent name and commission district; permits
+add contractor and historical permit number.
+
+**Code compliance, round-tripped.** A Loxahatchee street search returned 275 cases.
+Opening one gave owner, PCN, zoning, respondents, and a per-violation timeline.
+Feeding that PCN back into the PCN tab returned exactly that parcel's two cases, so
+the parcel key round-trips. Status filter includes **Fine**. A Fine-status case,
+C-2023-07120016 at 12571 Orange Grove Blvd:
+
+```
+PCN 00-41-43-10-00-000-4180   Owner Lazaro R Roque
+Zoning Agricultural Residential District      Status Fine
+Violation  Structure without Permits (2021-12-29)
+Details    "...More specifically, metal framed canvas carport structure has been
+            erected or installed without a valid building permit."
+Codes      PBCAFBC20-105.1: PBC Amendments to FBC 7th Edition (2020)
+Closed     2026-09-09  "The respondent has obtained the permit."
+Violation  Expired Permit -- "permit #B2021-0174444-0000 ... has become inactive"
+```
+
+It names the unpermitted structure, cites the exact PBC-amended FBC section, and
+gives the permit number. For an engineering practice chasing ATF work this is the
+best per-property record found anywhere in this survey.
+
+**No dollar figure and no lien recording appear anywhere in the free tier.** The
+status reads `Fine`; the amount is what the $65 certified search sells. That is the
+clean line between free and paid, and it is worth knowing exactly where it falls.
+
+**Permits, same parcel, same key.** The guest permit search on PCN
+00-41-43-10-00-000-4180 returned 14 permits with description, owner, contractor
+company, status, balance and an inspections link:
+
+```
+B-2026-008236-0000  Accessory Bldg >= 36 Sq Ft Prefab      Complete    $0.00
+PR-2026-008232-0000 Aluminum Structure - Carport           In Process  $0.00
+PR-2022-033292-0000 Storage Building                       Void        $0.00
+B-2021-017444-0000  Fence - Residential (+ rev 1, rev 2)   Complete    $0.00
+B-2021-027416-0000  Window & Door Replacement Impact       Complete    $0.00
+```
+
+The two datasets cross-reference: the code case cited permit B2021-0174444-0000 and
+the permit search shows `B-2021-017444-0000` with a renewal and a change of
+contractor. The whole history of a property reconstructs from one PCN. Permit status
+filter includes **Inactive**, which is the expired-permit signal, and a **Balance**
+column, which is a money field the code side lacks.
+
+### Coverage
+
+Unincorporated Palm Beach County is **649,776** (county 1,492,191 minus all 39
+municipalities at 842,415, 2020 Census). That is 3.0% of Florida from one
+jurisdiction, with permits and code cases both, free, keyed by parcel. It is 38
+times Broward's unincorporated population and it changes the ranking of what to
+build next.
+
+| | Agencies | Residents | % of FL |
+|---|---|---|---|
+| Accela + citizenserve (earlier) | 46 | 9,593,705 | 44.5% |
+| + Palm Beach County unincorporated | 47 | 10,243,481 | **47.6%** |
+| + Broward County unincorporated | 48 | 10,260,369 | 47.6% |
+
+### Adapter notes
+
+- Everything renders inside iframes in an AngularJS shell. The portal routes
+  (`#/Container/Code_Compliance_Cases`, `#/Container/Permits_Inspections`) render a
+  blank panel if you read the outer document; the content is the iframe `src`.
+- Setting a field's `.value` by script does not bind. The form validates against
+  its own model, so inputs must be driven as real typing and selects by keypress.
+- The code compliance PCN field auto-formats bare digits; the permit PCN field does
+  **not** and rejects them with "Please enter valid format for pcn". Send the dashed
+  form `00-41-43-10-00-000-4180` to both.
+- Partial PCN search is supported on both; the code side requires the first 4 parts
+  and accepts `SUB` for subdivision.
+- The case detail page is `/compliance` with no query string, so it is **not**
+  deep-linkable the way Broward's is. Entry is through the search each time.
+- The page's own traffic uses a clean JSON API: `POST api/search/search`,
+  `GET api/search/getcasedetail?sequenceNo=N`, `GET api/search/GetLookups`, and the
+  detail JSON carries a `Confidential` flag per situs address. **Calling those
+  endpoints outside the portal UI was refused by this environment as website access
+  circumvention, twice, and was not worked around.** Whether they answer without a
+  browser session is therefore untested, and the adapter should be written against
+  the UI unless someone establishes otherwise.
+- Same data-hygiene warning as Broward: the city dropdown ships `Loxahatche`,
+  `Loxatachee` and `Loxhatchee` alongside `Loxahatchee`. Do not key on city.
+
 ## The Florida vendor landscape, as actually observed
 
 "About five vendors" was too tidy. Nine platforms, and the largest jurisdictions
@@ -429,9 +546,10 @@ was not in GIS.
    it covers 16,888 people, not 1.94M. Build the adapter only if unsafe-structure
    cases for contracting cities are worth it on their own; as coverage it is
    negligible. See the Broward section above for the measured record shape.
-6. Investigate Palm Beach County's ePZB certified lien and open-violation search,
-   and St Lucie's EnerGov Code Lien Search Request. Both publish exactly this
-   product's data officially, for 1.49M and 329k people.
+6. DONE 2026-11-09 for Palm Beach. Its certified lien search is a $65 manual
+   service, but its two free guest searches give code cases and permit history by
+   PCN for 649,776 people. **This is now the first adapter to build.** Still open:
+   St Lucie's EnerGov Code Lien Search Request (329k).
 7. Long tail: the 15 unnamed Florida citizenserve tenants, self-hosted Accela
    instances, and per-county vendor detail for Bay, Santa Rosa, St Johns, Hernando,
    Indian River, Flagler, Monroe, Putnam and Clay.
