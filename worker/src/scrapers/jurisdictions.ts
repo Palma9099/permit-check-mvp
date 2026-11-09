@@ -26,6 +26,14 @@ export interface AccelaJurisdiction {
   source: string;
 }
 
+export interface BrowardJurisdiction {
+  platform: 'broward-bcs';
+  county: string;
+  name: string;
+  portalLinks: PortalLink[];
+  source: string;
+}
+
 export interface PbcJurisdiction {
   platform: 'pbc-epzb';
   county: string;
@@ -41,29 +49,32 @@ export interface GenericJurisdiction {
   config: PortalConfig;         // the existing best-effort form config
 }
 
-export type Jurisdiction = AccelaJurisdiction | PbcJurisdiction | GenericJurisdiction;
+export type Jurisdiction =
+  | AccelaJurisdiction
+  | BrowardJurisdiction
+  | PbcJurisdiction
+  | GenericJurisdiction;
 
 export const JURISDICTIONS: Record<string, Jurisdiction> = {
-  // DEFECT, verified 2026-11-09: aca-prod.accela.com/BROWARD/ returns HTTP 404.
-  // Broward County is not on Accela; it runs Posse (Computronix) at
-  // dpepp.broward.org/BCS, whose folio search works and whose detail pages are
-  // plain GET. This entry therefore cannot read anything and every Broward deep
-  // scan falls through to "portal could not be read". Needs its own adapter -
-  // note that Broward's county caseload is unincorporated-only too (16,888
-  // people), so weigh that before building it.
+  // Broward runs Posse (Computronix), not Accela. This entry used to point at
+  // aca-prod.accela.com/BROWARD/, which returns HTTP 404 - so every Broward deep
+  // scan silently fell through to "portal could not be read". See broward.ts.
+  //
+  // Note the county's reach: its code enforcement covers unincorporated Broward
+  // (BMSD), 16,888 of 1,944,375 people, plus Unsafe Structure cases it hears for
+  // cities under interlocal agreement. The adapter resolves the real authority
+  // from the parcel point before interpreting an empty result.
   broward: {
-    platform: 'accela',
+    platform: 'broward-bcs',
     county: 'broward',
     name: 'Broward County',
-    agency: 'BROWARD',
-    buildingModule: 'Building',
-    enforcementModule: 'Enforcement',
     portalLinks: [
-      { label: 'BCPA (Property Appraiser)', url: 'https://web.bcpa.net/bcpaclient/#/Record-Search' },
-      { label: 'Broward Accela Citizen Access', url: 'https://aca-prod.accela.com/BROWARD/Default.aspx' },
-      { label: 'Broward Code Enforcement', url: 'https://www.broward.org/CodeEnforcement' },
+      { label: 'BCPA (Property Appraiser) - look up your folio', url: 'https://web.bcpa.net/bcpaclient/#/Record-Search' },
+      { label: 'Broward County code case search', url: 'https://dpepp.broward.org/BCS/Default.aspx?PossePresentation=ParcelSearchForEnforcement' },
+      { label: 'Broward County permit search', url: 'https://dpepp.broward.org/BCS/Default.aspx?PossePresentation=ParcelSearchByAddress' },
+      { label: 'Broward Official Records (recorded liens)', url: 'https://officialrecords.broward.org/AcclaimWeb/' },
     ],
-    source: 'Broward County Accela Citizen Access (permits + code enforcement)',
+    source: 'Broward County BCS / Posse (county code cases + county permits, unincorporated Broward plus county-heard unsafe structure cases)',
   },
 
   // Palm Beach runs ePZB, not Accela. The previous entry here pointed at

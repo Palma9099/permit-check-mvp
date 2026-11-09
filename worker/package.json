@@ -8,7 +8,8 @@
     "start": "tsx src/index.ts",
     "calibrate": "tsx src/calibrate.ts",
     "typecheck": "tsc --noEmit",
-    "smoke:pbc": "tsx src/smoke-pbc.ts"
+    "smoke:pbc": "tsx src/smoke-pbc.ts",
+    "smoke:broward": "tsx src/smoke-broward.ts"
   },
   "dependencies": {
     "playwright": "1.48.2",
