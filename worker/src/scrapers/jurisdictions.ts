@@ -13,7 +13,7 @@
 
 import type { PortalLink } from '../types.js';
 import type { PortalConfig } from './portal-config.js';
-import type { EnergovTenant } from './energov-parse.js';
+import { searchUrl as energovSearchUrl, type EnergovTenant } from './energov-parse.js';
 import { COUNTY_CONFIGS } from './counties.js';
 
 export interface AccelaJurisdiction {
@@ -137,6 +137,30 @@ export const ENERGOV_TENANTS: Record<string, EnergovTenant> = {
     // 0421310020800 - the violation a county-only check called "None open".
     modules: [1, 2, 3, 4, 5, 6, 10, 11],
   },
+  // Verified 2026-11-09. Module 5 present on all three.
+  'coral-gables': {
+    host: 'coralgablesfl-energovpub.tylerhost.net',
+    name: 'City of Coral Gables',
+    kind: 'city',
+    modules: [1, 2, 3, 4, 5, 6, 10, 11],
+  },
+  doral: {
+    host: 'doralfl-energovweb.tylerhost.net',
+    name: 'City of Doral',
+    kind: 'city',
+    // "energovWEB", not "energovpub" - the suffix is not constant either.
+    modules: [1, 2, 3, 4, 5, 6, 10, 11],
+  },
+  'miami-beach': {
+    host: 'energovcss.miamibeachfl.gov',
+    name: 'City of Miami Beach',
+    kind: 'city',
+    // Self-hosted on the city's own domain, and served from its own path
+    // rather than /apps/selfservice.
+    basePath: '/energovprod/selfservice',
+    modules: [1, 2, 3, 4, 5, 6, 10, 11],
+  },
+
   'st-lucie': {
     host: 'stluciecountyfl-energovpub.tylerhost.net',
     name: 'St Lucie County',
@@ -149,7 +173,7 @@ export const ENERGOV_TENANTS: Record<string, EnergovTenant> = {
 };
 
 const energovLinks = (t: EnergovTenant, extra: PortalLink[] = []): PortalLink[] => [
-  { label: `${t.name} code case search`, url: `https://${t.host}/apps/selfservice#/search` },
+  { label: `${t.name} code case search`, url: energovSearchUrl(t) },
   ...extra,
 ];
 
@@ -162,6 +186,33 @@ const energovLinks = (t: EnergovTenant, extra: PortalLink[] = []): PortalLink[] 
  * mistake this whole area of the codebase exists to avoid.
  */
 export const CITY_JURISDICTIONS: Record<string, Jurisdiction> = {
+  'miami-dade:MIAMI BEACH': {
+    platform: 'energov',
+    county: 'miami-dade',
+    name: 'City of Miami Beach',
+    tenant: ENERGOV_TENANTS['miami-beach'],
+    portalLinks: energovLinks(ENERGOV_TENANTS['miami-beach']),
+    source: 'City of Miami Beach EnerGov portal (code cases, citywide)',
+  },
+
+  'miami-dade:CORAL GABLES': {
+    platform: 'energov',
+    county: 'miami-dade',
+    name: 'City of Coral Gables',
+    tenant: ENERGOV_TENANTS['coral-gables'],
+    portalLinks: energovLinks(ENERGOV_TENANTS['coral-gables']),
+    source: 'City of Coral Gables EnerGov portal (code cases, citywide)',
+  },
+
+  'miami-dade:DORAL': {
+    platform: 'energov',
+    county: 'miami-dade',
+    name: 'City of Doral',
+    tenant: ENERGOV_TENANTS.doral,
+    portalLinks: energovLinks(ENERGOV_TENANTS.doral),
+    source: 'City of Doral EnerGov portal (code cases, citywide)',
+  },
+
   'miami-dade:HIALEAH': {
     platform: 'energov',
     county: 'miami-dade',

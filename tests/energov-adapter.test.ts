@@ -28,6 +28,7 @@ import {
   isoDay,
   noCodeModuleNote,
   coverageNote,
+  truncationNote,
   searchUrl,
   type EnergovTenant,
 } from '../worker/src/scrapers/energov-parse.js';
@@ -229,5 +230,66 @@ describe('routing: a city beats its county, but only when we know the city', () 
   it('gives the Hialeah jurisdiction a usable portal link', () => {
     const j = CITY_JURISDICTIONS['miami-dade:HIALEAH'] as EnergovJurisdiction;
     expect(j.portalLinks.some((l) => l.url.includes('hialeahfl-energovpub'))).toBe(true);
+  });
+});
+
+describe('a paged result is never presented as the whole list', () => {
+  it('says so when the portal holds more than it returned', () => {
+    // Miami Beach reported 21,537 cases for a street keyword and returned 10.
+    const n = truncationNote(10, 21537, 'City of Miami Beach');
+    expect(n).toMatch(/21537 matching code cases/);
+    expect(n).toMatch(/do not read this list as complete/i);
+  });
+
+  it('stays quiet when we read everything', () => {
+    expect(truncationNote(1, 1, 'City of Hialeah')).toBeNull();
+    expect(truncationNote(0, 0, 'City of Hialeah')).toBeNull();
+  });
+});
+
+describe('the Self Service path is per-tenant', () => {
+  it('defaults to the Tyler-hosted path', () => {
+    expect(searchUrl(ENERGOV_TENANTS['coral-gables'])).toBe(
+      'https://coralgablesfl-energovpub.tylerhost.net/apps/selfservice#/search',
+    );
+  });
+
+  it('honours a self-hosted tenant on its own domain and path', () => {
+    // Miami Beach runs EnerGov itself, not on tylerhost.net.
+    expect(searchUrl(ENERGOV_TENANTS['miami-beach'])).toBe(
+      'https://energovcss.miamibeachfl.gov/energovprod/selfservice#/search',
+    );
+  });
+
+  it('handles the energovWEB host suffix', () => {
+    expect(ENERGOV_TENANTS.doral.host).toContain('energovweb');
+  });
+});
+
+describe('the three Miami-Dade cities route and are usable', () => {
+  const cities = [
+    ['MIAMI BEACH', 'City of Miami Beach'],
+    ['CORAL GABLES', 'City of Coral Gables'],
+    ['DORAL', 'City of Doral'],
+    ['HIALEAH', 'City of Hialeah'],
+  ] as const;
+
+  for (const [muni, name] of cities) {
+    it(`${name} routes from its municipality and exposes Code Case`, () => {
+      const j = resolveJurisdiction('miami-dade', muni) as EnergovJurisdiction;
+      expect(j.platform).toBe('energov');
+      expect(j.name).toBe(name);
+      expect(hasCodeModule(j.tenant.modules)).toBe(true);
+      expect(j.tenant.kind).toBe('city');
+    });
+
+    it(`${name} carries a working portal link`, () => {
+      const j = resolveJurisdiction('miami-dade', muni) as EnergovJurisdiction;
+      expect(j.portalLinks[0].url).toBe(searchUrl(j.tenant));
+    });
+  }
+
+  it('still falls back to the county for a Miami-Dade city we have not wired', () => {
+    expect(resolveJurisdiction('miami-dade', 'SWEETWATER')?.platform).not.toBe('energov');
   });
 });

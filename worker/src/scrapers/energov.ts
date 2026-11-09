@@ -38,6 +38,7 @@ import {
   isEncumbering,
   noCodeModuleNote,
   coverageNote,
+  truncationNote,
   searchUrl,
   AMOUNT_NOTE,
   type EnergovCase,
@@ -51,6 +52,7 @@ export {
   isEncumbering,
   noCodeModuleNote,
   coverageNote,
+  truncationNote,
   searchUrl,
   AMOUNT_NOTE,
   type EnergovCase,
@@ -83,7 +85,7 @@ async function liveModules(ctx: ScraperCtx): Promise<number[]> {
 async function attemptSearch(
   ctx: ScraperCtx,
   address: string,
-): Promise<{ ran: boolean; cases: EnergovCase[] } | null> {
+): Promise<{ ran: boolean; cases: EnergovCase[]; reported: number } | null> {
   const { page, log } = ctx;
 
   await page.selectOption('#SearchModule', { value: `number:${MODULE.CodeCase}` }).catch(async () => {
@@ -126,7 +128,7 @@ async function attemptSearch(
   if (!res) {
     log('energov: the portal never ran our search (no response from its search API)');
     await debugDump(page, 'energov-search', log);
-    return { ran: false, cases: [] };
+    return { ran: false, cases: [], reported: 0 };
   }
 
   // Read the body as text and parse it ourselves. res.json() returns null on
@@ -150,18 +152,18 @@ async function attemptSearch(
         ? 'energov: the portal answered Success:false - retrying'
         : `energov: search response was not readable (HTTP ${res.status()}, ${raw.length} bytes, starts "${raw.slice(0, 80).replace(/\s+/g, ' ')}")`,
     );
-    return refusal ? null : { ran: false, cases: [] };
+    return refusal ? null : { ran: false, cases: [], reported: 0 };
   }
 
   log(`energov: ${parsed.cases.length} code case row(s), portal reported ${parsed.counts.codeCases}`);
-  return { ran: true, cases: parsed.cases };
+  return { ran: true, cases: parsed.cases, reported: parsed.counts.codeCases };
 }
 
 /** Up to three attempts, because the portal's first search often fails. */
 async function searchCodeCases(
   ctx: ScraperCtx,
   address: string,
-): Promise<{ ran: boolean; cases: EnergovCase[] }> {
+): Promise<{ ran: boolean; cases: EnergovCase[]; reported: number }> {
   for (let attempt = 1; attempt <= 3; attempt++) {
     const r = await attemptSearch(ctx, address);
     if (r) return r;
@@ -169,7 +171,7 @@ async function searchCodeCases(
     await ctx.page.waitForTimeout(1500 * attempt);
   }
   ctx.log('energov: the portal refused the search on every attempt');
-  return { ran: false, cases: [] };
+  return { ran: false, cases: [], reported: 0 };
 }
 
 export async function runEnergovScrape(
@@ -244,6 +246,8 @@ export async function runEnergovScrape(
     if (r.cases[0]?.address) result.matchedAddress = r.cases[0].address;
     if (r.cases[0]?.parcel) result.folio = result.folio ?? r.cases[0].parcel;
 
+    const truncated = truncationNote(r.cases.length, r.reported, t.name);
+    if (truncated) result.notes.push(truncated);
     result.notes.push(coverageNote(t, r.cases.length === 0));
     result.notes.push(AMOUNT_NOTE);
   } catch (e: any) {
