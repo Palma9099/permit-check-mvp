@@ -228,7 +228,7 @@ homegrown systems at the largest jurisdictions, which no vendor adapter will rea
 | Lake County | 383,956 | **OpenGov** | migrated off Accela 2025-03; see the LAKECO correction above |
 | Volusia County | 553,284 | **Connect Live** (`growthmgt.vcgov.org/citizenportal/app/`, `connectlivepermits.org`) | both reachable (200); public search, no registration; county covers unincorporated only |
 | Marion County | 375,908 | **Tyler EnerGov** (`selfservice.marionfl.org/energov_prod/selfservice`) | live 2025-11-12; supports case and lien search requests |
-| St Lucie County | 329,226 | **Tyler EnerGov** Customer Self Service | publishes a "Code Lien Search Request" covering code violations, code liens and citations (explicitly **not** open permits or utility bills); exact host not yet found |
+| St Lucie County | 329,226 | **Tyler EnerGov** Customer Self Service | TESTED 2026-11-09, see its own section below. The Code Lien Search Request is a $20 paid request and code cases are **not** online at all. Permits are free and parcel-keyed, for unincorporated St Lucie (76,465). |
 | Okaloosa County | 211,668 | Tyler EnerGov Self Service | from a third-party directory, unverified |
 | Escambia County | 321,905 | unnamed online permitting | directory says it covers permits, planning, code enforcement cases and contractor licenses; host not yet found |
 | City of Stuart | 17,422 | **OpenGov** | migrated off Accela |
@@ -441,6 +441,80 @@ build next.
 - Same data-hygiene warning as Broward: the city dropdown ships `Loxahatche`,
   `Loxatachee` and `Loxhatchee` alongside `Loxahatchee`. Do not key on city.
 
+## St Lucie County EnerGov, tested 2026-11-09
+
+Host: `stluciecountyfl-energovpub.tylerhost.net/Apps/SelfService`, reached from
+`stlucieco.gov/CitizenSelfService`. Tyler EnerGov Citizen Self Service, no
+account needed to search.
+
+### Code cases and liens are not online. At all.
+
+This is the sharpest version of the Palm Beach pattern. The county's "Code Lien
+Search Request" is a **$20 per-address paid request**, needs a registered
+account, and takes **3 to 10 business days**. It reports code violations, code
+liens and citations, and explicitly does not report open permits, utility bills
+or payoff figures - payoff is a second, separate request.
+
+Four independent confirmations that the code data is simply absent from the free
+portal, not merely unlabeled:
+
+1. The portal's own home page says it: *"Search Public Records - NOTE: Code Case
+   information is currently not available online."*
+2. The search module dropdown skips a value. It offers All(1), Permit(2),
+   Plan(3), Inspection(4), Request(6), License(10), Project(11). **5 is
+   EnerGov's Code Case module**, and it is gone.
+3. The results region is labelled "Search Results for various permits, plan,
+   licenses, inspections".
+4. A search across an entire major county road returned **3,815 records** - 868
+   permits, 36 plans, 2,866 inspections, 28 licences, 17 projects - and the API
+   reported `CodeCasesFound: 0`. Zero code cases on a whole road is not a
+   property-level fact; it is a disabled module.
+
+The data exists in the system. `api/energov/codecases/search/setup` answers with
+16 configured case types, including Condemnation, Imminent Danger, Lot Clean Up,
+Foreclosed Properties and Contractor Citation. The county holds it and sells
+access to it for $20.
+
+### Permits are free, and they cover what the paid search refuses to
+
+The free half is genuinely useful, and it is the exact complement of the paid
+half: the $20 lien search explicitly excludes open permits, and open permits are
+precisely what the public portal does carry.
+
+```
+Permit Number   1210-0307
+Applied Date    02/23/2013      Issued Date  02/01/2013
+Type            Building Commercial - Cell Tower/Antenna
+Expiration Date 04/11/2014      Status       Completed\Finaled
+Finalized Date  10/11/2013
+Main Parcel     320124400390008
+Address         16800 OKEECHOBEE RD FORT PIERCE, FL 34945
+Description     ADDRESS IS 16800 OKEECHOBEE RD. (ADDRESS ON BLD PLANS ...)
+```
+
+`Main Parcel` is the important field: the permit record is parcel-keyed, so an
+adapter can join it to a parcel rather than to an address string.
+
+### Coverage
+
+Unincorporated St Lucie is **76,465** (county 329,226 minus Port St Lucie
+204,851, Fort Pierce 47,297 and St Lucie Village 613). Port St Lucie runs its own
+building department and its own lien portal at $80 a search; Fort Pierce runs its
+own too. So this is 76,465 for permits and **zero for code and liens**, which is
+what the product actually sells.
+
+### Adapter notes
+
+- The result rows do not render until a category filter is clicked; the
+  unfiltered view shows only counts and pagination.
+- The SPA ignores hash-route changes, so a search cannot be driven by URL - the
+  form has to be filled and submitted.
+- The counts come from `POST api/energov/search/search`, which returns
+  `PermitsFound`, `CodeCasesFound` and friends with an empty `EntityResults`;
+  rows arrive on a later paged call.
+- Searching is public, but anything that would reach the code data requires an
+  account and a payment, so there is nothing here to automate on the lien side.
+
 ## The Florida vendor landscape, as actually observed
 
 "About five vendors" was too tidy. Nine platforms, and the largest jurisdictions
@@ -546,10 +620,12 @@ was not in GIS.
    it covers 16,888 people, not 1.94M. Build the adapter only if unsafe-structure
    cases for contracting cities are worth it on their own; as coverage it is
    negligible. See the Broward section above for the measured record shape.
-6. DONE 2026-11-09 for Palm Beach. Its certified lien search is a $65 manual
+6. DONE 2026-11-09, both. Palm Beach's certified lien search is a $65 manual
    service, but its two free guest searches give code cases and permit history by
-   PCN for 649,776 people. **This is now the first adapter to build.** Still open:
-   St Lucie's EnerGov Code Lien Search Request (329k).
+   PCN for 649,776 people - **built and merged.** St Lucie's Code Lien Search
+   Request is a $20 manual request and its code cases are not online at all; only
+   permits are public there, for 76,465 people, so there is no lien adapter to
+   build for St Lucie.
 7. Long tail: the 15 unnamed Florida citizenserve tenants, self-hosted Accela
    instances, and per-county vendor detail for Bay, Santa Rosa, St Johns, Hernando,
    Indian River, Flagler, Monroe, Putnam and Clay.
