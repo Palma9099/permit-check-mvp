@@ -219,6 +219,68 @@ cd worker && npm run smoke:broward
 Offline tests, with the real case and Activities text as fixtures, are in
 `tests/broward-adapter.test.ts`.
 
+### Tyler EnerGov CSS (Hialeah, and the platform behind it)
+
+Built because of one report: **135 W 60 ST, Hialeah** came back
+*"Code and liens: None open"*, in green, because only Miami-Dade County was
+searched. The county is not the code authority inside Hialeah. The city held:
+
+```
+BWOP-001873-2025   Building Without A Permit    status: Lien
+applied 2025-05-08                              parcel 0421310020800
+"Failure to obtain permits for addition to detached garage, shed, and
+ concrete slab on northwest corner of property."
+```
+
+One flow serves many jurisdictions — EnerGov CSS runs Hialeah, St Lucie,
+Marion, Okaloosa and several Palm Beach cities from the same app on
+`tylerhost.net`; only the host and the tenant's module set change.
+
+```
+https://<tenant>.tylerhost.net/apps/selfservice#/search
+```
+
+**Module 5 (Code Case) is per-tenant, and tenants disagree.** Verified
+2026-11-09: Hialeah exposes `1,2,3,4,5,6,10,11`; St Lucie County exposes
+`1,2,3,4,6,10,11` — note the gap at 5. Same vendor, same page, opposite answer.
+The adapter refuses up front when 5 is absent, and re-reads the live module
+list every run rather than trusting the registry snapshot.
+
+**Rows are read from the portal's own XHR, not the DOM.** The results grid is
+virtualised and in several tenants renders nothing until a category filter is
+clicked, which produced empty results for addresses that genuinely had cases.
+The adapter listens for the response the browser already received while it
+drives the page normally; it never calls that endpoint itself.
+
+**The listener matches our own request.** The app fires its own POST to the
+same endpoint while the page settles, so "first POST to search/search" is a
+race — it caught the startup search about half the time. The predicate checks
+the request payload carries the address we typed.
+
+**The portal refuses intermittently.** Roughly one run in three it answers
+HTTP 200 with `{"Result":null,"Success":false}` — most often on the first
+search after a cold load. That is Tyler's flakiness, not ours, so the adapter
+retries up to three times with a short backoff. Treating that refusal as zero
+cases would report a property with a recorded lien as clean, so `Success:false`
+is parsed as *unreadable*, never as empty. Four consecutive clean smoke runs
+after the retry went in.
+
+City routing: `CITY_JURISDICTIONS` is keyed `"<county>:<MUNICIPALITY>"` and
+`resolveJurisdiction()` prefers a city over its county. **The municipality must
+come from the property appraiser, never the postal city on the address** — a
+Florida postal city routinely names a place that does not govern the parcel.
+When the municipality is unknown, routing falls back to the county and the
+adapter says what it covered; it never guesses.
+
+Live check (needs network, ~30s):
+
+```
+cd worker && npm run smoke:energov
+```
+
+Offline tests, with the real Hialeah response as the fixture, are in
+`tests/energov-adapter.test.ts`.
+
 ### Why the adapters are split into `*-parse.ts`
 
 The repo-root tests import adapter logic, and the root tsconfig excludes

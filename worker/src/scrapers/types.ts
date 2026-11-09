@@ -10,6 +10,9 @@ export interface ScraperCtx {
    *  for that. */
   lat?: number | null;
   lng?: number | null;
+  /** Municipality from the property appraiser, e.g. "HIALEAH". Decides who the
+   *  code authority is. Never derived from the postal city on the address. */
+  municipality?: string | null;
   log: (msg: string) => void;
 }
 
