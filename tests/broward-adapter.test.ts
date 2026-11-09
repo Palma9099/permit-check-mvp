@@ -16,9 +16,16 @@
 // The live selector check is worker/src/smoke-broward.ts.
 
 import { describe, expect, it } from 'vitest';
+// Imported from broward-parse, never from broward.ts: the latter imports
+// playwright, which is a worker dependency and does not exist at the repo root.
+// Vercel installs root dependencies only, so reaching across that boundary
+// builds locally and fails the deploy. The browser flow itself is covered by
+// worker/src/smoke-broward.ts.
 import {
   parcelKeyFor,
   authorityFromCityName,
+  authorityNote,
+  folioRefusal,
   fieldFrom,
   parseCaseDetail,
   parseActivities,
@@ -26,30 +33,10 @@ import {
   cleanDate,
   pickGrid,
   exactIndex,
-  runBrowardScrape,
-} from '../worker/src/scrapers/broward.js';
+} from '../worker/src/scrapers/broward-parse.js';
 import { JURISDICTIONS, type BrowardJurisdiction } from '../worker/src/scrapers/jurisdictions.js';
-import type { ScraperCtx } from '../worker/src/scrapers/types.js';
 
 const BROWARD = JURISDICTIONS['broward'] as BrowardJurisdiction;
-
-const noPage = new Proxy(
-  {},
-  {
-    get() {
-      throw new Error('adapter touched the browser when it should have returned early');
-    },
-  },
-) as any;
-
-const ctx = (folio: string | null): ScraperCtx => ({
-  page: noPage,
-  address: null,
-  folio,
-  lat: null,
-  lng: null,
-  log: () => {},
-});
 
 describe('parcel key', () => {
   it('sends a 12-digit app folio to the Parcel ID field', () => {
@@ -99,22 +86,43 @@ describe('who the code authority is', () => {
 });
 
 describe('refusing to imply a clean property', () => {
-  it('asks for a Broward folio instead of searching on one it cannot use', async () => {
-    const r = await runBrowardScrape(ctx('00414310000004180'), BROWARD);
-    expect(r.ok).toBe(false);
-    expect(r.notes.join(' ')).toMatch(/not a Broward parcel number/i);
+  it('asks for a Broward folio instead of searching on one it cannot use', () => {
+    expect(folioRefusal('00414310000004180')!.notes.join(' ')).toMatch(/not a Broward parcel number/i);
   });
 
-  it('asks for a folio when none was supplied', async () => {
-    const r = await runBrowardScrape(ctx(null), BROWARD);
-    expect(r.ok).toBe(false);
-    expect(r.notes.join(' ')).toMatch(/keyed by parcel number/i);
+  it('asks for a folio when none was supplied', () => {
+    expect(folioRefusal(null)!.notes.join(' ')).toMatch(/keyed by parcel number/i);
   });
 
-  it('still hands back the county links so a refusal is actionable', async () => {
-    const r = await runBrowardScrape(ctx(null), BROWARD);
-    expect(r.portalLinks.some((l) => /bcpa\.net/i.test(l.url))).toBe(true);
-    expect(r.portalLinks.some((l) => /officialrecords\.broward\.org/i.test(l.url))).toBe(true);
+  it('lets a good folio through', () => {
+    expect(folioRefusal('504113111610')).toBeNull();
+  });
+
+  it('still hands back the county links so a refusal is actionable', () => {
+    expect(BROWARD.portalLinks.some((l) => /bcpa\.net/i.test(l.url))).toBe(true);
+    expect(BROWARD.portalLinks.some((l) => /officialrecords\.broward\.org/i.test(l.url))).toBe(true);
+  });
+});
+
+describe('what an empty county result means', () => {
+  // The sentence that stops a Broward scan reading as "clean" when the county
+  // was never the right government to ask.
+  it('names the city and says finding nothing says nothing', () => {
+    const n = authorityNote({ kind: 'city', name: 'FORT LAUDERDALE' }, true);
+    expect(n).toMatch(/FORT LAUDERDALE is the code authority/);
+    expect(n).toMatch(/says nothing about the property/);
+  });
+
+  it('tells a city parcel with hits that the county is only part of the picture', () => {
+    expect(authorityNote({ kind: 'city', name: 'WESTON' }, false)).toMatch(/only part of the picture/);
+  });
+
+  it('confirms the county is the authority for an unincorporated parcel', () => {
+    expect(authorityNote({ kind: 'county' }, true)).toMatch(/unincorporated Broward \(BMSD\)/);
+  });
+
+  it('calls an unresolved authority unchecked, never clear', () => {
+    expect(authorityNote({ kind: 'unknown' }, true)).toMatch(/unchecked rather than clear/);
   });
 });
 
