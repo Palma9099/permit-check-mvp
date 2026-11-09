@@ -3,13 +3,16 @@
 import { useEffect, useState } from 'react';
 import type { LienSearch } from '@/lib/lien-search';
 import LienSections from './LienSections';
+import LienCoverage from './LienCoverage';
+import WhatIsLive from './WhatIsLive';
+import type { liveCoverage } from '@/lib/lien-search';
 import { LIEN_SEARCH_PRICE, LIEN_SEARCH_TURNAROUND } from '@/lib/lien-search-config';
 
 
 
 // Title companies: run the county part of a lien search in seconds, download it,
 // and order the full search (taxes, Official Records, utilities) from Palma.
-export default function LienSearchClient() {
+export default function LienSearchClient({ coverage }: { coverage: ReturnType<typeof liveCoverage> }) {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -17,29 +20,38 @@ export default function LienSearchClient() {
   const [order, setOrder] = useState({ name: '', company: '', email: '', phone: '', closing: '' });
   const [sent, setSent] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
-  // Linked from a property report: /lien-search?folio=3049260021120 runs at once.
+  // Linked from a property report: /lien-search?folio=...&county=broward runs
+  // at once. A bare parcel number carries no county, so the link passes it.
+  const [county, setCounty] = useState('');
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const start = q.get('folio') ?? q.get('q');
+    const c = q.get('county') ?? '';
+    if (c) setCounty(c);
     if (start) {
       setQuery(start);
-      search(start);
+      search(start, c);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Digits, spaces and dashes: the same test the route applies, so the picker
+  // appears exactly when the county cannot be read off the input.
+  const looksLikeParcel = /^[\d\s-]{10,}$/.test(query.trim());
+  const counties = coverage.allCounties;
+
   function run(e: React.FormEvent) {
     e.preventDefault();
-    search(query);
+    search(query, county);
   }
 
-  async function search(query: string) {
+  async function search(query: string, countyKey = county) {
     setErr(null);
     setR(null);
     setSent('idle');
     setBusy(true);
     try {
-      const res = await fetch('/api/lien-search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query }) });
+      const res = await fetch('/api/lien-search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query, county: countyKey || undefined }) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Error ${res.status}`);
       setR(j);
@@ -63,8 +75,8 @@ export default function LienSearchClient() {
           name: [order.name, order.company].filter(Boolean).join(', '),
           email: order.email,
           phone: order.phone,
-          address: `${r.address} (folio ${r.prettyFolio})`,
-          message: `LIEN SEARCH ORDER (${LIEN_SEARCH_PRICE}). Closing date: ${order.closing || 'not given'}. Company: ${order.company || 'not given'}. Staff steps: ${r.staffSteps.map((s) => s.title).join(', ')}. Finish it: ${window.location.origin}/admin/lien?folio=${r.folio}`,
+          address: `${r.address} (${r.parcelLabel.toLowerCase()} ${r.prettyFolio}, ${r.countyName})`,
+          message: `LIEN SEARCH ORDER (${LIEN_SEARCH_PRICE}). Closing date: ${order.closing || 'not given'}. Company: ${order.company || 'not given'}. Staff steps: ${r.staffSteps.map((s) => s.title).join(', ')}. Finish it: ${window.location.origin}/admin/lien?folio=${r.folio}&county=${r.county}`,
           summary,
         }),
       });
@@ -83,9 +95,9 @@ export default function LienSearchClient() {
       <div className="bg-[#0b1730] text-white">
         <div className="mx-auto max-w-4xl px-4 pb-24 pt-12 sm:pt-16">
           <a href="/" className="text-xs font-semibold uppercase tracking-[0.22em] text-[#d9b46a]">Palma Tools</a>
-          <h1 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">Miami-Dade lien search, in seconds</h1>
+          <h1 className="mt-3 font-serif text-4xl font-semibold leading-tight sm:text-5xl">Florida lien search, in seconds</h1>
           <p className="mt-3 max-w-2xl text-white/75">
-            Recorded code liens, unpaid fines, open cases, unsafe structures and open permits for any folio. The full search, with taxes and Official
+            Recorded code liens, unpaid fines, open cases, unsafe structures and open permits, pulled live where the county publishes them. Any Florida address. The full search, with taxes and Official
             Records, is {LIEN_SEARCH_PRICE} and delivered {LIEN_SEARCH_TURNAROUND.toLowerCase()}.
           </p>
         </div>
@@ -93,7 +105,22 @@ export default function LienSearchClient() {
 
       <div className="mx-auto -mt-16 max-w-4xl px-4">
         <form onSubmit={run} className="flex flex-col gap-3 rounded-2xl bg-white p-5 shadow-[0_20px_60px_rgba(16,36,71,0.18)] ring-1 ring-black/5 sm:flex-row">
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Address or folio, e.g. 30-4926-002-1120" className={input} aria-label="Address or folio" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Any Florida address, or a parcel number" className={input} aria-label="Address or parcel number" />
+          {looksLikeParcel && (
+            <select
+              value={county}
+              onChange={(e) => setCounty(e.target.value)}
+              aria-label="County for this parcel number"
+              className="shrink-0 rounded-xl border border-black/10 bg-white px-3 py-3 text-base text-ink shadow-sm outline-none focus:border-[#1f3864] focus:ring-2 focus:ring-[#1f3864]/15 sm:max-w-[13rem]"
+            >
+              <option value="">County: detect</option>
+              {counties.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button type="submit" disabled={busy || !query.trim()} className="shrink-0 rounded-xl bg-[#1f3864] px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-[#102447] disabled:opacity-50">
             {busy ? 'Searching…' : 'Run search'}
           </button>
@@ -109,7 +136,7 @@ export default function LienSearchClient() {
                   <h2 className="font-serif text-3xl font-semibold text-ink">{street}</h2>
                   <div className="text-sm text-ink-muted">{place}</div>
                   <dl className="mt-4 grid grid-cols-[auto,1fr] gap-x-4 gap-y-1.5 text-sm">
-                    <dt className="font-semibold text-ink-muted">Folio</dt>
+                    <dt className="font-semibold text-ink-muted">{r.parcelLabel}</dt>
                     <dd className="text-ink">{r.prettyFolio}</dd>
                     <dt className="font-semibold text-ink-muted">Owner</dt>
                     <dd className="text-ink">{r.owner ?? 'Not shown'}</dd>
@@ -130,13 +157,15 @@ export default function LienSearchClient() {
                 <span>
                   Searched {new Date(r.searchedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                 </span>
-                <a href={`/api/lien-search/pdf?folio=${r.folio}`} target="_blank" rel="noreferrer" className="ml-auto rounded-full border border-[#1f3864] px-3 py-1 font-semibold text-[#1f3864] hover:bg-[#1f3864] hover:text-white">
+                <a href={`/api/lien-search/pdf?folio=${r.folio}&county=${r.county}`} target="_blank" rel="noreferrer" className="ml-auto rounded-full border border-[#1f3864] px-3 py-1 font-semibold text-[#1f3864] hover:bg-[#1f3864] hover:text-white">
                   Download PDF
                 </a>
               </div>
             </section>
 
             <LienSections sections={r.sections} />
+
+            <LienCoverage search={r} />
 
             <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-[#0b1730] to-[#1f3864] text-white shadow-[0_8px_30px_rgba(16,36,71,0.25)]">
               <div className="grid gap-6 p-6 md:grid-cols-2">
@@ -195,11 +224,13 @@ export default function LienSearchClient() {
             </section>
 
             <p className="text-xs text-ink-muted">
-              A search of Miami-Dade County public records by folio, on the date and time shown. It is not title insurance, a payoff letter, an estoppel
+              A search of {r?.countyName ?? 'Florida county'} public records by parcel number, on the date and time shown. It is not title insurance, a payoff letter, an estoppel
               letter or a guarantee. Amounts owed are confirmed with the agency that holds the lien.
             </p>
           </div>
         )}
+
+        <WhatIsLive coverage={coverage} />
       </div>
     </main>
   );

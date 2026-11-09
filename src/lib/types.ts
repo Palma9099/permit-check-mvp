@@ -272,7 +272,15 @@ export interface DiagnosticReport {
   countyExtras?: CountyExtras | null;
   // Miami-Dade only: recorded liens and unpaid fines still standing (from the
   // lien search). checked=false when a county source did not answer.
-  liens?: { lines: Array<{ title: string; detail: string; tone: 'red' | 'amber' | 'green' }>; checked: boolean } | null;
+  // Set only for a county with a live lien source. `scope` names what was
+  // actually looked at, so the card can never label a partial check as a
+  // clean sweep; `county` carries the key the order link needs.
+  liens?: {
+    lines: Array<{ title: string; detail: string; tone: 'red' | 'amber' | 'green' }>;
+    checked: boolean;
+    scope: string;
+    county: string;
+  } | null;
   // Closing readiness score and its factors (shared by web, PDF and record).
   readiness?: Readiness;
   // Signed, shareable record link (null when signing is not configured).

@@ -11,15 +11,11 @@ import LienSections from '../../lien-search/LienSections';
 
 type Answer = { result: '' | 'clear' | 'found'; amount: string; note: string };
 
-// Where staff look each step up. Both pages need a person (captcha or bot check).
-const LOOKUP: Record<string, (folio: string) => string> = {
-  taxes: (f) => `https://miamidade.county-taxes.com/public/search/property_tax?search_query=${f}`,
-  records: () => 'https://onlineservices.miamidadeclerk.gov/officialrecords/StandardSearch.aspx',
-};
-
 export default function LienAdmin() {
   const [key, setKey] = useState('');
   const [query, setQuery] = useState('');
+  // Only needed for a bare parcel number, which carries no county of its own.
+  const [county, setCounty] = useState('');
   const [r, setR] = useState<LienSearch | null>(null);
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [client, setClient] = useState({ company: '', name: '', email: '', closingDate: '' });
@@ -39,9 +35,12 @@ export default function LienAdmin() {
     try {
       setKey(sessionStorage.getItem('pv-key') ?? '');
     } catch {}
-    // The order email links here with ?folio=.
-    const f = new URLSearchParams(window.location.search).get('folio');
+    // The order email links here with ?folio=&county=.
+    const q = new URLSearchParams(window.location.search);
+    const f = q.get('folio');
     if (f) setQuery(f);
+    const c = q.get('county');
+    if (c) setCounty(c);
   }, []);
   const saveKey = (k: string) => {
     setKey(k);
@@ -55,7 +54,7 @@ export default function LienAdmin() {
     setR(null);
     setBusy(true);
     try {
-      const res = await fetch('/api/lien-search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query }) });
+      const res = await fetch('/api/lien-search', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query, county: county || undefined }) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Error ${res.status}`);
       setR(j);
@@ -75,7 +74,7 @@ export default function LienAdmin() {
       const res = await fetch('/api/lien-search/finish', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-admin-key': key },
-        body: JSON.stringify({ folio: r.folio, staff: answers, reviewer, client, notes, sendEmail }),
+        body: JSON.stringify({ folio: r.folio, county: r.county, staff: answers, reviewer, client, notes, sendEmail }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? `Error ${res.status}`);
@@ -130,8 +129,8 @@ export default function LienAdmin() {
           <input type="password" autoComplete="off" value={key} onChange={(e) => saveKey(e.target.value)} className={`${input} mt-1`} />
         </label>
         <label className="block text-sm font-semibold">
-          Folio or address
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="30-4926-002-1120" className={`${input} mt-1`} />
+          Address, or a Miami-Dade folio
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="1400 SW 29 TER, Fort Lauderdale" className={`${input} mt-1`} />
         </label>
         <button type="button" disabled={busy || !query.trim()} onClick={load} className="rounded-full bg-[#1f3864] px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">
           {busy && !r ? 'Searching…' : 'Load'}
@@ -143,10 +142,16 @@ export default function LienAdmin() {
           <div className="rounded-2xl bg-white p-5 ring-1 ring-black/10">
             <div className="font-serif text-2xl font-semibold">{r.address}</div>
             <div className="text-sm text-ink-muted">
-              Folio {r.prettyFolio} · {r.owner ?? 'Owner not shown'} · {r.municipality}
+              {r.countyName} · {r.parcelLabel} {r.prettyFolio} · {r.owner ?? 'Owner not shown'} · {r.municipality ?? 'Unincorporated'}
             </div>
             <div className={`mt-3 rounded-lg px-4 py-2 text-sm font-semibold ${r.failed ? 'bg-amber-50 text-amber-900' : r.found ? 'bg-red-50 text-red-800' : 'bg-emerald-50 text-emerald-800'}`}>
-              County records: {r.failed ? `${r.failed} source(s) did not answer. Reload before publishing.` : r.found ? `${r.found} item(s) found.` : 'clear.'}
+              {r.failed
+                ? `${r.failed} source(s) did not answer. Reload before publishing.`
+                : r.found
+                ? `${r.found} item(s) found in the sources pulled live.`
+                : r.coverage.level === 'records'
+                ? 'No case records are published for this county. Every check below is yours.'
+                : 'Sources pulled live are clear.'}
             </div>
           </div>
 
@@ -158,7 +163,7 @@ export default function LienAdmin() {
             <div className="mt-4 space-y-4">
               {r.staffSteps.map((s) => {
                 const a = answers[s.key] ?? { result: '', amount: '', note: '' };
-                const link = LOOKUP[s.key]?.(r.folio);
+                const link = s.url;
                 return (
                   <div key={s.key} className="rounded-xl p-4 ring-1 ring-black/10">
                     <div className="flex flex-wrap items-center justify-between gap-2">

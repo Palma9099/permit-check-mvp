@@ -5,6 +5,7 @@
 
 import { randomBytes } from 'node:crypto';
 import type { LienSearch, StaffStep } from './lien-search';
+import { MIAMI_DADE_COVERAGE } from './lien-providers/miami-dade';
 import { absent, failed, selectOne, type Lookup } from './lookup';
 
 const SUPA_URL = process.env.SUPABASE_URL;
@@ -47,6 +48,25 @@ export interface LienRecord {
 const table = () => (SUPA_URL && SUPA_KEY ? `${SUPA_URL.replace(/\/$/, '')}/rest/v1/lien_searches` : null);
 const headers = () => ({ apikey: SUPA_KEY as string, Authorization: `Bearer ${SUPA_KEY}`, 'content-type': 'application/json' });
 
+// Records published before the search became multi-county carry no county on
+// their stored JSON. Every one of them is Miami-Dade, which is all the product
+// searched then, so they are read back as that rather than rendering blanks on
+// a search a client is already holding.
+function withCounty(r: LienRecord): LienRecord {
+  const s = r.search;
+  if (s?.county) return r;
+  return {
+    ...r,
+    search: {
+      ...s,
+      county: 'miami-dade',
+      countyName: 'Miami-Dade County',
+      parcelLabel: 'Folio',
+      coverage: s?.coverage ?? MIAMI_DADE_COVERAGE,
+    },
+  };
+}
+
 // Returns a Lookup, not a record: see lib/lookup.ts. A client holding the PDF
 // must never be told "no such search" because we could not reach the database.
 export async function getLienRecord(id: string): Promise<Lookup<LienRecord>> {
@@ -54,10 +74,12 @@ export async function getLienRecord(id: string): Promise<Lookup<LienRecord>> {
   if (!t) return failed('the record database is not configured');
   // An id of the wrong shape cannot exist, so that is a real absence.
   if (!/^LS-[A-Z0-9]{10}$/.test(id)) return absent();
-  return selectOne<LienRecord>(`${t}?select=*&id=eq.${encodeURIComponent(id)}&limit=1`, {
+  const got = await selectOne<LienRecord>(`${t}?select=*&id=eq.${encodeURIComponent(id)}&limit=1`, {
     cache: 'no-store',
     headers: headers(),
   });
+  if (!got.ok || !got.record) return got;
+  return { ok: true, record: withCounty(got.record) };
 }
 
 // Ten characters from a 32-letter alphabet: the link is the only key to the
