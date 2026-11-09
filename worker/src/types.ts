@@ -7,6 +7,9 @@ export interface ScanJob {
   address: string | null;
   folio: string | null;
   county: string | null;
+  /** Municipality from the property appraiser, when the queue supplies one.
+   *  A city often governs code where the county does not. */
+  municipality?: string | null;
   lat: number | null;
   lng: number | null;
   attempts: number;

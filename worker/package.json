@@ -9,7 +9,8 @@
     "calibrate": "tsx src/calibrate.ts",
     "typecheck": "tsc --noEmit",
     "smoke:pbc": "tsx src/smoke-pbc.ts",
-    "smoke:broward": "tsx src/smoke-broward.ts"
+    "smoke:broward": "tsx src/smoke-broward.ts",
+    "smoke:energov": "tsx src/smoke-energov.ts"
   },
   "dependencies": {
     "playwright": "1.48.2",

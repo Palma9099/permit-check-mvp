@@ -1,0 +1,233 @@
+// Tyler EnerGov Citizen Self Service adapter.
+//
+// This adapter exists because of one report. 135 W 60 ST, Hialeah came back
+// "Code and liens: None open", in green, because only Miami-Dade County was
+// searched and the county is not the code authority inside Hialeah. The city
+// publishes its cases on EnerGov, and the one it held was not minor:
+//
+//   BWOP-001873-2025  "Building Without A Permit"  status: Lien
+//   parcel 0421310020800
+//   "Failure to obtain permits for addition to detached garage, shed, and
+//    concrete slab on northwest corner of property."
+//
+// The fixtures below are that response, verbatim.
+//
+// The platform's trap is that module 5 (Code Case) is per-tenant: Hialeah has
+// it on, St Lucie County has it off. Assuming it exists means searching
+// nothing and reporting a clean property.
+//
+// The live selector check is worker/src/smoke-energov.ts.
+
+import { describe, expect, it } from 'vitest';
+import {
+  MODULE,
+  moduleIdsFrom,
+  hasCodeModule,
+  parseSearchResponse,
+  isEncumbering,
+  isoDay,
+  noCodeModuleNote,
+  coverageNote,
+  searchUrl,
+  type EnergovTenant,
+} from '../worker/src/scrapers/energov-parse.js';
+import {
+  ENERGOV_TENANTS,
+  CITY_JURISDICTIONS,
+  resolveJurisdiction,
+  type EnergovJurisdiction,
+} from '../worker/src/scrapers/jurisdictions.js';
+
+const HIALEAH = ENERGOV_TENANTS.hialeah;
+const ST_LUCIE = ENERGOV_TENANTS['st-lucie'];
+
+describe('module sets are per-tenant', () => {
+  it('reads Angular-style option values', () => {
+    expect(moduleIdsFrom(['number:1', 'number:5', 'number:11'])).toEqual([1, 5, 11]);
+  });
+
+  it('reads plain values too', () => {
+    expect(moduleIdsFrom(['1', '5'])).toEqual([1, 5]);
+  });
+
+  it('ignores a blank placeholder option', () => {
+    expect(moduleIdsFrom(['', 'number:2'])).toEqual([2]);
+  });
+
+  it('sees Code Case on Hialeah and not on St Lucie', () => {
+    // The gap at 5 in the St Lucie list is the whole point.
+    expect(hasCodeModule(HIALEAH.modules)).toBe(true);
+    expect(hasCodeModule(ST_LUCIE.modules)).toBe(false);
+    expect(ST_LUCIE.modules).not.toContain(MODULE.CodeCase);
+  });
+});
+
+describe('refusing a tenant with Code Case switched off', () => {
+  it('says nothing was checked rather than nothing was found', () => {
+    const n = noCodeModuleNote(ST_LUCIE);
+    expect(n).toMatch(/checked nothing here/i);
+    expect(n).toMatch(/not the same as the property being clear/i);
+  });
+
+  it('names the tenant so the reader knows who to ask', () => {
+    expect(noCodeModuleNote(ST_LUCIE)).toMatch(/St Lucie County/);
+  });
+});
+
+// Verbatim from Hialeah, 2026-11-09.
+const REAL_RESPONSE = {
+  Result: {
+    EntityResults: [
+      {
+        CaseId: '4172d73c-da78-4b3d-b0e0-eed3c8adadfe',
+        CaseNumber: 'BWOP-001873-2025',
+        CaseType: 'Building Without A Permit',
+        CaseStatus: 'Lien',
+        ApplyDate: '2025-05-08T07:38:08',
+        Address: { AddressLine1: '135 W 60 ST', City: 'Hialeah', StateName: 'FL', PostalCode: '33012', FullAddress: '135 W 60 ST Hialeah FL 33012' },
+        AddressDisplay: '135 W 60 ST Hialeah FL 33012',
+        MainParcel: '0421310020800',
+        Description:
+          'Failure to obtain permits for addition to detached garage, shed, and concrete slab on northwest corner of property.',
+        ModuleName: 5,
+      },
+    ],
+    TotalPages: 1,
+    PermitsFound: 0,
+    CodeCasesFound: 1,
+    TotalFound: 1,
+  },
+  Success: true,
+};
+
+// What the portal returns when it refuses, HTTP 200, roughly one run in three.
+const REFUSAL = { Result: null, Success: false, ErrorMessage: '', StatusCode: 200 };
+
+describe('the case the report missed', () => {
+  const parsed = parseSearchResponse(REAL_RESPONSE);
+
+  it('is found', () => {
+    expect(parsed.ok).toBe(true);
+    expect(parsed.cases).toHaveLength(1);
+    expect(parsed.counts.codeCases).toBe(1);
+  });
+
+  it('carries the facts that matter', () => {
+    expect(parsed.cases[0]).toEqual({
+      caseNumber: 'BWOP-001873-2025',
+      caseType: 'Building Without A Permit',
+      status: 'Lien',
+      appliedDate: '2025-05-08',
+      address: '135 W 60 ST Hialeah FL 33012',
+      parcel: '0421310020800',
+      description:
+        'Failure to obtain permits for addition to detached garage, shed, and concrete slab on northwest corner of property.',
+    });
+  });
+
+  it('keeps the parcel, so the case can be joined to a property', () => {
+    // Matches the property appraiser strap 04-2131-002-0800.
+    expect(parsed.cases[0].parcel).toBe('0421310020800');
+  });
+
+  it('flags a recorded lien as encumbering', () => {
+    expect(isEncumbering('Lien')).toBe(true);
+    expect(isEncumbering('Special Magistrate')).toBe(true);
+    expect(isEncumbering('Closed')).toBe(false);
+    expect(isEncumbering(null)).toBe(false);
+  });
+
+  it('invents no dollar amount, because EnerGov publishes none', () => {
+    expect(JSON.stringify(parsed.cases)).not.toMatch(/\$\s*[\d,]+/);
+  });
+});
+
+describe('a refusal is never an empty result', () => {
+  it('reports Success:false as unreadable, not as zero cases', () => {
+    const p = parseSearchResponse(REFUSAL);
+    expect(p.ok).toBe(false);
+    expect(p.cases).toEqual([]);
+  });
+
+  it('treats a missing body the same way', () => {
+    expect(parseSearchResponse(null).ok).toBe(false);
+    expect(parseSearchResponse({}).ok).toBe(false);
+  });
+
+  it('reads a genuine zero as ok with no cases', () => {
+    const p = parseSearchResponse({ Result: { EntityResults: [], CodeCasesFound: 0, TotalFound: 0 }, Success: true });
+    expect(p.ok).toBe(true);
+    expect(p.cases).toEqual([]);
+  });
+});
+
+describe('only code cases come back from a code search', () => {
+  it('drops a permit row that an All search would include', () => {
+    const mixed = {
+      Result: {
+        EntityResults: [
+          { CaseNumber: 'P-1', ModuleName: 2, CaseType: 'Permit' },
+          { CaseNumber: 'C-1', ModuleName: 5, CaseType: 'Code' },
+        ],
+        CodeCasesFound: 1,
+        TotalFound: 2,
+      },
+      Success: true,
+    };
+    const p = parseSearchResponse(mixed);
+    expect(p.cases.map((c) => c.caseNumber)).toEqual(['C-1']);
+  });
+});
+
+describe('dates', () => {
+  it('trims an EnerGov timestamp to the day', () => {
+    expect(isoDay('2025-05-08T07:38:08')).toBe('2025-05-08');
+  });
+
+  it('leaves anything else alone and nulls the empties', () => {
+    expect(isoDay('05/08/2025')).toBe('05/08/2025');
+    expect(isoDay(null)).toBeNull();
+    expect(isoDay('')).toBeNull();
+  });
+});
+
+describe('what an empty result means', () => {
+  it('a city tenant covers the whole city', () => {
+    const n = coverageNote(HIALEAH, true);
+    expect(n).toMatch(/whole city/i);
+    expect(n).not.toMatch(/unincorporated/i);
+  });
+
+  it('a county tenant warns that a city is not covered', () => {
+    const county: EnergovTenant = { ...ST_LUCIE, modules: [5] };
+    expect(coverageNote(county, true)).toMatch(/unincorporated St Lucie County/);
+    expect(coverageNote(county, true)).toMatch(/says nothing about the property/);
+  });
+});
+
+describe('routing: a city beats its county, but only when we know the city', () => {
+  it('sends a Hialeah parcel to Hialeah', () => {
+    const j = resolveJurisdiction('miami-dade', 'HIALEAH') as EnergovJurisdiction;
+    expect(j.platform).toBe('energov');
+    expect(j.tenant.host).toContain('hialeahfl');
+  });
+
+  it('is case and space insensitive about the municipality', () => {
+    expect(resolveJurisdiction('miami-dade', ' hialeah ')?.platform).toBe('energov');
+  });
+
+  it('falls back to the county when the municipality is unknown', () => {
+    // Never guess a city from an address; an unknown city means county rules.
+    expect(resolveJurisdiction('miami-dade', null)?.platform).not.toBe('energov');
+    expect(resolveJurisdiction('miami-dade', 'SWEETWATER')?.platform).not.toBe('energov');
+  });
+
+  it('builds the portal link from the tenant host', () => {
+    expect(searchUrl(HIALEAH)).toBe('https://hialeahfl-energovpub.tylerhost.net/apps/selfservice#/search');
+  });
+
+  it('gives the Hialeah jurisdiction a usable portal link', () => {
+    const j = CITY_JURISDICTIONS['miami-dade:HIALEAH'] as EnergovJurisdiction;
+    expect(j.portalLinks.some((l) => l.url.includes('hialeahfl-energovpub'))).toBe(true);
+  });
+});
