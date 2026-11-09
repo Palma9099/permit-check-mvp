@@ -109,9 +109,10 @@ Both flows **degrade safely** — an uncalibrated selector yields a "use the lin
 email, never wrong data.
 
 ## Supported jurisdictions
-Palm Beach (ePZB, `src/scrapers/pbc.ts`), Miami-Dade (generic/EPS; permits also
-covered instantly by the app API), Broward (**currently broken, see below**).
-Others get a graceful "not yet automated + statewide lookup link" email.
+Palm Beach (ePZB, `src/scrapers/pbc.ts`), Broward (Posse/BCS,
+`src/scrapers/broward.ts`), Miami-Dade (generic/EPS; permits also covered
+instantly by the app API). Others get a graceful "not yet automated + statewide
+lookup link" email.
 
 **Add an Accela agency:** confirm its code by opening `aca-prod.accela.com/<AGENCY>/`
 and checking it returns 200 with that agency's real name — the national host
@@ -157,6 +158,67 @@ cd worker && npx tsx src/smoke-pbc.ts [PCN]
 Offline tests, including the real case-detail text, are in
 `tests/pbc-adapter.test.ts` at the repo root and run with the main suite.
 
+### Broward County (Posse / BCS)
+Broward is not an Accela customer either. This entry used to point at
+`aca-prod.accela.com/BROWARD/`, which returns 404, so every Broward scan
+silently failed. The county runs Posse at `dpepp.broward.org/BCS`, and it is
+pleasant to automate: the parcel search is one postback and everything after it
+is a plain GET with no session or viewstate.
+
+| | |
+|---|---|
+| parcel search | `?PossePresentation=ParcelSearchForEnforcement` |
+| code cases | `?PossePresentation=ParcelEnforcementList&PosseObjectId=N` |
+| permits | `?PossePresentation=ParcelPermitList&PosseObjectId=N` |
+| one case | `?PossePresentation=ViewEnforcementCase&PosseObjectId=M` |
+
+One `PosseObjectId` keys both the cases and the permits, so one search buys
+both. Each case's Activities tab carries the cited section and, for a recorded
+lien, a **CR number** for Broward Official Records — which is where the dollar
+amount lives, since the county never publishes it.
+
+Feed it the app's 12-digit folio (`504113111610`); that is exactly the portal's
+*Parcel ID* field. The portal's separate *Folio Number* field wants the shorter
+dashed form (`0113-11-1610`), and the two encodings differ by more than
+punctuation, so the adapter routes each to its own field rather than converting.
+
+**What makes this adapter honest.** County code enforcement covers
+unincorporated Broward — 16,888 of 1,944,375 people — plus Unsafe Structure
+cases the county hears for cities under interlocal agreement. So an empty county
+result is the normal answer for ~99% of Broward and means nothing by itself.
+A Broward folio does not encode incorporation, so the adapter resolves the
+authority from the **parcel point** against the county's municipality layer, and
+says one of three things: the county is the authority; a named city is, and
+these county records are only part of the picture; or it could not tell, in
+which case the result is reported as unchecked rather than clear. It never reads
+the authority off the postal city — this data is full of unincorporated parcels
+with `FORT LAUDERDALE` mailing addresses.
+
+Two parsing traps are pinned in tests because both produced confidently wrong
+output rather than an error:
+
+- `Label:\s*(.*)` walks past an **empty** field, because `\s` matches a newline,
+  and captures the next line. A case with no complaint text reported its
+  `Date Established` line as the complaint. Field matching is horizontal-only.
+- The page chrome is itself a `<table>` whose first row flattens the whole
+  document, and a substring match on `case` hits the heading *"BCS Enforcement
+  Cases"*. `pickGrid` therefore matches the id header **exactly**, keeps only
+  rows as wide as the header, and prefers the table holding the most id-shaped
+  rows.
+
+Also: the permit grid prints a literal `mmm dd, yyyy` where a date is absent, and
+has both a `Permit Number` and a `Permit` column, so exact header matching
+matters there too.
+
+Live selector check (needs network, ~45s):
+
+```
+cd worker && npm run smoke:broward
+```
+
+Offline tests, with the real case and Activities text as fixtures, are in
+`tests/broward-adapter.test.ts`.
+
 ### Why the adapters are split into `*-parse.ts`
 
 The repo-root tests import adapter logic, and the root tsconfig excludes
@@ -178,11 +240,3 @@ boundary:
 ```
 mv worker/node_modules /tmp/_wnm && npm run build; mv /tmp/_wnm worker/node_modules
 ```
-
-### Broward County — known broken
-`aca-prod.accela.com/BROWARD/` returns 404 (verified 2026-11-09), so every
-Broward deep scan currently falls through to "portal could not be read". Broward
-is not on Accela; it runs Posse (Computronix) at `dpepp.broward.org/BCS`, whose
-folio search works and whose detail pages are plain GET with no session. Before
-building that adapter, note that Broward's county caseload is unincorporated-only
-too, and unincorporated Broward is just 16,888 people.

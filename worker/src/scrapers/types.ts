@@ -5,6 +5,11 @@ export interface ScraperCtx {
   page: Page;
   address: string | null;
   folio: string | null;
+  /** Parcel point, when the job has one. Broward needs it to tell whether the
+   *  county or a city is the code authority; the postal city cannot be trusted
+   *  for that. */
+  lat?: number | null;
+  lng?: number | null;
   log: (msg: string) => void;
 }
 

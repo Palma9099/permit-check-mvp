@@ -1,11 +1,23 @@
 // Broward lien provider.
 //
 // Broward is not Miami-Dade. The county publishes its tax roll and its parcel
-// and municipality boundaries as public layers, but it publishes NO
-// parcel-keyed code-case or lien layer: broward.org, the Official Records
-// search and the Tax Collector all sit behind a bot wall. Checked 2026-11-08
-// against the county's own ArcGIS organisation (734 services, none of them a
-// code, lien or permit case layer).
+// and municipality boundaries as public layers, but no code-case or lien layer:
+// checked 2026-11-08 against the county's own ArcGIS organisation, 734 services,
+// none of them a code, lien or permit case layer. The Official Records search
+// and the Tax Collector both sit behind a bot wall.
+//
+// "Not in GIS" is not "not published", and an earlier version of this comment
+// made exactly that mistake. Broward County DOES publish parcel-keyed code
+// cases and permits - on Posse, at dpepp.broward.org/BCS, searchable by folio,
+// with the recorded lien's CR number on each case (verified 2026-11-09). It is
+// read by the deep-scan worker, not here, because it is a browser flow rather
+// than a layer query; see worker/src/scrapers/broward.ts.
+//
+// It does not change what this file does, because its reach is small: county
+// code enforcement covers unincorporated Broward, 16,888 of the county's
+// 1,944,375 people, plus Unsafe Structure cases the county hears for cities
+// under interlocal agreement. For nearly every Broward address the city is
+// still the code authority, which is what the rest of this file is about.
 //
 // Broward is also about 90% incorporated across 31 municipalities, so the
 // cases that encumber a parcel are usually the CITY's, not the county's. Two
@@ -197,7 +209,7 @@ export async function runBrowardLienSearch(folioIn: string): Promise<LienSearch>
       url: 'https://officialrecords.broward.org/AcclaimWeb/',
     },
     { key: 'utilities', title: 'Water and sewer', how: unincorporated ? 'Open balance or lien from Broward County Water and Wastewater Services.' : `Open balance or lien from ${city}'s utility or Broward County Water and Wastewater Services.` },
-    { key: 'countyCode', title: 'Broward County code and permits', how: 'Broward County Code Enforcement and county ePermits. The county publishes no parcel-keyed case data, so this is read by hand. County code enforcement covers the unincorporated Broward Municipal Services District; for an address in a city the city is the code authority.' },
+    { key: 'countyCode', title: 'Broward County code and permits', how: 'Broward County Code Enforcement and county permits, searchable by folio at dpepp.broward.org/BCS. County code enforcement covers the unincorporated Broward Municipal Services District; for an address in a city the city is the code authority. A recorded county lien carries a CR number for Official Records, where the amount lives.', url: 'https://dpepp.broward.org/BCS/Default.aspx?PossePresentation=ParcelSearchForEnforcement' },
   ];
   if (!cityLookup.ok) {
     staffSteps.push({

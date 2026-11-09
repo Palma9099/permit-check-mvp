@@ -8,6 +8,7 @@ import type { ScraperCtx } from './types.js';
 import { runPortalScrape } from './generic.js';
 import { runAccelaScrape } from './accela.js';
 import { runPbcScrape } from './pbc.js';
+import { runBrowardScrape } from './broward.js';
 import { JURISDICTIONS } from './jurisdictions.js';
 
 const HARD_TIMEOUT = Number(process.env.SCRAPE_TIMEOUT_MS ?? 240000);
@@ -49,6 +50,8 @@ export async function runScrapeForJob(browser: Browser, job: ScanJob): Promise<S
     page,
     address: job.address,
     folio: job.folio,
+    lat: job.lat,
+    lng: job.lng,
     log: (m) => {
       logs.push(m);
       console.log(`[scrape ${job.id.slice(0, 8)}] ${m}`);
@@ -61,7 +64,9 @@ export async function runScrapeForJob(browser: Browser, job: ScanJob): Promise<S
         ? runAccelaScrape(ctx, jur)
         : jur.platform === 'pbc-epzb'
           ? runPbcScrape(ctx, jur)
-          : runPortalScrape(ctx, jur.config);
+          : jur.platform === 'broward-bcs'
+            ? runBrowardScrape(ctx, jur)
+            : runPortalScrape(ctx, jur.config);
     const result = await Promise.race([
       scrape,
       new Promise<ScrapeResult>((_, reject) =>
