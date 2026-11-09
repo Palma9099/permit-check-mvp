@@ -218,7 +218,7 @@ homegrown systems at the largest jurisdictions, which no vendor adapter will rea
 | Miami-Dade County | 2,701,767 | county-run | already integrated live |
 | Palm Beach County | 1,492,191 | **ePZB** (homegrown) | TESTED 2026-11-09, see its own section below. The *certified* Fine/Lien search is a paid manual service and not a data source. But two **free guest searches** expose full code cases and full permit history by PCN, for unincorporated PBC (649,776). |
 | Orange County | 1,429,908 | **Fast Track** (`fasttrack.ocfl.net`) | public, no account needed, **but search forms carry a CAPTCHA**, which is a hard stop: bypassing bot checks is out of scope, so this needs an official data request |
-| Duval / Jacksonville | 995,567 | **JaxEPICS** (`jaxepics.coj.net`) | public search covers permits, property, citations **and violations** |
+| Duval / Jacksonville | 995,567 | **JAXEPICS** (`jaxepics.coj.net`) | TESTED 2026-11-09, see its own section below. The search page renders for anonymous visitors but **does nothing** - no API call fires at all. Code case records are **public-records-request only**. |
 | Collier County | 375,752 | **CityView** (`cvportal.collier.gov`) | returned HTTP 406 to a plain request; county warns much permit data is not current |
 | Jupiter, Wellington, Riviera Beach, Lake Park | — | Tyler EnerGov Self Service | unverified, from a third-party guide |
 | Royal Palm Beach | — | Click2Gov | unverified |
@@ -514,6 +514,85 @@ what the product actually sells.
   rows arrive on a later paged call.
 - Searching is public, but anything that would reach the code data requires an
   account and a payment, so there is nothing here to automate on the lien side.
+
+## Duval / Jacksonville JAXEPICS, tested 2026-11-09
+
+This was the biggest prize left in Florida and it is shut.
+
+### Why Duval should have been the best target in the state
+
+Duval is **100% incorporated**, and consolidated Jacksonville is 949,611 of the
+county's 995,567 people. The other four municipalities - Jacksonville Beach
+23,830, Atlantic Beach 13,513, Neptune Beach 7,217, Baldwin 1,396 - account for
+the rest. Unincorporated Duval is **zero**.
+
+That matters because the unincorporated-only trap that cuts Palm Beach to
+649,776, St Lucie to 76,465 and Broward to 16,888 **does not apply here at all**.
+One consolidated government is the code authority for 95% of a million-person
+county. Nothing else in Florida except Miami-Dade offers that.
+
+### The search renders, and does not work
+
+`jaxepics.coj.net/Search/SearchResults` loads without a login and looks fully
+functional. The **Search For** dropdown offers Permit, Inspection, Certificate of
+Use, Sketch Plan, Civil Plans, Plat, Easement, Development Plan, Projects,
+Property, Meeting, Deviations, Profile and **Case**. Choosing Case switches
+**Search By** to Address, Case Number, Violation Number, Citation Number,
+Individual, Business, CARE Number, and renders a results grid headed:
+
+```
+Case | Status | Required Permits | Address | DateEntered | Initial Comment | Inspector | Violations | Citations
+```
+
+That is exactly the shape this product consumes, down to a CSV download button.
+It returns nothing, because **no request is ever made**. Verified by typing a
+permit number matching the app's own `FullPermitNumberRegex`
+(`^[A-Z]-\d{2}-\d+\.\d{3}$`), clicking the magnifier, and watching the network:
+zero calls to `jaxepicsapi.coj.net`, the API base its own `assets/config.json`
+declares. No auth token in storage either. The app is wired for Azure AD
+(`login.microsoftonline.com`), and anonymously the submit is a silent no-op.
+
+Worth being precise about the failure mode: the grid prints **"No data matching
+applied search"** before any search has run. Read quickly, that looks like a
+clean property. It is the empty initial state of a search that never executed.
+
+### "Guest Sign In" no longer exists
+
+The city's Building Inspection Division services page still instructs: *"Use the
+'Guest Sign In' and 'Search for' (Top Left) Property by Address"*, pointing at
+this exact URL, and says the search covers building code violations, COs and
+permit details. There is no Guest Sign In anywhere in the current UI - the login
+page offers only email/password, the City of Jacksonville (Azure AD) login,
+forgot-password and Create an Account. The instruction is stale, and the same
+page gives it away by referring to "the city's older computer system".
+
+### Code cases are a public records request
+
+From Municipal Code Compliance's own page, which is the authority here: there is
+no public online case search. "Case details, case documents, and case status"
+**require a PRR**, submitted at `records.coj.net`. The city asks that a request
+include both the address and the **RE#** (Duval's parcel key), and points to
+`paopropertysearch.coj.net` and `maps.coj.net/DuvalProperty/` to look that up.
+
+So Duval is worse than St Lucie: St Lucie at least sells a defined $20 product
+with a 3-10 day turnaround. Duval has no product, only a records request.
+
+### What is public
+
+- `paopropertysearch.coj.net` - Property Appraiser search, gives the RE#.
+- `maps.coj.net/DuvalProperty/` - property map.
+- `maps.coj.net/mappao/Default.cshtml?RE=<RE#>` - the parcel viewer JAXEPICS
+  itself links to, keyed by RE number. Blank without an RE.
+- A third party, `JaxStableHousing.org`, publishes a map and search built from
+  three years of city code enforcement records. That it exists is the useful
+  signal: the data is obtainable in bulk by request, even though it is not
+  queryable online.
+
+### Verdict
+
+No adapter to build. The realistic path to 949,611 people is an official data
+request or a recurring PRR, which is a relationship question rather than an
+engineering one - the same conclusion as Orange County, for a different reason.
 
 ## The Florida vendor landscape, as actually observed
 
