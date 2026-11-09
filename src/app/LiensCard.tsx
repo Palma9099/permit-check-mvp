@@ -1,5 +1,6 @@
 import type { DiagnosticReport } from '@/lib/types';
 import { LIEN_SEARCH_PRICE, LIEN_SEARCH_TURNAROUND } from '@/lib/lien-search-config';
+import { cityGoverns, cityLabel } from '@/lib/code-authority';
 
 // Recorded liens and unpaid fines, with the way to order the full lien search
 // a title company runs before closing.
@@ -14,7 +15,25 @@ export default function LiensCard({ report }: { report: DiagnosticReport }) {
   if (!l || !folio) return null;
   const n = l.lines.length;
   const href = `/lien-search?folio=${folio}&county=${l.county}`;
-  const tone = n > 0 ? 'bg-red-50 ring-red-200' : l.checked ? 'bg-emerald-50 ring-emerald-200' : 'bg-amber-50 ring-amber-200';
+
+  // A clear county result is not a clear property when a city enforces code
+  // here and we never searched it. Naming the scope was not enough: a green
+  // tick reads as "all clear" whatever the caption says, which is how a
+  // Hialeah property with an active violation came back looking clean.
+  const city = cityLabel(report.property.municipality ?? null);
+  const cityUnchecked =
+    cityGoverns(report.property.municipality ?? null) &&
+    report.codeEnforcement.cityCodeChecked !== true;
+
+  const state: 'hits' | 'clear' | 'partial' | 'failed' =
+    n > 0 ? 'hits' : !l.checked ? 'failed' : cityUnchecked ? 'partial' : 'clear';
+
+  const tone =
+    state === 'hits'
+      ? 'bg-red-50 ring-red-200'
+      : state === 'clear'
+      ? 'bg-emerald-50 ring-emerald-200'
+      : 'bg-amber-50 ring-amber-200';
 
   return (
     <section>
@@ -23,22 +42,26 @@ export default function LiensCard({ report }: { report: DiagnosticReport }) {
           <span
             aria-hidden
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-bold text-white ${
-              n > 0 ? 'bg-red-600' : l.checked ? 'bg-emerald-600' : 'bg-amber-500'
+              state === 'hits' ? 'bg-red-600' : state === 'clear' ? 'bg-emerald-600' : 'bg-amber-500'
             }`}
           >
-            {n > 0 ? n : l.checked ? '✓' : '?'}
+            {state === 'hits' ? n : state === 'clear' ? '✓' : '?'}
           </span>
           <div className="min-w-[14rem] flex-1">
             <div className="font-serif text-xl font-semibold text-ink">
-              {n > 0
+              {state === 'hits'
                 ? `${n} lien${n > 1 ? 's' : ''} or unpaid fine${n > 1 ? 's' : ''} on record`
-                : l.checked
+                : state === 'partial'
+                ? `${city} was not searched`
+                : state === 'clear'
                 ? `Nothing found in ${l.scope}`
                 : 'Liens could not be checked this time'}
             </div>
             <p className="!mb-0 !text-sm text-ink-soft">
-              {n > 0
+              {state === 'hits'
                 ? 'These must be paid and released before a clean closing.'
+                : state === 'partial'
+                ? `${city} enforces code at this address and runs its own records, which we cannot search. We checked ${l.scope} and found nothing there. That is not the same as the property being clear - a ${city} violation would not appear above.`
                 : `This check covered ${l.scope}. Taxes, Official Records, water bills and everything else are checked in the full lien search.`}
             </p>
           </div>

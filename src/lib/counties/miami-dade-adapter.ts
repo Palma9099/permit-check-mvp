@@ -216,10 +216,18 @@ export const miamiDadeAdapter: CountyAdapter = {
 
     return {
       found: true,
+      // Miami-Dade is the one county whose code records this adapter queries.
+      // That covers the county's own jurisdiction, not a city's.
+      codeCasesChecked: true,
       propertyBasics: {
         folio,
         prettyFolio: prettyFolio(folio),
         siteAddress: normalizeMiamiDadeAddress(cleanString(pa.SiteAddress?.[0]?.Address)) || null,
+        // Who enforces code here. Miami-Dade County's code data covers its
+        // unincorporated area; inside Hialeah, Miami Beach and the rest, the
+        // city does. Without this the report cannot tell "the authority said
+        // no" from "we never asked the authority".
+        municipality: cleanString(pi.Municipality) || null,
         mailingAddress: mailMatch.mail,
         mailingMatchesSite: mailMatch.matches,
         owner: cleanString(pa.OwnerInfos?.[0]?.Name) || null,

@@ -18,6 +18,10 @@ export interface PropertyBasics {
   mailingMatchesSite: boolean | null;
   owner: string | null;
   subdivision: string | null;
+  /** Municipality from the property appraiser, e.g. "HIALEAH". Null when the
+   *  parcel is unincorporated or the county does not report one. Decides who
+   *  the code authority is; see lib/code-authority.ts. */
+  municipality: string | null;
   yearBuilt: number | null;
   heatedArea: number | null;
   totalArea: number | null;
@@ -44,6 +48,10 @@ export interface AdapterResult {
   inspectionCount: number;            // permits' associated inspection count if available
   neighborPermitTotal: number;        // permits on neighboring parcels; 0 if unavailable
   neighborByAddress: { address: string; count: number }[];
+  /** True only when this adapter actually queried the county's code-case
+   *  records. An adapter that never looks must not let the report imply the
+   *  county said no; see lib/code-authority.ts. */
+  codeCasesChecked: boolean;
   codeCasesOpen: CodeCase[];
   codeCasesClosedPast5: CodeCase[];
   sourcesTried: string[];             // human-readable lines for "Data Sources"
@@ -82,6 +90,7 @@ export function emptyResult(sourcesTried: string[] = [], notes: string[] = []): 
       mailingMatchesSite: null,
       owner: null,
       subdivision: null,
+      municipality: null,
       yearBuilt: null,
       heatedArea: null,
       totalArea: null,
@@ -101,6 +110,7 @@ export function emptyResult(sourcesTried: string[] = [], notes: string[] = []): 
     inspectionCount: 0,
     neighborPermitTotal: 0,
     neighborByAddress: [],
+    codeCasesChecked: false,
     codeCasesOpen: [],
     codeCasesClosedPast5: [],
     sourcesTried,

@@ -26,6 +26,10 @@ import { fetchWithTimeout } from '../net';
 export interface MunicipalResult {
   found: boolean; // true only when we actually retrieved rows from a city layer
   cityName: string | null;
+  /** True when this city's source covers CODE CASES, not just permits. A city
+   *  whose feed is permits-only has not had its code records searched, and the
+   *  report must not read as though it has. */
+  codeCasesSupported: boolean;
   permits: Permit[];
   codeCasesOpen: CodeCase[];
   codeCasesClosedPast5: CodeCase[];
@@ -34,7 +38,7 @@ export interface MunicipalResult {
 }
 
 function empty(): MunicipalResult {
-  return { found: false, cityName: null, permits: [], codeCasesOpen: [], codeCasesClosedPast5: [], sources: [], notes: [] };
+  return { found: false, cityName: null, codeCasesSupported: false, permits: [], codeCasesOpen: [], codeCasesClosedPast5: [], sources: [], notes: [] };
 }
 
 // Query an ArcGIS FeatureServer/MapServer layer by a small envelope around a
@@ -190,6 +194,7 @@ async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult
   return {
     found: true,
     cityName: 'Fort Lauderdale',
+    codeCasesSupported: true, // the city publishes a code-case layer
     permits,
     codeCasesOpen: open,
     codeCasesClosedPast5: closedPast5,
@@ -241,6 +246,7 @@ async function tampa(lat: number, lng: number): Promise<MunicipalResult> {
   return {
     found: true,
     cityName: 'Tampa',
+    codeCasesSupported: false, // active-permit feed only, no code cases
     permits,
     codeCasesOpen: [],
     codeCasesClosedPast5: [],
@@ -279,6 +285,7 @@ async function orlando(lat: number, lng: number): Promise<MunicipalResult> {
   return {
     found: true,
     cityName: 'Orlando',
+    codeCasesSupported: false, // permit data only
     permits,
     codeCasesOpen: [],
     codeCasesClosedPast5: [],
@@ -321,6 +328,7 @@ function mergeResults(results: MunicipalResult[]): MunicipalResult {
   return {
     found: true,
     cityName: hits.map((h) => h.cityName).filter(Boolean).join(', ') || null,
+    codeCasesSupported: hits.some((h) => h.codeCasesSupported),
     permits: hits.flatMap((h) => h.permits),
     codeCasesOpen: hits.flatMap((h) => h.codeCasesOpen),
     codeCasesClosedPast5: hits.flatMap((h) => h.codeCasesClosedPast5),

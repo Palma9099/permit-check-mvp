@@ -489,6 +489,10 @@ export async function runDiagnostic(input: {
   //     into the adapter result so the report shows live records instead of just
   //     portal links. No-op for counties/cities without open permit data.
   let municipalPermitsQueried = false;
+  // Did we search the governing CITY's own code records, and whose? Permits
+  // from a city are not code cases; only a city source that covers code counts.
+  let cityCodeChecked = false;
+  let cityCodeSource: string | null = null;
   try {
     const municipal = await fetchMunicipalPermits({ countyKey, lat: geo.lat, lng: geo.lng });
     if (municipal.found) {
@@ -497,6 +501,10 @@ export async function runDiagnostic(input: {
       if (municipal.codeCasesOpen.length || municipal.codeCasesClosedPast5.length) {
         adapterResult.codeCasesOpen = municipal.codeCasesOpen;
         adapterResult.codeCasesClosedPast5 = municipal.codeCasesClosedPast5;
+      }
+      if (municipal.codeCasesSupported) {
+        cityCodeChecked = true;
+        cityCodeSource = municipal.cityName;
       }
       adapterResult.sourcesTried = [...adapterResult.sourcesTried, ...municipal.sources];
       adapterResult.notes = [...adapterResult.notes, ...municipal.notes];
@@ -890,6 +898,7 @@ export async function runDiagnostic(input: {
       mailingMatchesSite: adapterResult.propertyBasics.mailingMatchesSite,
       owner: adapterResult.propertyBasics.owner,
       subdivision: adapterResult.propertyBasics.subdivision,
+      municipality: adapterResult.propertyBasics.municipality,
       yearBuilt: adapterResult.propertyBasics.yearBuilt,
       heatedArea: adapterResult.propertyBasics.heatedArea,
       totalArea: adapterResult.propertyBasics.totalArea,
@@ -916,6 +925,12 @@ export async function runDiagnostic(input: {
       closedPast5yCount: codeEnf.closedPast5.length,
       openCases: codeEnf.open,
       closedCases: codeEnf.closedPast5,
+      // Who we actually asked. Zero open cases means nothing without this: a
+      // county search returning zero is the normal result for any address
+      // inside a municipality, because the city enforces its own code there.
+      countyCodeChecked: adapterResult.codeCasesChecked === true,
+      cityCodeChecked,
+      cityCodeSource,
     },
     flags,
     confidenceAssessment: confidence,

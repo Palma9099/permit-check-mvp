@@ -67,6 +67,9 @@ export function buildStatewideAdapter(
         folio: parcel.parcelId,
         prettyFolio: parcel.parcelId,
         siteAddress: parcel.siteAddress,
+        // The statewide cadastral layer does not carry a municipality, so we
+        // do not know who enforces code here. Null, never a guess.
+        municipality: null,
         mailingAddress: parcel.mailingAddress,
         mailingMatchesSite: parcel.mailingMatchesSite,
         owner: parcel.owner,
@@ -98,6 +101,8 @@ export function buildStatewideAdapter(
 
       return {
         found: true,
+        // Cadastral parcel data only; no code records are searched anywhere here.
+        codeCasesChecked: false,
         propertyBasics,
         sales: parcel.sales,
         extraFeatures: [], // itemized features not on the state roll for these counties

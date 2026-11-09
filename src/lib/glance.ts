@@ -2,6 +2,16 @@
 // words on screen and in print never drift apart. Each metric carries a short
 // explanation: what it is, what it means for a buyer, and for an owner.
 
+import {
+  codeVerdict,
+  cityGoverns,
+  verdictValue,
+  verdictDetail,
+  verdictTone,
+  verdictBuyerNote,
+  verdictOwnerNote,
+  type CodeAuthority,
+} from './code-authority';
 import type { DiagnosticReport } from './types';
 import type { Persona } from './persona';
 
@@ -113,31 +123,32 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
   };
 
   // Code enforcement and liens (liens first: they block a clean closing).
+  //
+  // The counts alone cannot decide this. A county search returning zero is the
+  // normal result for any address inside a municipality, because the city
+  // enforces its own code there - so "0 open" has to be read together with
+  // WHO was actually searched. See lib/code-authority.ts for the incident that
+  // made this necessary.
   const open = r.codeEnforcement.openCount;
   const liens = r.liens?.lines.length ?? 0;
+  const municipality = r.property.municipality ?? null;
+  const authority: CodeAuthority = {
+    municipality,
+    cityGoverns: cityGoverns(municipality),
+    cityChecked: r.codeEnforcement.cityCodeChecked === true,
+    countyChecked: r.codeEnforcement.countyCodeChecked !== false,
+  };
+  const verdict = codeVerdict(authority, open, liens);
   const code: GlanceItem = {
     key: 'code',
     label: 'Code and liens',
-    value: liens > 0 ? `${liens} lien${liens > 1 ? 's' : ''} or fine${liens > 1 ? 's' : ''}` : open === 0 ? 'None open' : `${open} open`,
-    detail:
-      liens > 0
-        ? `Recorded in county records${open > 0 ? `, plus ${open} open case${open > 1 ? 's' : ''}` : ''}.`
-        : open === 0
-        ? r.liens && !r.liens.checked
-          ? 'No open cases. Liens not checked this time.'
-          : 'No open cases or recorded liens.'
-        : 'See county code portal.',
-    tone: open === 0 && liens === 0 ? 'green' : 'red',
+    value: verdictValue(verdict),
+    detail: verdictDetail(verdict, !!r.liens?.checked),
+    tone: verdictTone(verdict),
     info: {
-      what: 'Open code violations, recorded code liens and unpaid county fines tied to this property.',
-      buyer:
-        open === 0
-          ? 'No open violations means no county fines or liens tied to this address right now.'
-          : 'Open cases can carry daily fines and liens that transfer to the new owner. Make the seller close them before closing.',
-      owner:
-        open === 0
-          ? 'Keep it that way. Unresolved cases grow fines every day.'
-          : 'Resolve open cases before you sell. Fines add up until the county signs off.',
+      what: 'Open code violations, recorded code liens and unpaid fines tied to this property.',
+      buyer: verdictBuyerNote(verdict),
+      owner: verdictOwnerNote(verdict),
     },
   };
 

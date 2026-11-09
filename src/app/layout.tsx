@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import './globals.css';
+import PrintExpand from './PrintExpand';
 
 export const metadata: Metadata = {
   title: 'Permit History & Unpermitted Improvement Check',
@@ -18,6 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className="min-h-screen bg-page text-ink">
+        {/* Opens the "Full details" accordion while printing, so Cmd+P does not
+            silently drop the evidence behind the summary tiles. */}
+        <PrintExpand />
         {/* Google tag (gtag.js) — GA4 retargeting */}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-YBQ1SM3F7M"

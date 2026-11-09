@@ -298,6 +298,7 @@ export interface DiagnosticReport {
     mailingMatchesSite: boolean | null;
     owner: string | null;
     subdivision: string | null;
+    municipality: string | null;
     yearBuilt: number | null;
     heatedArea: number | null;
     totalArea: number | null;
@@ -328,6 +329,14 @@ export interface DiagnosticReport {
     closedPast5yCount: number;
     openCases: CodeCase[];
     closedCases: CodeCase[];
+    /** Did we search the COUNTY's code records? */
+    countyCodeChecked: boolean;
+    /** Did we search the governing CITY's own code records? False for most
+     *  municipalities, because very few publish queryable case data. Counts
+     *  alone cannot be read without this; see lib/code-authority.ts. */
+    cityCodeChecked: boolean;
+    /** The city whose records were searched, when one was. */
+    cityCodeSource: string | null;
   };
 
   flags: {
