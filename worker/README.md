@@ -109,7 +109,80 @@ Both flows **degrade safely** — an uncalibrated selector yields a "use the lin
 email, never wrong data.
 
 ## Supported jurisdictions
-Broward + Palm Beach (Accela), Miami-Dade (generic/EPS; permits also covered
-instantly by the app API). Others get a graceful "not yet automated + statewide
-lookup link" email. **Add an Accela agency:** confirm its code by opening
-`aca-prod.accela.com/<AGENCY>/`, add an entry to `JURISDICTIONS`, then calibrate.
+Palm Beach (ePZB, `src/scrapers/pbc.ts`), Miami-Dade (generic/EPS; permits also
+covered instantly by the app API), Broward (**currently broken, see below**).
+Others get a graceful "not yet automated + statewide lookup link" email.
+
+**Add an Accela agency:** confirm its code by opening `aca-prod.accela.com/<AGENCY>/`
+and checking it returns 200 with that agency's real name — the national host
+answers for every Accela customer in the country, so a code that merely resolves
+proves nothing about which state you reached. Then add an entry to
+`JURISDICTIONS` and calibrate.
+
+### Palm Beach County (ePZB)
+Palm Beach does **not** run Accela. The registry used to point it at
+`aca-prod.accela.com/PBC/`, which 404s; that code came from a commercial
+aggregator's coverage page and was never real. The county runs ePZB, with two
+free searches that need no account, both keyed by PCN (its parcel number):
+
+| | |
+|---|---|
+| code cases | `pbc.gov/iPZB.CodeCompliance.Service/search` |
+| permits | `pbc.gov/iPZB.Building/guest/searchpermits` |
+
+Two things decide whether this adapter is honest:
+
+1. **ePZB covers unincorporated Palm Beach only** — 649,776 of the county's
+   1,492,191 people. A parcel inside one of the 39 municipalities returns zero
+   cases, and zero there means *wrong government*, not *clean*. The county
+   publishes the test and so do we: a PCN beginning `00` is unincorporated.
+   Anything else gets refused with an explanation instead of an empty result.
+2. **The permit half is gated.** The county serves that search free to an
+   ordinary browser but bounces an automated session to its login route (and
+   answers 401 on its own lookup endpoint). We do not work around bot checks, so
+   the adapter detects that specific condition and reports the permit side as
+   **not checked**, with a link. It never returns an empty permit list that could
+   read as "all clear".
+
+The free tier prints a case status of `Fine` but never the amount and never the
+lien recording — those are behind the county's certified Fine/Lien search ($65,
+$97 rush, 7–10 business days). The adapter never infers a figure it cannot read.
+
+Live selector check (needs network, ~15s):
+
+```
+cd worker && npx tsx src/smoke-pbc.ts [PCN]
+```
+
+Offline tests, including the real case-detail text, are in
+`tests/pbc-adapter.test.ts` at the repo root and run with the main suite.
+
+### Why the adapters are split into `*-parse.ts`
+
+The repo-root tests import adapter logic, and the root tsconfig excludes
+`worker` — but `exclude` only filters the *initial* file set; TypeScript still
+follows imports across the boundary. Vercel installs root dependencies only, so
+any root file that reaches a playwright-typed module builds fine locally (where
+`worker/node_modules` resolves it) and **fails the deploy** with
+`TS2307: Cannot find module 'playwright'`.
+
+So each adapter keeps its pure logic — parsing, parcel keys, the decision to
+refuse — in a `*-parse.ts` that imports nothing, and the browser flow in the
+main module. `portal-config.ts` exists for the same reason: `PortalConfig` sat
+next to `ScraperCtx`, which holds a playwright `Page`, so importing the
+jurisdiction registry pulled playwright in.
+
+Reproduce the Vercel condition before pushing anything that touches this
+boundary:
+
+```
+mv worker/node_modules /tmp/_wnm && npm run build; mv /tmp/_wnm worker/node_modules
+```
+
+### Broward County — known broken
+`aca-prod.accela.com/BROWARD/` returns 404 (verified 2026-11-09), so every
+Broward deep scan currently falls through to "portal could not be read". Broward
+is not on Accela; it runs Posse (Computronix) at `dpepp.broward.org/BCS`, whose
+folio search works and whose detail pages are plain GET with no session. Before
+building that adapter, note that Broward's county caseload is unincorporated-only
+too, and unincorporated Broward is just 16,888 people.

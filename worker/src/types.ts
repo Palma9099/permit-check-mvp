@@ -22,6 +22,8 @@ export interface ScrapedPermit {
   description: string | null;
   value: string | null;
   contractor: string | null;
+  /** Outstanding balance as the portal prints it, e.g. "$0.00". Palm Beach publishes this. */
+  balance?: string | null;
 }
 
 export interface ScrapedViolation {
@@ -31,6 +33,10 @@ export interface ScrapedViolation {
   closedDate: string | null;
   description: string | null;
   lastAction: string | null;
+  /** Code sections cited, verbatim, e.g. "PBCAFBC20-105.1: PBC Amendments to FBC 7th Edition (2020)". */
+  codes?: string[];
+  /** The inspector's narrative, which names the specific structure or condition cited. */
+  details?: string | null;
 }
 
 export interface PortalLink {

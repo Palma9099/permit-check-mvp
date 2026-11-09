@@ -7,6 +7,7 @@ import type { ScanJob, ScrapeResult } from '../types.js';
 import type { ScraperCtx } from './types.js';
 import { runPortalScrape } from './generic.js';
 import { runAccelaScrape } from './accela.js';
+import { runPbcScrape } from './pbc.js';
 import { JURISDICTIONS } from './jurisdictions.js';
 
 const HARD_TIMEOUT = Number(process.env.SCRAPE_TIMEOUT_MS ?? 240000);
@@ -58,7 +59,9 @@ export async function runScrapeForJob(browser: Browser, job: ScanJob): Promise<S
     const scrape =
       jur.platform === 'accela'
         ? runAccelaScrape(ctx, jur)
-        : runPortalScrape(ctx, jur.config);
+        : jur.platform === 'pbc-epzb'
+          ? runPbcScrape(ctx, jur)
+          : runPortalScrape(ctx, jur.config);
     const result = await Promise.race([
       scrape,
       new Promise<ScrapeResult>((_, reject) =>

@@ -31,12 +31,23 @@ function violationRows(v: ScrapedViolation[]): string {
   if (v.length === 0) return '<tr><td colspan="4" style="padding:8px;color:#888">No code-enforcement cases found in the portal for this property.</td></tr>';
   return v
     .map(
-      (c) => `<tr>
+      (c) => {
+        // Palm Beach publishes the cited code section and the inspector's
+        // narrative. Both are the most useful thing in the record, so show them
+        // under the description rather than dropping them.
+        const extra = [
+          c.details ? `<div style="color:#444;font-size:12px;margin-top:4px">${esc(c.details)}</div>` : '',
+          c.codes?.length
+            ? `<div style="color:#1f3864;font-size:12px;margin-top:4px">${c.codes.map((k) => esc(k)).join('<br>')}</div>`
+            : '',
+        ].join('');
+        return `<tr>
         <td style="padding:6px 8px;border-top:1px solid #eee">${esc(c.caseNumber) || '—'}</td>
         <td style="padding:6px 8px;border-top:1px solid #eee">${esc(c.status) || '—'}</td>
         <td style="padding:6px 8px;border-top:1px solid #eee">${esc(c.openedDate) || '—'}</td>
-        <td style="padding:6px 8px;border-top:1px solid #eee">${esc(c.description) || '—'}</td>
-      </tr>`,
+        <td style="padding:6px 8px;border-top:1px solid #eee">${esc(c.description) || '—'}${extra}</td>
+      </tr>`;
+      },
     )
     .join('');
 }
@@ -114,7 +125,14 @@ export function buildEmail(result: ScrapeResult, requestedAddress: string | null
       : '  none found') +
     `\n\nCode-enforcement cases (${result.violations.length}):\n` +
     (result.violations.length
-      ? result.violations.map((c) => `  - ${c.caseNumber ?? '—'} | ${c.status ?? ''} | ${c.openedDate ?? ''}`).join('\n')
+      ? result.violations
+          .map((c) => {
+            const head = `  - ${c.caseNumber ?? '—'} | ${c.status ?? ''} | ${c.description ?? ''}`;
+            const codes = c.codes?.length ? `\n      ${c.codes.join('\n      ')}` : '';
+            const det = c.details ? `\n      ${c.details}` : '';
+            return head + det + codes;
+          })
+          .join('\n')
       : '  none found') +
     `\n\nPortals: ${result.portalLinks.map((l) => l.url).join('  ')}\n` +
     `Source: ${result.source}. Not legal advice — verify with the AHJ.`;

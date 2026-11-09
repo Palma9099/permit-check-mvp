@@ -8,7 +8,7 @@
 // an out-of-date selector never produces wrong data — only a "use the link"
 // email until calibrated.
 
-import type { PortalConfig } from './types.js';
+import type { PortalConfig } from './portal-config.js';
 
 const COMMON_SUBMIT = [
   'input[type=submit]',
