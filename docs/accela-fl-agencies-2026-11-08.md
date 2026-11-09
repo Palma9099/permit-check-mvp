@@ -250,11 +250,75 @@ Enforcement Unsafe Structure, **Search by Folio or Parcel**, plus contractor
 licence and elevator certificate searches. Folio-keyed county code enforcement is
 exactly what this product consumes.
 
-Scope caveat before any population is credited: Broward County's code enforcement
-jurisdiction is unincorporated Broward and BMSD, and the search page does not state
-which municipalities' cases it includes. Cities keep their own. So this is **not**
-counted as 1.94M until a known Broward folio is run through it, which is the next
-concrete test.
+### Tested end to end, 2026-11-09. It works, and it is far smaller than it looks.
+
+A real folio was run through it. Folio **0113-11-1610** (1455 SW 49 TER, Broadview
+Park) returned the parcel's complete case history, ten cases from 2010 to 2024,
+including one `Lien Recorded` and one open `Violation`. Opening case 24-0071 gave
+the full record:
+
+```
+Status:              Lien Recorded
+Enforcement Type:    Code Compliance      Case Type: ZONING
+Complaint/Violation: BULK ON SWALE MORE THAN 24 HOURS BEFORE SCHEDULED PICKUP.
+Date Established:    01/18/2024           Correction Deadline: 01/18/2024
+Inspector:           Nicholas Rousseau    (954) 357-9790
+Folio Number:        0113-11-1610         Jurisdiction: Unincorporated
+Legal Description:   BROADVIEW PARK 36-33 B LOT 18 BLK 13
+Owner:               MCFARLAND,BRIAN
+--- Activities tab ---
+NOV Issued:          01/18/2024
+Section:             CITATION: 39-275(6)b
+Lien Recording:      CR Number 119572537   Recording Date 05/14/2024
+```
+
+That is a recorded-lien instrument number, cross-referenceable against Broward
+Official Records. It is the single richest per-property record found anywhere in
+this survey. No dollar amount is published, which is the one gap.
+
+**But the population credit is 16,888, not 1.94M.** Two full-year sweeps settle it:
+
+| Year | Cases | Unincorporated | Everything else |
+|---|---|---|---|
+| 2024 | 1,421 | 1,312 (92.3%) | 57 North Lauderdale, rest strays |
+| 2026 YTD | 1,848 | 1,752 (94.8%) | 35 Fort Lauderdale, 12 North Lauderdale |
+
+Every case record carries its own `Jurisdiction:` field, and it reads
+`Unincorporated` on the county's own caseload. Unincorporated Broward is
+**16,888 residents** (2020 Census: county 1,944,375 minus all 31 municipalities,
+1,927,487). That is 0.08% of Florida, a rounding error on the coverage map.
+
+The municipal cases that do appear are **Unsafe Structure** only, the county's
+Unsafe Structures Board acting for cities under interlocal agreement. Verified:
+case 26-1484, 1906 SW 87 AVE, `Jurisdiction: North Lauderdale`, Unsafe Structure,
+FBC 116.2.1.2.3, "partially destroyed due to fire outbreak". That is a partial
+case type, not coverage, so no population is credited for it.
+
+For a structural engineering practice this is worth more than its population
+suggests: an open unsafe-structure case is exactly the fact you want before
+quoting work, and the county publishes them for cities it does not otherwise
+cover. As *coverage*, it is 16,888 people.
+
+### Adapter notes (measured, not assumed)
+
+- The result pages are **plain GET, no session, no cookie, no viewstate**:
+  `Default.aspx?PossePresentation=ParcelEnforcementList&PosseObjectId=<n>` and
+  `...=ViewEnforcementCase&PosseObjectId=<n>` both return 200 to bare `curl`.
+- `PosseObjectId` for parcels is **sequential by lot**: 406547 = 1437 SW 49 TER,
+  406548 = 1455 SW 49 TER, adjacent lots on the same block. The whole
+  unincorporated dataset is enumerable without using the search form at all.
+- Clean negative: a valid parcel with no cases returns the literal string
+  `No Enforcement Cases were found for this parcel.` A bad id returns `BCS - Error`.
+  Both are parseable; neither is a silent empty page.
+- Only the folio-to-PosseObjectId entry step needs the ASP.NET POST.
+- Data hygiene is poor and an adapter must not trust the city column: observed
+  `NINCORPORATED`, `Unicorporated`, `FT LAUDERDALE, FL 22211`, and
+  `THROUGH HIS GRACE 4 LLC` sitting in the city field. Trust the record's
+  `Jurisdiction:` field instead.
+- The enforcement search's **Enforcement Type dropdown does not filter**; the date
+  fields do. A type filter has to be applied after the fetch.
+- A `%` wildcard in Street Address returns enough rows to hang a browser tab. Bound
+  every query by date.
 
 It also means the GIS survey's rejections should each be re-read as "not in GIS",
 never as "the government does not publish it". Tampa, Pinellas, Hillsborough and
@@ -269,7 +333,7 @@ mostly run their own software.
 |---|---|---|
 | **Accela** | 28 confirmed agencies | No. `/v4/agencies` needs a real App ID |
 | **citizenserve** | 17 confirmed agencies | **Yes**, by integer `installationID` |
-| **Posse** (Computronix) | Broward County | not tested |
+| **Posse** (Computronix) | Broward County (unincorporated only) | Yes, `PosseObjectId` is sequential |
 | **Tyler EnerGov** | Marion, St Lucie, Okaloosa (partly), several Palm Beach cities | No central registry; per-host |
 | **OpenGov** | Lake County, Stuart, (Apopka unverified) | **No**, proven below |
 | **MyGovernmentOnline (MGO)** | Escambia, Okaloosa | not tested (`mygovernmentonline.org` is up) |
@@ -361,9 +425,10 @@ was not in GIS.
 3. Write the Accela adapter once, against the 28 confirmed agencies.
 4. Write the citizenserve adapter second. It needs no App ID, the tenant registry
    enumerates by integer, and Alachua already exposes a lien-search request flow.
-5. Run a known Broward folio through Broward County's Posse code enforcement
-   search and record what comes back. It is folio-keyed county code enforcement
-   and the single highest-value untested source found.
+5. DONE 2026-11-09. Broward's Posse search was tested end to end and works, but
+   it covers 16,888 people, not 1.94M. Build the adapter only if unsafe-structure
+   cases for contracting cities are worth it on their own; as coverage it is
+   negligible. See the Broward section above for the measured record shape.
 6. Investigate Palm Beach County's ePZB certified lien and open-violation search,
    and St Lucie's EnerGov Code Lien Search Request. Both publish exactly this
    product's data officially, for 1.49M and 329k people.
