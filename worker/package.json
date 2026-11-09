@@ -7,7 +7,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "calibrate": "tsx src/calibrate.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "smoke:pbc": "tsx src/smoke-pbc.ts"
   },
   "dependencies": {
     "playwright": "1.48.2",
