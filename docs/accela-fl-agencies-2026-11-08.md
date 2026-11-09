@@ -232,7 +232,78 @@ homegrown systems at the largest jurisdictions, which no vendor adapter will rea
 | Okaloosa County | 211,668 | Tyler EnerGov Self Service | from a third-party directory, unverified |
 | Escambia County | 321,905 | unnamed online permitting | directory says it covers permits, planning, code enforcement cases and contractor licenses; host not yet found |
 | City of Stuart | 17,422 | **OpenGov** | migrated off Accela |
-| City of Apopka | 54,873 | **OpenGov** (`apopkafl.portal.opengov.com`) | reachable (200) |
+| City of Apopka | 54,873 | OpenGov (`apopkafl.portal.opengov.com`) | third-party guide only. The 200 proves nothing: see the OpenGov dead end below |
+
+
+## Correction to the original GIS survey: Broward County does publish code cases
+
+`lien-source-survey-2026-11-08.md` recorded "Broward County: 734 services, no case
+layer". That was a conclusion about Broward's **GIS**, and it is wrong about the
+county. Broward County runs a public Code Compliance and Code Enforcement case
+search on a **Posse** (Computronix) platform:
+
+`https://dpepp.broward.org/BCS/Default.aspx?PossePresentation=SearchForEnforcement`
+
+Verified reachable (HTTP 200, 57,346 bytes). The page offers Code Compliance and
+Code Enforcement case search, Enforcement Case Number, Enforcement Type,
+Enforcement Unsafe Structure, **Search by Folio or Parcel**, plus contractor
+licence and elevator certificate searches. Folio-keyed county code enforcement is
+exactly what this product consumes.
+
+Scope caveat before any population is credited: Broward County's code enforcement
+jurisdiction is unincorporated Broward and BMSD, and the search page does not state
+which municipalities' cases it includes. Cities keep their own. So this is **not**
+counted as 1.94M until a known Broward folio is run through it, which is the next
+concrete test.
+
+It also means the GIS survey's rejections should each be re-read as "not in GIS",
+never as "the government does not publish it". Tampa, Pinellas, Hillsborough and
+now Broward County have all turned out that way.
+
+## The Florida vendor landscape, as actually observed
+
+"About five vendors" was too tidy. Nine platforms, and the largest jurisdictions
+mostly run their own software.
+
+| Platform | Florida jurisdictions observed | Centrally enumerable? |
+|---|---|---|
+| **Accela** | 28 confirmed agencies | No. `/v4/agencies` needs a real App ID |
+| **citizenserve** | 17 confirmed agencies | **Yes**, by integer `installationID` |
+| **Posse** (Computronix) | Broward County | not tested |
+| **Tyler EnerGov** | Marion, St Lucie, Okaloosa (partly), several Palm Beach cities | No central registry; per-host |
+| **OpenGov** | Lake County, Stuart, (Apopka unverified) | **No**, proven below |
+| **MyGovernmentOnline (MGO)** | Escambia, Okaloosa | not tested (`mygovernmentonline.org` is up) |
+| **CityView** | Collier | not tested |
+| **Click2Gov** | Pompano Beach, Royal Palm Beach | not tested |
+| **Homegrown** | Miami-Dade, Palm Beach (ePZB), Orange (Fast Track), Duval (JaxEPICS), Volusia (Connect Live) | n/a, one-offs |
+
+### citizenserve is now fully enumerated
+
+IDs 1-1300 were swept. Outside the original 100-650 range, exactly one more Florida
+tenant exists (id 97, generic "Welcome to Our online portal", unidentified). So the
+Florida citizenserve population is **39 tenants, all between id 97 and id 650**,
+of which 17 are confirmed agencies, 7 are excluded (2 school districts, 1
+university, 4 demo installs), and 15 carry no extractable agency name.
+
+### OpenGov cannot be enumerated, and a 200 from it means nothing
+
+`<slug>.portal.opengov.com` is wildcard DNS in front of a single-page app. A real
+tenant and a nonsense one are **byte-identical**:
+
+| slug | HTTP | bytes | md5 |
+|---|---|---|---|
+| `apopkafl` | 200 | 12,792 | afad8c638efd27b67e1650e3e7dd82c5 |
+| `lakecountyfl` | 200 | 12,792 | afad8c638efd27b67e1650e3e7dd82c5 |
+| `zzqqnotrealcityfl` | 200 | 12,792 | afad8c638efd27b67e1650e3e7dd82c5 |
+
+The slug is never echoed in the page; the tenant is resolved by a later client-side
+call. Its real API base is `https://api-east.viewpointcloud.com/v2` (read from the
+app's own embedded `store3/config/environment`), and the guessable public paths
+(`/places`, `/communities`, `/community`, `/tenants`) all return a clean JSON 404.
+Probing further into that private API was **refused by this environment as website
+access circumvention, and was not worked around.** OpenGov tenants therefore have
+to come from each city's own published page, which is how Lake County and Stuart
+were found.
 
 ## Method, and what limits it
 
@@ -290,12 +361,15 @@ was not in GIS.
 3. Write the Accela adapter once, against the 28 confirmed agencies.
 4. Write the citizenserve adapter second. It needs no App ID, the tenant registry
    enumerates by integer, and Alachua already exposes a lien-search request flow.
-5. Investigate Palm Beach County's ePZB certified lien and open-violation search,
+5. Run a known Broward folio through Broward County's Posse code enforcement
+   search and record what comes back. It is folio-keyed county code enforcement
+   and the single highest-value untested source found.
+6. Investigate Palm Beach County's ePZB certified lien and open-violation search,
    and St Lucie's EnerGov Code Lien Search Request. Both publish exactly this
    product's data officially, for 1.49M and 329k people.
-6. Long tail: the 14 unnamed Florida citizenserve tenants, citizenserve IDs past
-   650, self-hosted Accela instances, the OpenGov tier (Lake, Stuart, Apopka), and
-   the Tyler EnerGov tier (Marion, St Lucie, Okaloosa, several Palm Beach cities).
+7. Long tail: the 15 unnamed Florida citizenserve tenants, self-hosted Accela
+   instances, and per-county vendor detail for Bay, Santa Rosa, St Johns, Hernando,
+   Indian River, Flagler, Monroe, Putnam and Clay.
 
 ### Known dead ends
 
@@ -307,3 +381,7 @@ was not in GIS.
 - **Tyler EnerGov REST API**: the documented `/api/energov/...` paths returned 404
   at Marion's real host. The API base was not found this pass.
 - **Name-pattern brute force on `aca-prod`**: saturated, see Method above.
+- **OpenGov subdomain enumeration**: impossible, byte-identical responses. Its
+  private API was off limits and not probed around.
+- **`permits.myokaloosa.com`**: did not resolve from here.
+- **`claycountygov.com`**: returns HTTP 403 to a plain request.
