@@ -21,3 +21,50 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 .prose-section th { text-align: left; padding: 8px 10px; background:#1f3864; color:#fff; }
 .prose-section td { padding: 8px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
 .prose-section tr:nth-child(even) td { background: #fafaf7; }
+
+/* ---------------------------------------------------------------------------
+   Print.
+   A buyer printed this page with Cmd+P and got four thin pages: the summary
+   tiles, and nothing else. Everything that matters - property record, score
+   breakdown, before/after aerials, Street View history, flags, flood and
+   insurance - lives inside a collapsed <details> accordion, and a closed
+   <details> prints closed. The browser also drops background colours by
+   default, which is what carries the red/amber/green meaning in this report.
+
+   The proper server-built PDF (the "Download PDF" button) already includes all
+   of this. These rules make the browser's own print honest too, rather than
+   quietly shipping a report with the evidence missing.
+   --------------------------------------------------------------------------- */
+@media print {
+  /* Tone is meaning here, not decoration: a red tile must not print white. */
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html, body { background: #fff !important; }
+
+  /* Expand every disclosure. A JS beforeprint handler sets [open] as well;
+     this is the belt to that braces, for printing from a saved page. */
+  details { display: block !important; }
+  details > summary { display: none !important; }
+  details > *:not(summary) { display: block !important; }
+
+  /* Controls that cannot be used on paper. */
+  button,
+  form,
+  input,
+  textarea,
+  [data-print="hide"] { display: none !important; }
+
+  /* Keep a card and its heading together. */
+  section, article, figure, table, li { break-inside: avoid; page-break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; page-break-after: avoid; }
+
+  /* Imagery is the point of the before/after sections; never clip it. */
+  img { max-width: 100% !important; height: auto !important; break-inside: avoid; }
+
+  a { text-decoration: none !important; color: inherit !important; }
+
+  @page { margin: 12mm; }
+}
