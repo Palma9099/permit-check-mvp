@@ -219,7 +219,7 @@ homegrown systems at the largest jurisdictions, which no vendor adapter will rea
 | Palm Beach County | 1,492,191 | **ePZB** (homegrown) | TESTED 2026-11-09, see its own section below. The *certified* Fine/Lien search is a paid manual service and not a data source. But two **free guest searches** expose full code cases and full permit history by PCN, for unincorporated PBC (649,776). |
 | Orange County | 1,429,908 | **Fast Track** (`fasttrack.ocfl.net`) | public, no account needed, **but search forms carry a CAPTCHA**, which is a hard stop: bypassing bot checks is out of scope, so this needs an official data request |
 | Duval / Jacksonville | 995,567 | **JAXEPICS** (`jaxepics.coj.net`) | TESTED 2026-11-09, see its own section below. The search page renders for anonymous visitors but **does nothing** - no API call fires at all. Code case records are **public-records-request only**. |
-| Collier County | 375,752 | **CityView** (`cvportal.collier.gov`) | returned HTTP 406 to a plain request; county warns much permit data is not current |
+| Collier County | 375,752 | **CityView** (`cvportal.collier.gov`) | TESTED 2026-11-09, see its own section below. Loads fine in a browser (the 406 was a bot wall), but the property search is **CAPTCHA-gated** and the code lien search is **$25** with an account. 90.6% unincorporated. |
 | Jupiter, Wellington, Riviera Beach, Lake Park | — | Tyler EnerGov Self Service | unverified, from a third-party guide |
 | Royal Palm Beach | — | Click2Gov | unverified |
 | City of Orlando | 307,573 | OpenGov or BS&A | sources conflict; unverified |
@@ -593,6 +593,67 @@ with a 3-10 day turnaround. Duval has no product, only a records request.
 No adapter to build. The realistic path to 949,611 people is an official data
 request or a recurring PRR, which is a relationship question rather than an
 engineering one - the same conclusion as Orange County, for a different reason.
+
+## Collier County CityView, tested 2026-11-09
+
+The best-shaped county tested, and still shut.
+
+### Shape
+
+Collier is **90.6% unincorporated**: 340,525 of 375,752 people, with only Naples
+(19,115), Marco Island (15,760) and Everglades City (352) incorporated. So unlike
+Broward, Palm Beach or St Lucie, the county genuinely is the code authority for
+almost everybody here. Nothing is lost to the unincorporated-only trap.
+
+### The 406 was a bot wall, not a dead host
+
+The earlier survey recorded `cvportal.collier.gov` as returning HTTP 406. It does
+to `curl`, with or without an Accept header. In a browser it loads perfectly as
+the GMCD Public Portal. A 406 to a scripted request is a reason to open the page,
+not a reason to write the county off - the same mistake class as "not in GIS".
+
+### The property search is CAPTCHA-gated
+
+`/cityviewweb/Property` redirects straight to `/cityviewweb/Property/Locate`,
+which is a CAPTCHA page: an image plus a `CVCaptchaCode` field. **Not attempted.**
+Bypassing or solving bot checks is out of scope, so what sits behind that gate is
+**unknown and this document does not guess at it.** What can be said is that the
+county's own buyer guidance does not point at it: the "Thinking about Buying a
+Home?" page tells prospective buyers to "Order a code lien search" and "Obtain
+payoff information on outstanding code liens", both paid.
+
+### The code lien search is $25, portal-only
+
+Quoted from the county's Lien Search and Payoff Request page:
+
+- "The cost for this service is **$25 per property address**"
+- Reports "Code violations, Code enforcement liens, Citations"
+- "will not report issues beyond the Code Enforcement Department's jurisdiction,
+  such as **open permits and utility bills**, and **payoff information is not
+  included**" - payoff is a separate $25
+- "Effective Immediately, Lien Search and Payoffs are now only requested and paid
+  through the Collier County Portal. Please note, an **account will need to be
+  created** in order to submit requests"
+
+That wording is near-identical to St Lucie's page, down to the sentence about
+open permits and utility bills. These counties are copying each other, which is
+why the same $20-$65 paid-lien-search product keeps appearing.
+
+### GIS has districts, not cases
+
+Collier GMD's ArcGIS org (`SlIq32SqARUHIhSx`, behind
+`gis-colliercountygmd.hub.arcgis.com`) publishes **84 feature services**. Parcels,
+address points, zoning, flood, elevation certificates, FBC wind load categories -
+all there. The only code-related layer is `CodeInspectorUpdates_view`, whose single
+layer is `CodeEnforcementDistricts` with fields `OBJECTID, INSPECTOR, ZONES,
+SUP_ZONE, SUPERVISOR`. Inspector territories, not cases. Exactly the trap the
+original survey named: "Zones, sectors and office boundaries, not cases."
+
+### Verdict
+
+No adapter to build. Two independent gates - a CAPTCHA on the free search and a
+$25 account-only paywall on the lien search - and no case layer in GIS. 340,525
+people under one authority, unreachable by code.
 
 ## The Florida vendor landscape, as actually observed
 
