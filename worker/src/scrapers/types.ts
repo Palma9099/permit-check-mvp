@@ -8,27 +8,9 @@ export interface ScraperCtx {
   log: (msg: string) => void;
 }
 
-// Declarative config for a county portal. Selectors are best-effort lists —
-// the generic engine tries each in order, so adding/calibrating a selector is a
-// one-line change. See CALIBRATION in worker/README.md.
-export interface PortalConfig {
-  county: string;
-  source: string;
-  portalLinks: PortalLink[];
-
-  permit: {
-    searchUrl: string;
-    addressInputSelectors: string[];
-    folioInputSelectors?: string[];
-    submitSelectors: string[];
-    resultHeaderKeywords: string[]; // pick the results table by header match
-  };
-  code?: {
-    searchUrl: string;
-    addressInputSelectors: string[];
-    submitSelectors: string[];
-    resultHeaderKeywords: string[];
-  };
-}
+// PortalConfig moved to portal-config.ts, which must stay playwright-free so
+// the jurisdiction registry can be imported from the repo-root tests. It is
+// re-exported here so existing importers are unchanged.
+export type { PortalConfig } from './portal-config.js';
 
 export type Scraper = (ctx: ScraperCtx) => Promise<ScrapeResult>;

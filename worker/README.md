@@ -157,6 +157,28 @@ cd worker && npx tsx src/smoke-pbc.ts [PCN]
 Offline tests, including the real case-detail text, are in
 `tests/pbc-adapter.test.ts` at the repo root and run with the main suite.
 
+### Why the adapters are split into `*-parse.ts`
+
+The repo-root tests import adapter logic, and the root tsconfig excludes
+`worker` — but `exclude` only filters the *initial* file set; TypeScript still
+follows imports across the boundary. Vercel installs root dependencies only, so
+any root file that reaches a playwright-typed module builds fine locally (where
+`worker/node_modules` resolves it) and **fails the deploy** with
+`TS2307: Cannot find module 'playwright'`.
+
+So each adapter keeps its pure logic — parsing, parcel keys, the decision to
+refuse — in a `*-parse.ts` that imports nothing, and the browser flow in the
+main module. `portal-config.ts` exists for the same reason: `PortalConfig` sat
+next to `ScraperCtx`, which holds a playwright `Page`, so importing the
+jurisdiction registry pulled playwright in.
+
+Reproduce the Vercel condition before pushing anything that touches this
+boundary:
+
+```
+mv worker/node_modules /tmp/_wnm && npm run build; mv /tmp/_wnm worker/node_modules
+```
+
 ### Broward County — known broken
 `aca-prod.accela.com/BROWARD/` returns 404 (verified 2026-11-09), so every
 Broward deep scan currently falls through to "portal could not be read". Broward

@@ -12,7 +12,7 @@
 // PortalConfig (see counties.ts) until a dedicated platform flow exists.
 
 import type { PortalLink } from '../types.js';
-import type { PortalConfig } from './types.js';
+import type { PortalConfig } from './portal-config.js';
 import { COUNTY_CONFIGS } from './counties.js';
 
 export interface AccelaJurisdiction {

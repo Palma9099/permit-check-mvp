@@ -15,34 +15,20 @@
 // These run offline. The live selector check is worker/src/smoke-pbc.ts.
 
 import { describe, expect, it } from 'vitest';
+// Imported from pbc-parse, never from pbc.ts: the latter imports playwright,
+// which is a worker dependency and does not exist at the repo root. Vercel
+// installs root dependencies only, so reaching across that boundary builds
+// locally and fails the deploy. The browser flow itself is covered by
+// worker/src/smoke-pbc.ts.
 import {
   normalizePcn,
   isUnincorporatedPcn,
   parseCaseDetailText,
-  runPbcScrape,
-} from '../worker/src/scrapers/pbc.js';
+  pcnRefusal,
+} from '../worker/src/scrapers/pbc-parse.js';
 import { JURISDICTIONS, type PbcJurisdiction } from '../worker/src/scrapers/jurisdictions.js';
-import type { ScraperCtx } from '../worker/src/scrapers/types.js';
 
 const PBC = JURISDICTIONS['palm-beach'] as PbcJurisdiction;
-
-// A page that throws on any use, so a test fails loudly if the adapter touches
-// the network when it should have refused on the PCN alone.
-const noPage = new Proxy(
-  {},
-  {
-    get() {
-      throw new Error('adapter touched the browser when it should have returned early');
-    },
-  },
-) as any;
-
-const ctx = (folio: string | null): ScraperCtx => ({
-  page: noPage,
-  address: null,
-  folio,
-  log: () => {},
-});
 
 describe('PCN normalization', () => {
   it('formats 17 bare digits into the dashed form both portals accept', () => {
@@ -79,31 +65,28 @@ describe('unincorporated test', () => {
 });
 
 describe('refusing to imply a clean property', () => {
-  it('does not run a county search for a municipal parcel, and says zero would not mean clean', async () => {
-    const r = await runPbcScrape(ctx('06-42-47-30-01-000-0010'), PBC);
-    expect(r.ok).toBe(false);
-    expect(r.permits).toEqual([]);
-    expect(r.violations).toEqual([]);
-    expect(r.notes.join(' ')).toMatch(/NOT the same as the property being clear/i);
-    expect(r.notes.join(' ')).toMatch(/unincorporated/i);
+  it('refuses a municipal parcel, and says zero would not mean clean', () => {
+    const r = pcnRefusal('06-42-47-30-01-000-0010');
+    expect(r).not.toBeNull();
+    expect(r!.notes.join(' ')).toMatch(/NOT the same as the property being clear/i);
+    expect(r!.notes.join(' ')).toMatch(/unincorporated/i);
   });
 
-  it('asks for a PCN instead of searching on a folio it cannot use', async () => {
-    const r = await runPbcScrape(ctx('504113111610'), PBC);
-    expect(r.ok).toBe(false);
-    expect(r.notes.join(' ')).toMatch(/not a Palm Beach parcel control number/i);
+  it('asks for a PCN instead of searching on a folio it cannot use', () => {
+    expect(pcnRefusal('504113111610')!.notes.join(' ')).toMatch(/not a Palm Beach parcel control number/i);
   });
 
-  it('asks for a PCN when none was supplied', async () => {
-    const r = await runPbcScrape(ctx(null), PBC);
-    expect(r.ok).toBe(false);
-    expect(r.notes.join(' ')).toMatch(/parcel control number/i);
+  it('asks for a PCN when none was supplied', () => {
+    expect(pcnRefusal(null)!.notes.join(' ')).toMatch(/parcel control number/i);
   });
 
-  it('always hands back the county links so a refusal is still actionable', async () => {
-    const r = await runPbcScrape(ctx(null), PBC);
-    expect(r.portalLinks.length).toBeGreaterThan(0);
-    expect(r.portalLinks.some((l) => /pbcpao\.gov/i.test(l.url))).toBe(true);
+  it('lets a good unincorporated PCN through', () => {
+    expect(pcnRefusal('00-41-43-10-00-000-4180')).toBeNull();
+  });
+
+  it('the jurisdiction still carries links so a refusal is actionable', () => {
+    expect(PBC.portalLinks.length).toBeGreaterThan(0);
+    expect(PBC.portalLinks.some((l) => /pbcpao\.gov/i.test(l.url))).toBe(true);
   });
 });
 
