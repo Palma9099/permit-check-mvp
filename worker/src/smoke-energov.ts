@@ -93,6 +93,23 @@ async function main() {
     check('a clean address still reports ok', empty.ok === true);
     check('a clean address returns no cases', empty.violations.length === 0);
 
+    console.log('\n--- LIVE: the other three Miami-Dade cities ---');
+    for (const [key, probe] of [
+      ['miami-dade:MIAMI BEACH', 'WASHINGTON AVE'],
+      ['miami-dade:CORAL GABLES', 'PONCE DE LEON BLVD'],
+      ['miami-dade:DORAL', 'NW 53 ST'],
+    ] as const) {
+      const cj = CITY_JURISDICTIONS[key] as EnergovJurisdiction;
+      const cr = await runEnergovScrape({ ...mk(probe), municipality: null }, cj);
+      check(`${cj.name} answers`, cr.ok === true);
+      check(`${cj.name} returns cases`, cr.violations.length > 0, `(${cr.violations.length})`);
+      check(
+        `${cj.name} says so when the portal has more than one page`,
+        !cr.notes.some((n) => /reports \d+ matching/.test(n)) ||
+          cr.notes.some((n) => /do not read this list as complete/.test(n)),
+      );
+    }
+
     console.log('\n  cases:');
     for (const v of r.violations.slice(0, 5)) {
       console.log(`    ${v.caseNumber} | ${v.status} | ${v.openedDate ?? '-'}`);

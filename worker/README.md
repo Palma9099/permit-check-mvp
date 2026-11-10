@@ -272,7 +272,32 @@ Florida postal city routinely names a place that does not govern the parcel.
 When the municipality is unknown, routing falls back to the county and the
 adapter says what it covered; it never guesses.
 
-Live check (needs network, ~30s):
+**Four Miami-Dade cities are wired**, all verified live 2026-11-09 with module
+5 present:
+
+| City | Host | Path |
+|---|---|---|
+| Hialeah | `hialeahfl-energovpub.tylerhost.net` | `/apps/selfservice` |
+| Coral Gables | `coralgablesfl-energovpub.tylerhost.net` | `/apps/selfservice` |
+| Doral | `doralfl-energov**web**.tylerhost.net` | `/apps/SelfService` |
+| Miami Beach | `energovcss.miamibeachfl.gov` *(self-hosted)* | `/energovprod/selfservice` |
+
+Neither the host suffix nor the path is constant — `energovpub` vs `energovweb`,
+Tyler-hosted vs the city's own domain — so both are per-tenant fields in the
+registry. Guessing them wastes time; take the link off the city's own building
+department page.
+
+**Results are paged, and a page is not the whole list.** A Miami Beach street
+search reported 21,537 matching cases and returned 10. Returning the first page
+silently would under-report a property, so when the portal says it holds more
+than we read, the result carries a note saying exactly that.
+
+Data quality note: Doral's public code cases include 2008 rows reading
+"TRAINING TEST. DO NOT USE." They are closed/unfounded and they are genuinely
+in the city's records, so the adapter does not filter them — but they will show
+up in a long history.
+
+Live check (needs network, ~60s; covers all four cities):
 
 ```
 cd worker && npm run smoke:energov

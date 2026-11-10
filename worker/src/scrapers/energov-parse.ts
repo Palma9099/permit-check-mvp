@@ -139,9 +139,18 @@ export interface EnergovTenant {
   kind: 'county' | 'city';
   /** Modules confirmed on the live search page, with the date in the registry. */
   modules: number[];
+  /**
+   * Path to the Self Service app, no trailing slash. It is NOT constant, and
+   * guessing it wastes time: Tyler-hosted tenants use /apps/selfservice (Doral
+   * capitalises it /apps/SelfService, which its server does not care about),
+   * while a self-hosted tenant such as Miami Beach serves it from its own
+   * domain at /energovprod/selfservice. Defaults to the common case.
+   */
+  basePath?: string;
 }
 
-export const searchUrl = (t: EnergovTenant) => `https://${t.host}/apps/selfservice#/search`;
+export const searchUrl = (t: EnergovTenant) =>
+  `https://${t.host}${t.basePath ?? '/apps/selfservice'}#/search`;
 
 /** What to say when a tenant does not publish code cases at all. */
 export function noCodeModuleNote(t: EnergovTenant): string {
@@ -157,6 +166,17 @@ export function coverageNote(t: EnergovTenant, nothingFound: boolean): string {
     }.`;
   }
   return `${t.name} runs its own code enforcement, so this search covers the whole city.`;
+}
+
+/**
+ * The portal pages its results, so the rows we read can be fewer than the
+ * cases it says exist. Silently returning the first page would under-report a
+ * property - the same class of mistake as calling an unchecked source clean -
+ * so the caller states the gap instead.
+ */
+export function truncationNote(read: number, reported: number, name: string): string | null {
+  if (reported <= read) return null;
+  return `${name}'s portal reports ${reported} matching code cases but returns them a page at a time; ${read} were read here. Open the portal link to see the rest - do not read this list as complete.`;
 }
 
 /** The caveat that always applies on this platform. */
