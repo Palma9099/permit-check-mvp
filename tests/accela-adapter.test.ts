@@ -24,6 +24,7 @@ import {
   type AccelaResultCount,
   addressesAgree,
   addressParts,
+  streetNumberOf,
 } from '../worker/src/scrapers/accela-parse.js';
 
 const TAMPA: AccelaTenant = {
@@ -303,6 +304,36 @@ describe('B3 and R2-B2: no record is attributed to a property it does not name',
   it('a unit number is never read as the street number or type', () => {
     expect(addressesAgree('1234 N FLORIDA AVE APT 9999', '1234 N FLORIDA AVE')).toBe(true);
     expect(addressesAgree('9999 N FLORIDA AVE APT 1234', '1234 N FLORIDA AVE')).toBe(false);
+  });
+
+  // Round 3. addressParts matched /^(\d+)[A-Z]?\s/ and captured only the
+  // digits, so the suffix letter was matched and then thrown away. Codex
+  // reproduced it through the production adapter: a request for 1234A came
+  // back with matchedAddress 1234B. A half-address is a different property,
+  // often a different unit of a duplex, and its case belongs to its owner.
+  it('CODEX R3 TRIGGER: 1234A and 1234B are different properties', () => {
+    expect(addressesAgree('1234B N FLORIDA AVE', '1234A N FLORIDA AVE')).toBe(false);
+    expect(addressParts('1234A N FLORIDA AVE').number).toBe('1234A');
+    expect(addressParts('1234B N FLORIDA AVE').number).toBe('1234B');
+  });
+
+  it('matches a suffixed number to itself, case-insensitively', () => {
+    expect(addressesAgree('1234a N FLORIDA AVE', '1234A N FLORIDA AVE')).toBe(true);
+  });
+
+  it('a bare number does not confirm a suffixed one, or the reverse', () => {
+    // Same ambiguity rule as the direction: 1234 does not say which of
+    // 1234A or 1234B, so it confirms neither.
+    expect(addressesAgree('1234 N FLORIDA AVE', '1234A N FLORIDA AVE')).toBe(false);
+    expect(addressesAgree('1234A N FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
+  });
+
+  it('streetNumberOf stays digits-only, because it feeds a numeric form field', () => {
+    // Deliberately different from addressParts: Accela's Street No. control
+    // rejects a letter. Narrowing the SEARCH cannot widen a MATCH, because
+    // the suffix-sensitive comparison lives in addressParts.
+    expect(streetNumberOf('1234A N FLORIDA AVE')).toBe('1234');
+    expect(streetNumberOf('1234 N FLORIDA AVE')).toBe('1234');
   });
 
   it('splits an address into the parts that decide a match', () => {

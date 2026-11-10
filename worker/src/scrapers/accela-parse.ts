@@ -435,8 +435,14 @@ const canon = (w: string): string => {
 export function addressParts(address: string | null): AddressParts {
   const a = (address ?? '').split(',')[0].trim();
   if (!a) return { number: null, direction: null, name: null, type: null };
-  const numMatch = a.match(/^(\d+)[A-Z]?\s/i);
-  const number = numMatch ? numMatch[1] : null;
+  // KEEP THE SUFFIX LETTER. The first version matched /^(\d+)[A-Z]?\s/ and
+  // captured only the digits, so 1234A and 1234B N FLORIDA AVE compared
+  // equal. Codex reproduced that through the production adapter: a request
+  // for 1234A came back with matchedAddress 1234B. A half-address is a
+  // different property - often a different unit of a duplex - and its code
+  // case belongs to its own owner.
+  const numMatch = a.match(/^(\d+[A-Z]?)(?=\s|$)/i);
+  const number = numMatch ? numMatch[1].toUpperCase() : null;
   let rest = a
     .replace(/^\d+[A-Z]?\s+/i, '')
     // Drop a unit designator and whatever follows it, so a unit number is
@@ -473,7 +479,11 @@ export function addressesAgree(recordAddr: string | null, requested: string | nu
 
 /** "1234 N FLORIDA AVE" -> "1234". */
 export function streetNumberOf(address: string | null): string | null {
-  const m = (address ?? '').trim().match(/^(\d+)[A-Z]?\s/i);
+  // Digits only here, deliberately and for a different reason than
+  // addressParts: this value goes into Accela's numeric Street No. field,
+  // which rejects a letter. The SUFFIX-SENSITIVE comparison lives in
+  // addressParts, so narrowing the search here cannot widen a match there.
+  const m = (address ?? '').trim().match(/^(\d+)[A-Z]?(?=\s|$)/i);
   return m ? m[1] : null;
 }
 
