@@ -302,8 +302,35 @@ describe('B3 and R2-B2: no record is attributed to a property it does not name',
   });
 
   it('a unit number is never read as the street number or type', () => {
-    expect(addressesAgree('1234 N FLORIDA AVE APT 9999', '1234 N FLORIDA AVE')).toBe(true);
+    expect(addressParts('1234 N FLORIDA AVE APT 9999').number).toBe('1234');
     expect(addressesAgree('9999 N FLORIDA AVE APT 1234', '1234 N FLORIDA AVE')).toBe(false);
+  });
+
+  // Round 4. addressParts STRIPPED the unit to protect street-number
+  // extraction, which erased it from the match decision - so APT A agreed
+  // with APT B, and a bare street address agreed with APT B. Codex put it
+  // exactly right: parsing a unit away to protect street-number extraction
+  // must not erase it from the match. Different apartments at one street
+  // address are different households with different owners.
+  it('CODEX R4 TRIGGER: different apartments are different properties', () => {
+    expect(addressesAgree('1234 N FLORIDA AVE APT B', '1234 N FLORIDA AVE APT A')).toBe(false);
+    expect(addressesAgree('1234 N FLORIDA AVE UNIT 2', '1234 N FLORIDA AVE UNIT 1')).toBe(false);
+  });
+
+  it('a bare street address does not confirm any apartment at it', () => {
+    expect(addressesAgree('1234 N FLORIDA AVE APT B', '1234 N FLORIDA AVE')).toBe(false);
+    expect(addressesAgree('1234 N FLORIDA AVE', '1234 N FLORIDA AVE APT B')).toBe(false);
+  });
+
+  it('matches a unit to itself, across designator wording and case', () => {
+    expect(addressesAgree('1234 N FLORIDA AVE apt a', '1234 N FLORIDA AVE APT A')).toBe(true);
+    expect(addressesAgree('1234 N FLORIDA AVE STE 200', '1234 N FLORIDA AVE SUITE 200')).toBe(true);
+  });
+
+  it('keeps the unit alongside a suffixed street number', () => {
+    expect(addressParts('1234A N FLORIDA AVE APT B')).toEqual({
+      number: '1234A', direction: 'N', name: 'FLORIDA', type: 'AVE', unit: 'B',
+    });
   });
 
   // Round 3. addressParts matched /^(\d+)[A-Z]?\s/ and captured only the
@@ -338,7 +365,7 @@ describe('B3 and R2-B2: no record is attributed to a property it does not name',
 
   it('splits an address into the parts that decide a match', () => {
     expect(addressParts('1234 N FLORIDA AVE')).toEqual({
-      number: '1234', direction: 'N', name: 'FLORIDA', type: 'AVE',
+      number: '1234', direction: 'N', name: 'FLORIDA', type: 'AVE', unit: null,
     });
     expect(addressParts('10049 N Florida Ave T 33612').number).toBe('10049');
   });

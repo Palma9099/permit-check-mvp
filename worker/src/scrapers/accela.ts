@@ -466,18 +466,30 @@ export async function runAccelaScrape(
         details: rec.shortNotes,
       }),
     );
-    // DO NOT ADOPT A RECORD'S ADDRESS AS THE MATCHED ADDRESS.
+    // A STREET SEARCH NEVER CONFIRMS A MATCHED ADDRESS.
     //
-    // A street search returns the whole street. The first version overwrote
-    // matchedAddress with records[0].address, so a request about
-    // 1234 N FLORIDA AVE came back reporting 9999 FLORIDA AVE - a different
-    // property - as the address this report is about. Found while
-    // reproducing Codex's B3 trigger: the fill failure was fixed and this
-    // was still sitting underneath it.
+    // This is the structural answer to four consecutive findings, all in the
+    // same comparison and each narrower than the last: a failed fill
+    // publishing a stranger's case, then N agreeing with S, then 1234A with
+    // 1234B, then APT A with APT B. Every one was a real way for the wrong
+    // property to be confirmed, and every fix left the comparison
+    // load-bearing for the next one.
     //
-    // Only a record that actually names the requested property may set it.
-    const match = r.records.find((rec) => addressesAgree(rec.address, ctx.address));
-    if (match?.address) result.matchedAddress = match.address;
+    // matchedAddress means "we found YOUR property". A street search does not
+    // find a property; it finds a street. So on that path nothing is
+    // confirmed: the requested address stays, the records are published with
+    // their own addresses attached, and the scope is disclosed. Hand-rolled
+    // address equality is a deep problem and this takes it off the critical
+    // path rather than betting the product on getting it right.
+    //
+    // A PARCEL search is different. There the portal matched the parcel key,
+    // not a string, so a record it returns is about that parcel and may
+    // confirm the address - and addressesAgree still guards it, because an
+    // Accela parcel search can return adjacent records too.
+    if (r.searchedBy === 'parcel') {
+      const match = r.records.find((rec) => addressesAgree(rec.address, ctx.address));
+      if (match?.address) result.matchedAddress = match.address;
+    }
 
     // And if the search was by street, say so plainly. These records belong
     // to the street, not to this parcel, and a reader scanning a case list

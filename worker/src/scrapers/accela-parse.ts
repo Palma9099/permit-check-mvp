@@ -408,6 +408,20 @@ export interface AddressParts {
   direction: string | null;
   name: string | null;
   type: string | null;
+  /**
+   * The unit, apartment, suite or lot, when the address states one.
+   *
+   * Round 4: addressParts STRIPPED this to protect street-number extraction,
+   * which erased it from the match decision - so APT A agreed with APT B, and
+   * a bare street address agreed with APT B. Codex put it exactly right:
+   * parsing a unit away to protect street-number extraction must not erase it
+   * from the match.
+   *
+   * Different apartments at one street address are different households with
+   * different owners, and a code case against one is not a finding about the
+   * other.
+   */
+  unit: string | null;
 }
 
 const DIRECTION = /^(n|s|e|w|ne|nw|se|sw|north|south|east|west|northeast|northwest|southeast|southwest)$/i;
@@ -434,7 +448,7 @@ const canon = (w: string): string => {
 /** Split an address into the parts that decide whether two of them match. */
 export function addressParts(address: string | null): AddressParts {
   const a = (address ?? '').split(',')[0].trim();
-  if (!a) return { number: null, direction: null, name: null, type: null };
+  if (!a) return { number: null, direction: null, name: null, type: null, unit: null };
   // KEEP THE SUFFIX LETTER. The first version matched /^(\d+)[A-Z]?\s/ and
   // captured only the digits, so 1234A and 1234B N FLORIDA AVE compared
   // equal. Codex reproduced that through the production adapter: a request
@@ -443,10 +457,12 @@ export function addressParts(address: string | null): AddressParts {
   // case belongs to its own owner.
   const numMatch = a.match(/^(\d+[A-Z]?)(?=\s|$)/i);
   const number = numMatch ? numMatch[1].toUpperCase() : null;
+  // Separate the unit rather than deleting it: it must not pollute the street
+  // parse AND it must not vanish from the comparison.
+  const unitMatch = a.match(/\s(?:apt|unit|ste|suite|rm|room|#|bldg|lot)\s*\.?\s*([A-Z0-9-]+)/i);
+  const unit = unitMatch ? unitMatch[1].toUpperCase() : null;
   let rest = a
     .replace(/^\d+[A-Z]?\s+/i, '')
-    // Drop a unit designator and whatever follows it, so a unit number is
-    // never read as the street number or the street type.
     .replace(/\s+(apt|unit|ste|suite|rm|room|#|bldg|lot)\b.*$/i, '')
     .trim();
   const words = rest.split(/\s+/).filter(Boolean);
@@ -460,7 +476,7 @@ export function addressParts(address: string | null): AddressParts {
   let type: string | null = null;
   if (words.length > 1 && STREET_TYPE.test(words[words.length - 1])) type = canon(words.pop()!);
   const name = words.length ? words.join(' ').toUpperCase() : null;
-  return { number, direction, name, type };
+  return { number, direction, name, type, unit };
 }
 
 export function addressesAgree(recordAddr: string | null, requested: string | null): boolean {
@@ -474,6 +490,9 @@ export function addressesAgree(recordAddr: string | null, requested: string | nu
   // AVE" cannot confirm "1234 N FLORIDA AVE": it does not say which one.
   if (a.direction !== b.direction) return false;
   if (a.type !== b.type) return false;
+  // Same ambiguity rule, now for the unit: APT A does not confirm APT B, and a
+  // bare street address does not confirm any particular apartment at it.
+  if (a.unit !== b.unit) return false;
   return true;
 }
 
