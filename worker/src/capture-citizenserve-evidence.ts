@@ -25,6 +25,12 @@ import { chromium, type Page } from 'playwright';
 import { writeFileSync } from 'node:fs';
 import { CITY_JURISDICTIONS, JURISDICTIONS, type CitizenserveJurisdiction } from './scrapers/jurisdictions.js';
 import { runCitizenserveScrape } from './scrapers/citizenserve.js';
+import { DEFAULT_SHARD, searchUrlOn } from './scrapers/citizenserve-parse.js';
+
+/** Built the same way the registry builds them, so the capture tests the real path. */
+const csLinksForEvidence = (id: number) => [
+  { label: 'Code case search (citizenserve portal)', url: searchUrlOn(DEFAULT_SHARD, id) },
+];
 import type { ScraperCtx } from './scrapers/types.js';
 
 const OUT = process.argv[2]!;
@@ -104,7 +110,11 @@ async function main() {
       county: 'evidence',
       name: t.label,
       agency: { installationID: t.id, name: t.label, kind: t.kind, fileTypes: ['Code'] },
-      portalLinks: [{ label: 'portal', url: `https://www3.citizenserve.com/Portal/PortalController?Action=showSearchPage&ctzPagePrefix=Portal_&installationID=${t.id}` }],
+      // The REGISTRY's own link builder, not a hand-written www3 URL. Codex
+      // noted that substituting our own link here meant the capture never
+      // exercised the registry -> adapter -> email path where the dead-shard
+      // defect lived. Evidence that routes around the defect is not evidence.
+      portalLinks: csLinksForEvidence(t.id),
       source: 'evidence capture',
     };
     let out = '';
@@ -117,6 +127,8 @@ async function main() {
       say(`  id=${String(t.id).padStart(3)} ${t.label.padEnd(18)} "${t.street}"`);
       say(`${''.padEnd(26)} ${out}  -> ${r.ok ? 'SEARCH RAN' : 'REFUSED (not clear, not searched)'}`);
       for (const n of r.notes) say(`${''.padEnd(26)} note: ${n.slice(0, 150)}`);
+      // The link a reader is handed is the whole value of a refusal, so record it.
+      for (const l of r.portalLinks) say(`${''.padEnd(26)} link: ${l.url}`);
     } catch (e: any) {
       say(`  id=${String(t.id).padStart(3)} ${t.label.padEnd(18)} ERROR ${String(e?.message ?? e).slice(0, 70)}`);
     }

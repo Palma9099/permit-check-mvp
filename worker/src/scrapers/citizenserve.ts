@@ -41,6 +41,9 @@ import type { ScraperCtx } from './types.js';
 import type { CitizenserveJurisdiction } from './jurisdictions.js';
 import { readTables, debugDump } from './util.js';
 import {
+  CITIZENSERVE_SHARDS,
+  relinkToShard,
+  searchUrlOn,
   fileTypesFrom,
   hasCode,
   parseCaseRows,
@@ -52,6 +55,9 @@ import {
 } from './citizenserve-parse.js';
 
 export {
+  CITIZENSERVE_SHARDS,
+  relinkToShard,
+  searchUrlOn,
   fileTypesFrom,
   hasCode,
   parseCaseRows,
@@ -87,13 +93,9 @@ export {
 // today and may be fine tomorrow. Every shard is listed, in a fixed order for
 // reproducibility, and the live health check decides. The check is what has to
 // be right, not the ordering.
-const SHARDS = ['www', 'www2', 'www3', 'www4', 'www5', 'www6', 'www7', 'www8'];
-
-const searchUrlOn = (shard: string, id: number) =>
-  `https://${shard}.citizenserve.com/Portal/PortalController?Action=showSearchPage&ctzPagePrefix=Portal_&installationID=${id}`;
-
-/** The link we hand a human, on a shard observed healthy. */
-export const publicSearchUrl = (id: number) => searchUrlOn(SHARDS[0], id);
+// The list and the URL builder live in citizenserve-parse.ts, because the
+// registry builds links too and must not keep a shard list of its own.
+const SHARDS = CITIZENSERVE_SHARDS;
 
 /**
  * Open the tenant's search page on whichever shard answers. Returns the shard
@@ -350,10 +352,20 @@ export async function runCitizenserveScrape(
     const shard = await openSearchPage(ctx, j.agency.installationID);
     if (!shard) {
       result.notes.push(
-        'We could not reach this portal on this run - every citizenserve server we tried was unavailable. Nothing was checked. Use the portal link below.',
+        'We could not reach this portal on this run - every citizenserve server we tried was unavailable. Nothing was checked. The portal link below may also be down; citizenserve serves the same tenant from several interchangeable servers and any of www through www8 can be substituted in the address.',
       );
       return result;
     }
+
+    // Point the reader's links at the server that actually answered.
+    //
+    // The links are the whole value of an honest refusal: when this adapter
+    // cannot read a property's code cases it says so and tells the reader to
+    // check the portal themselves. Every registry link used to be pinned to
+    // one shard, and on the day this was found that shard served a stub with
+    // no search form while five others served the real page. A dead link turns
+    // a careful refusal into useless advice.
+    result.portalLinks = relinkToShard(result.portalLinks, shard, j.agency.installationID);
 
     // The tenant's exposed modules can change; re-read them from the live page
     // rather than trusting the registry snapshot.

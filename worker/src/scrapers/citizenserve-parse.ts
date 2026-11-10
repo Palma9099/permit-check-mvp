@@ -6,6 +6,8 @@
 //
 // Nothing in this file may import playwright, or anything that does.
 
+import type { PortalLink } from '../types.js';
+
 /** One row of a citizenserve Code Administration search result. */
 export interface CitizenserveCase {
   fileNumber: string | null;
@@ -168,4 +170,45 @@ export function coverageNote(agency: CitizenserveAgency, nothingFound: boolean):
 export function noCodeModuleNote(agency: CitizenserveAgency): string {
   const has = agency.fileTypes.length ? agency.fileTypes.join(', ') : 'nothing';
   return `${agency.name} is on citizenserve but does not publish code enforcement cases on its public portal - its search offers ${has}. We checked nothing here, which is not the same as the property being clear. Contact the agency directly for code case history.`;
+}
+
+/**
+ * The shards citizenserve serves every tenant from, in a fixed order.
+ *
+ * Lives here, not in the adapter, because the registry builds portal links and
+ * must not hardcode a shard of its own. Health is not a property worth pinning:
+ * measured a day apart, the healthy set INVERTED.
+ *
+ *   2026-11-09  healthy www www2 www3 www5 www6 www8   stub www7   down www4
+ *   2026-11-10  healthy www www2 www3 www4 www5        stub www6 www7 www8
+ *
+ * `www` is the only one healthy in both readings, so it is the default for a
+ * link built before any shard has been tried. It is a starting point, not a
+ * promise: the adapter replaces these links with the shard it actually opened.
+ */
+export const CITIZENSERVE_SHARDS = ['www', 'www2', 'www3', 'www4', 'www5', 'www6', 'www7', 'www8'];
+
+export const DEFAULT_SHARD = CITIZENSERVE_SHARDS[0];
+
+export const searchUrlOn = (shard: string, id: number) =>
+  `https://${shard}.citizenserve.com/Portal/PortalController?Action=showSearchPage&ctzPagePrefix=Portal_&installationID=${id}`;
+
+/**
+ * Point a tenant's portal links at the shard that actually answered.
+ *
+ * The links we hand a reader are the whole value of an honest refusal: when
+ * the adapter cannot read a property's code cases it says so and tells them to
+ * check the portal themselves. A link to a dead shard makes that advice
+ * worthless, and the registry had every link pinned to www6 - a 2,591-byte
+ * stub with no search form on the day this was found, while www through www5
+ * served the real page.
+ *
+ * So the adapter rewrites them to the shard it opened. When nothing opened,
+ * the links keep the default and the caller says nothing was reachable.
+ */
+export function relinkToShard(links: PortalLink[], shard: string, id: number): PortalLink[] {
+  const want = searchUrlOn(shard, id);
+  return links.map((l) =>
+    /\.citizenserve\.com\/Portal\/PortalController/i.test(l.url) ? { ...l, url: want } : l,
+  );
 }

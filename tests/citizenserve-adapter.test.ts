@@ -23,6 +23,10 @@ import { describe, expect, it } from 'vitest';
 import {
   fileTypesFrom,
   hasCode,
+  CITIZENSERVE_SHARDS,
+  DEFAULT_SHARD,
+  relinkToShard,
+  searchUrlOn,
   parseCaseRows,
   unreadableRowsNote,
   coverageNote,
@@ -278,5 +282,68 @@ describe('F-01: a populated grid is never a confirmed zero', () => {
     expect(n).toMatch(/nothing here is a clear result/i);
     // Singular reads correctly too; a bad plural undermines the warning.
     expect(unreadableRowsNote(1, 'Alachua County')).toMatch(/1 result row that/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Codex citizenserve round 2, F-01. The links in an honest refusal pointed at
+// a dead server.
+//
+// csLinks pinned every portal link to www6. On the day this was found, www6
+// served a 2,591-byte stub with no search form while www through www5 served
+// the real page. So the adapter would correctly refuse to call a property
+// clear, tell the reader to open the portal and check it themselves, and hand
+// them a broken link. Codex found this using the shard-health capture I had
+// attached as evidence for something else.
+//
+// The links are not decoration. They are what a reader has left when the
+// automated read fails, so they have to work.
+// ---------------------------------------------------------------------------
+describe('F-01: portal links follow the server that actually answered', () => {
+  it('builds registry links without pinning a shard by hand', () => {
+    const url = searchUrlOn(DEFAULT_SHARD, 318);
+    expect(url).toContain('installationID=318');
+    // www was the only shard healthy in both of the two measurements taken a
+    // day apart, which is why it is the pre-flight default.
+    expect(DEFAULT_SHARD).toBe('www');
+    expect(url).not.toContain('www6');
+  });
+
+  it('rewrites a citizenserve link to the shard that opened', () => {
+    const links = [
+      { label: 'Code case search (citizenserve portal)', url: searchUrlOn('www6', 318) },
+      { label: 'Property Appraiser', url: 'https://www.acpafl.org/' },
+    ];
+    const out = relinkToShard(links, 'www3', 318);
+    expect(out[0].url).toBe(searchUrlOn('www3', 318));
+    expect(out[0].url).toContain('installationID=318');
+  });
+
+  it('leaves non-citizenserve links alone', () => {
+    // The Property Appraiser link is a different host entirely and is the
+    // reader's route to their parcel id; rewriting it would break it.
+    const links = [
+      { label: 'Code case search (citizenserve portal)', url: searchUrlOn('www6', 445) },
+      { label: 'Property Appraiser', url: 'https://www.sumterpa.com/' },
+    ];
+    const out = relinkToShard(links, 'www2', 445);
+    expect(out[1].url).toBe('https://www.sumterpa.com/');
+    expect(out).toHaveLength(2);
+  });
+
+  it('keeps the tenant id when moving shards', () => {
+    // A relink that dropped or changed the installationID would send the
+    // reader to a different government's records.
+    for (const id of [221, 441, 261, 401, 237, 326, 318, 445, 389]) {
+      const out = relinkToShard([{ label: 'x', url: searchUrlOn('www6', id) }], 'www5', id);
+      expect(out[0].url).toBe(searchUrlOn('www5', id));
+    }
+  });
+
+  it('every shard in the list is a usable substitute in a link', () => {
+    for (const sh of CITIZENSERVE_SHARDS) {
+      expect(searchUrlOn(sh, 318)).toMatch(/^https:\/\/www\d?\.citizenserve\.com\/Portal\/PortalController\?/);
+    }
+    expect(CITIZENSERVE_SHARDS).toHaveLength(8);
   });
 });

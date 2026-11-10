@@ -13,7 +13,7 @@
 
 import type { PortalLink } from '../types.js';
 import type { PortalConfig } from './portal-config.js';
-import type { CitizenserveAgency } from './citizenserve-parse.js';
+import { DEFAULT_SHARD, searchUrlOn, type CitizenserveAgency } from './citizenserve-parse.js';
 import { searchUrl as energovSearchUrl, type EnergovTenant } from './energov-parse.js';
 import { COUNTY_CONFIGS } from './counties.js';
 
@@ -331,7 +331,14 @@ function csLinks(id: number, site?: string): PortalLink[] {
   return [
     {
       label: 'Code case search (citizenserve portal)',
-      url: `https://www6.citizenserve.com/Portal/PortalController?Action=showSearchPage&ctzPagePrefix=Portal_&installationID=${id}`,
+      // DEFAULT_SHARD, not a literal. Every link here used to be pinned to
+      // www6, which on 2026-11-10 served a 2,591-byte stub with no search
+      // form while www through www5 served the real page. That made the
+      // adapter's honest refusal useless: it tells a reader to open the
+      // portal and check the property themselves, and the link was dead.
+      // The adapter rewrites these to the shard it actually opened, so this
+      // is only the value before anything has been tried.
+      url: searchUrlOn(DEFAULT_SHARD, id),
     },
     ...(site ? [{ label: 'Property Appraiser', url: site }] : []),
   ];
