@@ -1,0 +1,398 @@
+[
+ {
+  "code": "HCFL",
+  "name": "Hillsborough County",
+  "kind": "county",
+  "pop": 1459762,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 29 of 53 types",
+  "types": [
+   "Citizen Board Support Code",
+   "Citizen Board Support Water Enforcement",
+   "Enforcement Community Outreach",
+   "Enforcement Community Outreach Historical",
+   "Enforcement Complaint",
+   "Enforcement Generalized Housing Inspections",
+   "Enforcement Generalized Housing Inspections Historical",
+   "Enforcement Proactive",
+   "Enforcement Structural Condemnation",
+   "Enforcement Structural Condemnation Historical",
+   "Regulatory Compliance Violation ADA Gas Pumping Assistance",
+   "Regulatory Compliance Violation ADA Gas Pumping Assistance - Historical",
+   "Regulatory Compliance Violation Fertilizer",
+   "Regulatory Compliance Violation Fertilizer - Historical",
+   "Regulatory Compliance Violation General - Historical",
+   "Regulatory Compliance Violation Human Trafficking",
+   "Regulatory Compliance Violation Human Trafficking - Historical",
+   "Regulatory Compliance Violation Locksmith",
+   "Regulatory Compliance Violation Locksmith - Historical",
+   "Regulatory Compliance Violation Pain Management",
+   "Regulatory Compliance Violation Pain Management - Historical",
+   "Regulatory Compliance Violation Sexually Oriented Business",
+   "Regulatory Compliance Violation Sexually Oriented Business - Historical",
+   "Regulatory Compliance Violation Trespass Tow",
+   "Regulatory Compliance Violation Trespass Tow - Historical",
+   "Regulatory Compliance Violation Vehicle for Hire",
+   "Regulatory Compliance Violation Vehicle for Hire - Historical",
+   "Water Enforcement Complaint",
+   "Water Enforcement Proactive"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "PINELLAS",
+  "name": "Pinellas County",
+  "kind": "county",
+  "pop": 959107,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "LEECO",
+  "name": "Lee County",
+  "kind": "county",
+  "pop": 760822,
+  "state": "ENFORCEMENT",
+  "detail": "module=CodeEnforcement, 7 of 10 types",
+  "types": [
+   "Code Enforcement Complaint",
+   "Code Violation",
+   "Lot Mow Violation",
+   "Minimum Housing Violation",
+   "Nuisance Accumulation Violation",
+   "ROW Misc Violation",
+   "Unsafe Building Violation"
+  ],
+  "module": "CodeEnforcement"
+ },
+ {
+  "code": "POLKCO",
+  "name": "Polk County",
+  "kind": "county",
+  "pop": 725046,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "BREVARD",
+  "name": "Brevard County",
+  "kind": "county",
+  "pop": 606612,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforce,Enforcement,CodeEnforcement,CodeCompliance,Code)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "PASCO",
+  "name": "Pasco County",
+  "kind": "county",
+  "pop": 561891,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 5 of 13 types",
+  "types": [
+   "Administrative Complaint",
+   "Building Complaint",
+   "Code Compliance Complaint",
+   "Standard Complaint",
+   "Violation"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "SEMINOLECO",
+  "name": "Seminole County",
+  "kind": "county",
+  "pop": 470856,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 2 of 2 types",
+  "types": [
+   "Enforcement Historical",
+   "Violation Complaint"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "SARASOTACO",
+  "name": "Sarasota County",
+  "kind": "county",
+  "pop": 434006,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "MANATEE",
+  "name": "Manatee County",
+  "kind": "county",
+  "pop": 399710,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "OSCEOLA",
+  "name": "Osceola County",
+  "kind": "county",
+  "pop": 388656,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "TAMPA",
+  "name": "City of Tampa",
+  "kind": "city",
+  "pop": 384959,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 6 of 11 types",
+  "types": [
+   "Civil Case",
+   "Code Case",
+   "Complaint",
+   "Demolition",
+   "Notice to Appear",
+   "Remedial Order"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "LEONCO",
+  "name": "Leon County",
+  "kind": "county",
+  "pop": 292198,
+  "state": "ENFORCEMENT",
+  "detail": "module=CodeCompliance, 17 of 22 types",
+  "types": [
+   "Abandoned Property Registration Complaint",
+   "Address Posting Code Complaint",
+   "Building Code Complaint",
+   "Code Complaint",
+   "Dilapidated Structure Code Complaint",
+   "Environmental Code Complaint",
+   "Filthy Fluids Code Complaint",
+   "Fire Code Complaint",
+   "Junk Code Complaint",
+   "Land Use Code Complaint",
+   "Minimum Housing Code Complaint",
+   "Mowing Code Complaint",
+   "Refueling Assistance Code Complaint",
+   "Right of Way Code Complaint",
+   "Sign Code Complaint",
+   "Unsecured Pool Code Complaint",
+   "Zoning Code Complaint"
+  ],
+  "module": "CodeCompliance"
+ },
+ {
+  "code": "BOCC",
+  "name": "Charlotte County",
+  "kind": "county",
+  "pop": 186847,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried CodeEnforcement,Enforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "FTL",
+  "name": "Fort Lauderdale",
+  "kind": "city",
+  "pop": 182760,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 12 of 19 types",
+  "types": [
+   "Admin Partial Release of Lien Request",
+   "Building Code Case",
+   "Code Case",
+   "Enforcement Refund Request",
+   "Fire Code Case",
+   "Lien Amnesty Application",
+   "Lien Reduction Application",
+   "Lien Search",
+   "Violation-BLD Hearing",
+   "Violation-Citation",
+   "Violation-CODE Hearing",
+   "Violation-FIR Hearing"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "MARTINCO",
+  "name": "Martin County",
+  "kind": "county",
+  "pop": 158431,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "CITRUS",
+  "name": "Citrus County",
+  "kind": "county",
+  "pop": 153843,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "HOLLYWOOD",
+  "name": "City of Hollywood",
+  "kind": "city",
+  "pop": 153067,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 3 of 7 types",
+  "types": [
+   "Code Compliance Case",
+   "Complaint",
+   "Zoning Case"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "CLEARWATER",
+  "name": "City of Clearwater",
+  "kind": "city",
+  "pop": 117292,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried CodeCompliance,Enforcement,CodeEnforcement,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "NASSAU",
+  "name": "Nassau County",
+  "kind": "county",
+  "pop": 90352,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 11 of 11 types",
+  "types": [
+   "Building Code Violation",
+   "Complaint",
+   "Grading Violation",
+   "Illegal Use of RV Violation",
+   "Right of Way Violation",
+   "Stagnant Water Violation",
+   "Stormwater Violation",
+   "Trash Litter and Debris Violation",
+   "Unpermitted Structure Violation",
+   "Unserviceable Vehicle Violation",
+   "Zoning Violation"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "NORTHPORT",
+  "name": "City of North Port",
+  "kind": "city",
+  "pop": 74793,
+  "state": "ENFORCEMENT",
+  "detail": "module=Code, 4 of 10 types",
+  "types": [
+   "Code - PIN Registration",
+   "Code Case",
+   "Lien",
+   "Lien Reduction Program"
+  ],
+  "module": "Code"
+ },
+ {
+  "code": "WESTON",
+  "name": "City of Weston",
+  "kind": "city",
+  "pop": 68107,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "BRADENTON",
+  "name": "Bradenton",
+  "kind": "city",
+  "pop": 55698,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 2 of 3 types",
+  "types": [
+   "Complaint",
+   "Violation"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "DELAND",
+  "name": "DeLand",
+  "kind": "city",
+  "pop": 37351,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "COOPER",
+  "name": "Cooper City",
+  "kind": "city",
+  "pop": 34401,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 1 of 2 types",
+  "types": [
+   "Enforcement Record"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "WINTER",
+  "name": "Winter Park",
+  "kind": "city",
+  "pop": 29795,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "KEYBISCAYNE",
+  "name": "Village of Key Biscayne",
+  "kind": "city",
+  "pop": 14809,
+  "state": "UNREADABLE",
+  "detail": "no module served a readable code search (tried Enforcement,CodeEnforcement,CodeCompliance,Code,Enforce)",
+  "types": [],
+  "module": null
+ },
+ {
+  "code": "LONGBOAT",
+  "name": "Town of Longboat Key",
+  "kind": "city",
+  "pop": 7505,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 2 of 5 types",
+  "types": [
+   "Complaint",
+   "Violation"
+  ],
+  "module": "Enforcement"
+ },
+ {
+  "code": "MULBERRY",
+  "name": "Mulberry",
+  "kind": "city",
+  "pop": 3952,
+  "state": "ENFORCEMENT",
+  "detail": "module=Enforcement, 1 of 1 types",
+  "types": [
+   "Complaint"
+  ],
+  "module": "Enforcement"
+ }
+]
