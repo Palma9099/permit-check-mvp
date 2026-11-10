@@ -153,11 +153,28 @@ export function pcnRefusal(folio: string | null): { notes: string[] } | null {
  * relax, and only one of those is safe to get wrong.
  */
 export function readMatchesReport(read: number, reported: number | null): boolean {
-  if (reported === null) return true;
+  // An unreadable count is not a licence to report zero.
+  //
+  // Round 2 pushed back on the first version of this, which accepted
+  // `reported === null` unconditionally on the grounds that the label alone
+  // proves the search executed. The counter-example is decisive: a body
+  // reading "Total Records: unavailable" with no recognisable table at all
+  // passed both searches and printed zero permits and zero code cases with
+  // "none found" and no caveat. The search executing is not the same as a
+  // result being readable.
+  //
+  // So a null count is only acceptable when we actually parsed rows - then the
+  // rows themselves are the evidence, and the portal's own number is not
+  // always the row count of the grid in front of us. Parsing nothing with no
+  // count to check it against is no evidence of anything.
+  if (reported === null) return read > 0;
   return read >= reported;
 }
 
 /** How to say a shortfall out loud, for the reader rather than the log. */
-export function shortfallNote(read: number, reported: number, what: string): string {
+export function shortfallNote(read: number, reported: number | null, what: string): string {
+  if (reported === null) {
+    return `Palm Beach County's portal did not print a readable record count for this parcel and no ${what} could be read from it, so nothing here is a confirmed result. Use the portal link below.`;
+  }
   return `Palm Beach County's portal reported ${reported} ${what} for this parcel but only ${read} could be read, so this list is incomplete and nothing here should be read as a clear result. Use the portal link below.`;
 }

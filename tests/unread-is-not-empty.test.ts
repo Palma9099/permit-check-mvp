@@ -121,10 +121,18 @@ describe('F-05: a positive record count with no rows read is a refusal', () => {
     expect(readMatchesReport(9, 7)).toBe(true);
   });
 
-  it('does not refuse when the portal printed no number at all', () => {
-    // The label without a number still proves the search executed. Refusing
-    // here would make every clean Palm Beach parcel unreadable.
-    expect(readMatchesReport(0, null)).toBe(true);
+  it('refuses a null count when nothing was parsed (round 2 overturned this)', () => {
+    // This assertion is the REVERSE of what it said in round 2, on purpose.
+    //
+    // Round 2 accepted a null count unconditionally, reasoning that the
+    // "Total Records:" label alone proves the search executed. Codex produced
+    // the counter-example: "Total Records: unavailable" with no recognisable
+    // table passed both searches and printed zero permits and zero code cases
+    // with "none found" and no caveat. The search executing is not the same as
+    // its result being readable. See R2-02 below for the full rule.
+    expect(readMatchesReport(0, null)).toBe(false);
+    // Parsed rows still stand on their own, so clean parcels stay readable
+    // wherever the portal does print a zero.
     expect(readMatchesReport(4, null)).toBe(true);
   });
 
@@ -380,5 +388,138 @@ describe('F-03: Miami-Dade will not certify code records it could not read', () 
     );
     expect(v.kind).toBe('unchecked');
     expect(verdictTone(v)).not.toBe('green');
+  });
+});
+
+// ===========================================================================
+// Codex round 2. Three of the six stayed blocking, all in the Palm Beach
+// adapter, and all three were real. The axis-flag gap turned out to be in the
+// Broward adapter too, which round 2 did not probe.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// R2-01: one `ok` flag speaking for two independent searches.
+//
+// Codex's trigger: valid unincorporated PCN, the permit portal redirected to
+// login, the code search a confirmed zero. `ok` was true because EITHER search
+// succeeding set it, both axis flags were undefined, and report.ts's fallback
+// then certified the axis that had failed. The text printed "Permits (0)" and
+// "none found" while a note further down said permits were NOT checked.
+// ---------------------------------------------------------------------------
+describe('R2-01: a half-read result is never presented as fully read', () => {
+  it('does not print a zero for the axis that failed', () => {
+    const { text, html } = buildEmail(
+      base({
+        ok: true, // the code search genuinely succeeded
+        permitsChecked: false, // the permit portal sent us to a login page
+        violationsChecked: true,
+        notes: ['Open permits were NOT checked.'],
+      }),
+      'x',
+    );
+    expect(text).toMatch(/Permits \(not searched\)/);
+    expect(text).not.toMatch(/Permits \(0\)/);
+    expect(text).toMatch(/Code-enforcement cases \(0\)/);
+    expect(html).toMatch(/permit history was NOT searched/i);
+  });
+
+  it('does not print a zero for the other axis either', () => {
+    // Codex reversed the failure, so this reverses with it.
+    const { text, html } = buildEmail(
+      base({ ok: true, permitsChecked: true, violationsChecked: false }),
+      'x',
+    );
+    expect(text).toMatch(/Code-enforcement cases \(not searched\)/);
+    expect(text).toMatch(/Permits \(0\)/);
+    expect(html).toMatch(/Code enforcement was NOT searched/i);
+  });
+
+  it('shows the failure banner on a PARTIAL read, not only a total one', () => {
+    // The banner keyed on `ok`, so a half-read result looked fully successful
+    // at the top of the email with only a note to contradict it.
+    const { text, html } = buildEmail(
+      base({ ok: true, permitsChecked: false, violationsChecked: true }),
+      'x',
+    );
+    expect(html).toMatch(/couldn't fully read/i);
+    expect(html).toMatch(/permits not searched/i);
+    expect(text).toMatch(/WE COULD NOT FULLY READ/);
+  });
+
+  it('stays quiet when both axes really were read', () => {
+    const { html, text } = buildEmail(
+      base({ ok: true, permitsChecked: true, violationsChecked: true }),
+      'x',
+    );
+    expect(html).not.toMatch(/couldn't fully read/i);
+    expect(text).not.toMatch(/WE COULD NOT FULLY READ/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R2-02: an unreadable count is not a licence to report zero.
+//
+// Codex's trigger: a body reading "Total Records: unavailable" with no
+// recognisable table. Both searches passed, ok was true, and the email
+// reported zero permits and zero code cases with "none found" and no caveat.
+// My round-2 rationale was that the label proves the search executed. It does.
+// That is not the same as the result being readable.
+// ---------------------------------------------------------------------------
+describe('R2-02: a null record count only passes when rows were actually read', () => {
+  it('refuses a null count with nothing parsed', () => {
+    expect(readMatchesReport(0, null)).toBe(false);
+  });
+
+  it('accepts a null count when the rows themselves are the evidence', () => {
+    // The portal's number is not always the row count of the grid in front of
+    // us, so parsed rows still stand on their own.
+    expect(readMatchesReport(1, null)).toBe(true);
+    expect(readMatchesReport(12, null)).toBe(true);
+  });
+
+  it('still accepts a readable zero, so clean parcels stay readable', () => {
+    expect(readMatchesReport(0, 0)).toBe(true);
+  });
+
+  it('explains an unreadable count differently from a shortfall', () => {
+    const unreadable = shortfallNote(0, null, 'permits');
+    expect(unreadable).toMatch(/did not print a readable record count/i);
+    expect(unreadable).toMatch(/nothing here is a confirmed result/i);
+    const short = shortfallNote(2, 9, 'permits');
+    expect(short).toMatch(/reported 9/);
+    expect(short).toMatch(/only 2 could be read/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// R2-03: reconciling rows that are about to be discarded.
+//
+// Codex's trigger: "Total Records: 1" and a table whose only row is the
+// portal's own embedded filter row. Raw-row reconciliation passed, the
+// permit-number filter then dropped it, and the adapter returned a successful
+// empty permit history.
+// ---------------------------------------------------------------------------
+describe('R2-03: reconcile the records we will publish, not the rows we drop', () => {
+  // The filter the adapter applies to permit rows, kept in step with pbc.ts.
+  const isRealPermit = (n: string) => /^[A-Z]{1,3}-\d{4}-\d+/i.test(n);
+
+  it('knows the embedded filter row is not a permit', () => {
+    expect(isRealPermit('Filter')).toBe(false);
+    expect(isRealPermit('')).toBe(false);
+    expect(isRealPermit('B-2024-12345')).toBe(true);
+  });
+
+  it('refuses one reported record whose only row is the filter row', () => {
+    // Raw rows: 1. Rows that survive the filter: 0. Reported: 1.
+    const rawRows = ['Filter'];
+    const kept = rawRows.filter(isRealPermit);
+    expect(readMatchesReport(rawRows.length, 1)).toBe(true); // the old, wrong check
+    expect(readMatchesReport(kept.length, 1)).toBe(false); // the check now in use
+  });
+
+  it('passes when the surviving records match the count', () => {
+    const kept = ['B-2024-12345', 'Filter'].filter(isRealPermit);
+    expect(kept).toHaveLength(1);
+    expect(readMatchesReport(kept.length, 1)).toBe(true);
   });
 });

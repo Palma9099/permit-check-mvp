@@ -85,6 +85,14 @@ export function buildEmail(result: ScrapeResult, requestedAddress: string | null
   // unsearched axis reads as a finding of none, which is the lie.
   const permitCount = permitsRead ? String(result.permits.length) : NOT_SEARCHED;
   const violationCount = violationsRead ? String(result.violations.length) : NOT_SEARCHED;
+  // The banner must fire on a PARTIAL read too. Keying it on `ok` alone meant
+  // a result where one of two searches failed looked fully successful at the
+  // top of the email, with only a note further down to contradict it.
+  const fullyRead = result.ok && permitsRead && violationsRead;
+  const unread = [!permitsRead ? 'permits' : null, !violationsRead ? 'code enforcement' : null].filter(
+    Boolean,
+  ) as string[];
+  const unreadLabel = unread.length ? ` (${unread.join(' and ')} not searched)` : '';
 
   const links = result.portalLinks
     .map((l) => `<a href="${esc(l.url)}" style="color:#1f3864">${esc(l.label)}</a>`)
@@ -103,10 +111,10 @@ export function buildEmail(result: ScrapeResult, requestedAddress: string | null
     </div>
 
     ${
-      result.ok
+      fullyRead
         ? ''
         : `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px;margin-bottom:16px;font-size:14px;color:#9a3412">
-            We couldn't fully read the county portal for this property automatically this time, so nothing below is a confirmed clear result. The portal links take you straight to the records.
+            We couldn't fully read the records for this property automatically this time${esc(unreadLabel)}, so nothing below is a confirmed clear result. The portal links take you straight to the records.
           </div>`
     }
 
@@ -161,9 +169,9 @@ export function buildEmail(result: ScrapeResult, requestedAddress: string | null
 
   const text =
     `Deep permit & violation scan\n${title} · ${countyName}\n\n` +
-    (result.ok
+    (fullyRead
       ? ''
-      : `WE COULD NOT FULLY READ THE RECORDS FOR THIS PROPERTY THIS TIME.\nNothing below is a confirmed clear result. Use the portal links.\n\n`) +
+      : `WE COULD NOT FULLY READ THE RECORDS FOR THIS PROPERTY THIS TIME${unreadLabel.toUpperCase()}.\nNothing below is a confirmed clear result. Use the portal links.\n\n`) +
     textSection(
       'Permits',
       permitsRead,

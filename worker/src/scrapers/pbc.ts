@@ -270,7 +270,10 @@ async function scrapeCodeCases(
 
 // --- Permits ----------------------------------------------------------------
 
-type PermitOutcome = { kind: 'ran'; permits: ScrapedPermit[] } | { kind: 'gated' } | { kind: 'failed' };
+type PermitOutcome =
+  | { kind: 'ran'; permits: ScrapedPermit[] }
+  | { kind: 'gated' }
+  | { kind: 'failed'; reason?: string };
 
 async function scrapePermits(ctx: ScraperCtx, pcn: string): Promise<PermitOutcome> {
   const { page, log } = ctx;
@@ -308,14 +311,16 @@ async function scrapePermits(ctx: ScraperCtx, pcn: string): Promise<PermitOutcom
   }
 
   const table = pickTable(await readTables(page), ['permit', 'status', 'owner', 'address']);
-  // Same reconciliation as the code side: a positive reported count with no
-  // table we recognise is a parse failure, not an empty permit history.
-  if (!readMatchesReport(table ? table.rows.length : 0, outcome.reported)) {
-    log(`pbc/permits: portal reported ${outcome.reported} rows, read ${table ? table.rows.length : 0} - treating as a failed read`);
-    await debugDump(page, 'pbc-permit-shortfall', log);
-    return { kind: 'failed' };
+  if (!table) {
+    // No table at all. Only a readable zero from the portal can make this an
+    // empty permit history rather than a failed read.
+    if (!readMatchesReport(0, outcome.reported)) {
+      log(`pbc/permits: no results table and no readable zero (reported ${outcome.reported}) - failed read`);
+      await debugDump(page, 'pbc-permit-shortfall', log);
+      return { kind: 'failed', reason: shortfallNote(0, outcome.reported, 'permits') };
+    }
+    return { kind: 'ran', permits: [] };
   }
-  if (!table) return { kind: 'ran', permits: [] };
 
   const iNo = colIndex(table.headers, ['permit no']);
   const iDesc = colIndex(table.headers, ['permit desc', 'description']);
@@ -339,7 +344,21 @@ async function scrapePermits(ctx: ScraperCtx, pcn: string): Promise<PermitOutcom
     // The results table embeds its own filter row; real rows carry a permit number.
     .filter((p) => p.permitNumber && /^[A-Z]{1,3}-\d{4}-\d+/i.test(p.permitNumber));
 
-  log(`pbc/permits: ${permits.length} permit row(s) for ${pcn}`);
+  log(`pbc/permits: ${permits.length} permit row(s) for ${pcn} (portal reported ${outcome.reported ?? 'no count'})`);
+
+  // Reconcile AFTER filtering, the way the code-case side already does.
+  //
+  // Reconciling the raw rows let a grid whose only row was the embedded filter
+  // row satisfy "Total Records: 1", after which the filter discarded it and
+  // the adapter returned a successful empty permit history. The count has to
+  // be checked against the records we are actually going to publish, not
+  // against rows we are about to throw away.
+  if (!readMatchesReport(permits.length, outcome.reported)) {
+    log(`pbc/permits: portal reported ${outcome.reported}, kept ${permits.length} valid permit row(s) - failed read`);
+    await debugDump(page, 'pbc-permit-shortfall', log);
+    return { kind: 'failed', reason: shortfallNote(permits.length, outcome.reported, 'permits') };
+  }
+
   return { kind: 'ran', permits };
 }
 
@@ -357,6 +376,14 @@ export async function runPbcScrape(ctx: ScraperCtx, j: PbcJurisdiction): Promise
     notes: [],
     portalLinks: j.portalLinks,
     source: j.source,
+    // Two independent searches run below, so each axis carries its own read
+    // state. Nothing is read until proven otherwise, on every path out of
+    // here including the PCN refusal: a result that leaves these undefined
+    // falls back to `ok`, and `ok` is set by EITHER search succeeding, which
+    // let a confirmed-zero code search certify a permit side that was
+    // redirected to a login page.
+    permitsChecked: false,
+    violationsChecked: false,
   };
 
   // One pure decision covers both "that is not a PCN" and "the county is not
@@ -375,6 +402,7 @@ export async function runPbcScrape(ctx: ScraperCtx, j: PbcJurisdiction): Promise
     if (r.kind === 'ran') {
       result.permits = r.permits;
       result.ok = true;
+      result.permitsChecked = true;
     } else if (r.kind === 'gated') {
       // Say exactly what happened. "No permits found" would be a lie here: we
       // were never allowed to look, and an empty permit list on a lien check is
@@ -383,7 +411,10 @@ export async function runPbcScrape(ctx: ScraperCtx, j: PbcJurisdiction): Promise
         'Open permits were NOT checked. Palm Beach County publishes its permit search free and without an account, but it refuses automated sessions, and we do not work around that. Run it yourself with this PCN using the "PBC building permit search" link below - it takes about a minute. Treat the permit side of this report as unchecked, not as clear.',
       );
     } else {
-      result.notes.push('Permit search: the county portal did not run our search this time - use the portal link to confirm.');
+      result.notes.push(
+        r.reason ??
+          'Permit search: the county portal did not run our search this time - use the portal link to confirm.',
+      );
     }
   } catch (e: any) {
     log(`pbc permit error: ${e?.message ?? e}`);
@@ -395,6 +426,7 @@ export async function runPbcScrape(ctx: ScraperCtx, j: PbcJurisdiction): Promise
     if (r.ran) {
       result.violations = r.violations;
       result.ok = true;
+      result.violationsChecked = true;
       if (r.matchedAddress) result.matchedAddress = r.matchedAddress;
     } else {
       result.notes.push(
