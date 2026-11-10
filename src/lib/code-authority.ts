@@ -41,6 +41,27 @@ export interface CodeAuthority {
    * failed to identify may be a city holding an open case.
    */
   municipalityKnown: boolean;
+  /**
+   * What this product can do about this city's code records, looked up from
+   * the adapter registry by the caller.
+   *
+   * Passed IN rather than imported, so this module stays a pure function of
+   * its arguments and its tests stay hermetic. `lib/city-code-portals.ts` is
+   * what reads the registry.
+   *
+   * Absent or null means we know of no way to reach this city. It does NOT
+   * soften the verdict either way: a city the deep scan can read has still
+   * not been read until someone runs it.
+   */
+  cityCoverage?: CityCodeReach | null;
+}
+
+/** The part of a city's coverage that changes what the report may say. */
+export interface CityCodeReach {
+  /** The city's own public code search, when one is known. */
+  portalUrl: string | null;
+  /** True when a deep scan of this address searches THIS city, not its county. */
+  deepScanReads: boolean;
 }
 
 export type CodeVerdict =
@@ -48,8 +69,20 @@ export type CodeVerdict =
   | { kind: 'clear' }
   /** Something was found. */
   | { kind: 'hits'; open: number; liens: number }
-  /** The authority that decides was NOT searched. Never render this green. */
-  | { kind: 'unchecked'; authority: string; searched: string | null; portalUrl: string | null };
+  /**
+   * The authority that decides was NOT searched. Never render this green.
+   *
+   * `deepScanReads` says this product can reach that authority on request. It
+   * changes the advice from "go ask them yourself" to "order the scan" - it
+   * never changes the verdict, because nothing has been searched either way.
+   */
+  | {
+      kind: 'unchecked';
+      authority: string;
+      searched: string | null;
+      portalUrl: string | null;
+      deepScanReads: boolean;
+    };
 
 const UNINCORPORATED = /unincorp|^none$|^n\/?a$/i;
 
@@ -105,13 +138,20 @@ export function codeVerdict(
       kind: 'unchecked',
       authority: city,
       searched: authority.countyChecked ? 'the county' : null,
-      portalUrl: cityCodePortal(authority.municipality)?.url ?? null,
+      portalUrl: authority.cityCoverage?.portalUrl ?? null,
+      deepScanReads: authority.cityCoverage?.deepScanReads === true,
     };
   }
 
   // Nobody searched anything at all: also not clear.
   if (!authority.cityChecked && !authority.countyChecked) {
-    return { kind: 'unchecked', authority: 'the code authority', searched: null, portalUrl: null };
+    return {
+      kind: 'unchecked',
+      authority: 'the code authority',
+      searched: null,
+      portalUrl: null,
+      deepScanReads: false,
+    };
   }
 
   // We never established which jurisdiction this parcel is in, so a county
@@ -124,6 +164,10 @@ export function codeVerdict(
       authority: 'the city or county that governs this address',
       searched: authority.countyChecked ? 'the county' : null,
       portalUrl: null,
+      // We do not know which jurisdiction this is, so we cannot claim a scan
+      // would reach the right one. An unidentified authority is not a covered
+      // authority, however many cities the registry holds.
+      deepScanReads: false,
     };
   }
 
@@ -169,10 +213,17 @@ export function verdictBuyerNote(v: CodeVerdict): string {
     case 'hits':
       return 'Open cases can carry daily fines and liens that transfer to the new owner. Make the seller close them before closing.';
     case 'unchecked': {
-      const portal = v.portalUrl
-        ? ` ${v.authority} publishes its cases at ${v.portalUrl} - search it before you rely on anything above.`
-        : ` Ask ${v.authority} directly, or order the full lien search.`;
-      return `${v.authority} is the code authority for this address, and we could not search its records. This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${portal}`;
+      // What the reader can do next, best option first. A city we can read on
+      // request is not a dead end, and saying "ask them yourself" about one of
+      // those sends the reader away from the answer we already hold.
+      const next = v.deepScanReads
+        ? ` A deep scan reads ${v.authority}'s own code records directly - order it and this question gets a real answer.${
+            v.portalUrl ? ` To check it yourself, ${v.authority} publishes its cases at ${v.portalUrl}.` : ''
+          }`
+        : v.portalUrl
+          ? ` ${v.authority} publishes its cases at ${v.portalUrl} - search it before you rely on anything above.`
+          : ` Ask ${v.authority} directly, or order the full lien search.`;
+      return `${v.authority} is the code authority for this address, and we could not search its records. This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${next}`;
     }
     case 'clear':
       return 'No open violations means no fines or liens tied to this address right now.';
@@ -185,7 +236,9 @@ export function verdictOwnerNote(v: CodeVerdict): string {
     case 'hits':
       return 'Resolve open cases before you sell. Fines add up until the authority signs off.';
     case 'unchecked':
-      return `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.`;
+      return v.deepScanReads
+        ? `${v.authority} enforces code at this address and the quick check does not reach it, so treat this as unknown rather than clear. A deep scan searches ${v.authority} directly.`
+        : `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.`;
     case 'clear':
       return 'Keep it that way. Unresolved cases grow fines every day.';
   }
@@ -205,44 +258,18 @@ export function verdictTone(v: CodeVerdict): 'green' | 'amber' | 'red' {
 
 
 // ---------------------------------------------------------------------------
-// Known city code-case portals.
+// There is no list of city code portals here any more. On purpose.
 //
-// When we cannot search a city ourselves, the next best thing is to send the
-// reader straight to the search that WILL answer, rather than leaving "not
-// checked" as a dead end. Each entry here has been opened and confirmed to
-// return code cases for a real address without a login.
+// This file used to carry one, and it held a single entry (Hialeah) while the
+// worker's adapter registry grew to 36 cities. Every one of the other 35 -
+// Tampa, West Palm Beach, Coral Gables, Boca Raton - read as a dead end to the
+// reader, who was told to go ask the city about records this product reads on
+// request. A second copy of an answer does not stay equal to the first; it just
+// stops being checked.
+//
+// The one registry that decides which cities we can read is
+// `CITY_JURISDICTIONS` in worker/src/scrapers/jurisdictions.ts. `codeVerdict`
+// takes what it needs as `CodeAuthority.cityCoverage`, and
+// `lib/city-code-portals.ts` is the only thing that reads the registry, so this
+// module stays pure and there is nothing left to go stale.
 // ---------------------------------------------------------------------------
-
-export interface CityCodePortal {
-  /** Municipality exactly as the property appraiser spells it. */
-  municipality: string;
-  county: string;
-  label: string;
-  url: string;
-  /** The platform, for whoever writes the adapter next. */
-  platform: string;
-  /** Can an adapter read it without an account? */
-  publicSearch: boolean;
-}
-
-export const CITY_CODE_PORTALS: CityCodePortal[] = [
-  {
-    // Verified 2026-11-09 against 135 W 60 ST: module 5 ("Code Case") is
-    // enabled and anonymous, and the search returned case BWOP-001873-2025,
-    // "Building Without A Permit", status Lien, parcel 0421310020800 - the
-    // violation a county-only check reported as "None open".
-    municipality: 'HIALEAH',
-    county: 'miami-dade',
-    label: 'Hialeah code case search',
-    url: 'https://hialeahfl-energovpub.tylerhost.net/apps/selfservice#/search',
-    platform: 'Tyler EnerGov Citizen Self Service',
-    publicSearch: true,
-  },
-];
-
-/** The city's own code search, when we know of one. */
-export function cityCodePortal(municipality: string | null): CityCodePortal | null {
-  const m = (municipality ?? '').trim().toUpperCase();
-  if (!m) return null;
-  return CITY_CODE_PORTALS.find((p) => p.municipality.toUpperCase() === m) ?? null;
-}

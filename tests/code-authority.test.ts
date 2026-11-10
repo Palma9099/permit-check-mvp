@@ -23,7 +23,6 @@ import {
   verdictTone,
   verdictBuyerNote,
   verdictOwnerNote,
-  cityCodePortal,
   type CodeAuthority,
 } from '@/lib/code-authority';
 
@@ -33,6 +32,23 @@ const hialeah: CodeAuthority = {
   cityChecked: false,
   countyChecked: true,
   municipalityKnown: true,
+  // What lib/city-code-portals.ts reports for Hialeah from the adapter
+  // registry. Spelled out here rather than imported so this file stays a pure
+  // unit test of the decision, with no registry in the loop.
+  cityCoverage: {
+    portalUrl: 'https://hialeahfl-energovpub.tylerhost.net/apps/selfservice#/search',
+    deepScanReads: true,
+  },
+};
+
+/** A city whose portal we know but whose records we cannot read ourselves. */
+const portalOnly: CodeAuthority = {
+  municipality: 'SOMECITY',
+  cityGoverns: true,
+  cityChecked: false,
+  countyChecked: true,
+  municipalityKnown: true,
+  cityCoverage: { portalUrl: 'https://example.invalid/code-search', deepScanReads: false },
 };
 
 // The appraiser SAID unincorporated. This is an answer, and the county is the
@@ -177,20 +193,23 @@ describe('pointing the reader at the city search we could not run', () => {
     expect(v.kind).toBe('unchecked');
     const note = verdictBuyerNote(v);
     expect(note).toMatch(/hialeahfl-energovpub\.tylerhost\.net/);
+    // Hialeah is one we read on request, so the first thing offered is the
+    // scan. The link stays, for a reader who would rather look themselves.
+    expect(note).toMatch(/deep scan/i);
+  });
+
+  it('tells a reader to search a portal we cannot read ourselves', () => {
+    const v = codeVerdict(portalOnly, 0, 0);
+    const note = verdictBuyerNote(v);
+    expect(note).toMatch(/example\.invalid\/code-search/);
     expect(note).toMatch(/search it before you rely on anything above/i);
+    expect(note).not.toMatch(/deep scan/i);
   });
 
   it('falls back to plain advice for a city we have no portal for', () => {
-    const v = codeVerdict({ ...hialeah, municipality: 'OPA-LOCKA' }, 0, 0);
+    const v = codeVerdict({ ...hialeah, municipality: 'OPA-LOCKA', cityCoverage: null }, 0, 0);
     expect(verdictBuyerNote(v)).toMatch(/Ask Opa-Locka directly/i);
     expect(verdictBuyerNote(v)).not.toMatch(/tylerhost/);
-  });
-
-  it('knows the Hialeah portal is an anonymous search, for whoever writes the adapter', () => {
-    const p = cityCodePortal('HIALEAH')!;
-    expect(p.publicSearch).toBe(true);
-    expect(p.platform).toMatch(/EnerGov/);
-    expect(cityCodePortal('UNKNOWN CITY')).toBeNull();
   });
 });
 

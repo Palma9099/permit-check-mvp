@@ -13,6 +13,8 @@ import {
   verdictOwnerNote,
   type CodeAuthority,
 } from './code-authority';
+import { cityCodeCoverage } from './city-code-portals';
+import { normalizeCountyKey } from './counties/portals';
 import type { DiagnosticReport } from './types';
 import type { Persona } from './persona';
 
@@ -133,6 +135,11 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
   const open = r.codeEnforcement.openCount;
   const liens = r.liens?.lines.length ?? 0;
   const municipality = r.property.municipality ?? null;
+  // The county key the adapter registry is keyed on. The report's slug is
+  // "fl-hillsborough"; the registry says "hillsborough". Prefer normalizing the
+  // display name, fall back to stripping the slug prefix.
+  const countyKey =
+    normalizeCountyKey(r.county?.name ?? '') ?? (r.county?.slug ?? '').replace(/^fl-/, '') ?? null;
   const authority: CodeAuthority = {
     municipality,
     cityGoverns: cityGoverns(municipality),
@@ -141,6 +148,9 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
     // A blank municipality is the appraiser telling us nothing, not telling us
     // the parcel is unincorporated. Only a non-empty answer counts as known.
     municipalityKnown: municipalityKnown(municipality),
+    // Whether this product can reach this city's code office at all. It
+    // changes what we tell the reader to do next, never the verdict.
+    cityCoverage: cityCodeCoverage(municipality, countyKey),
   };
   const verdict = codeVerdict(authority, open, liens);
   const code: GlanceItem = {
