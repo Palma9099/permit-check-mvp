@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { geocode } from '@/lib/geocode';
+import { geocode, reverseCounty } from '@/lib/geocode';
 import { enqueueScan, scanQueueConfigured } from '@/lib/scan-queue';
 import { municipalityAt } from '@/lib/lien-providers/municipality';
 
@@ -35,8 +35,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Best-effort geocode so the worker knows the county up front. Never blocks
-  // the enqueue: if geocoding fails the worker can still resolve from address.
+  // Geocode so the worker knows the county. The worker does NOT re-resolve it:
+  // `runScrapeForJob` dispatches on the county it is handed and returns "no
+  // county adapter" when that is empty. An earlier comment here claimed
+  // otherwise, which is how the gap below survived.
   let county: string | null = null;
   let lat: number | null = null;
   let lng: number | null = null;
@@ -49,7 +51,26 @@ export async function POST(req: NextRequest) {
         lng = geo.lng;
       }
     } catch {
-      /* ignore — worker re-resolves */
+      /* ignore - handled by the county fallback below */
+    }
+  }
+
+  // The Census geocoder does not return a county at all (`geocodeCensus`
+  // hardcodes county: null - its oneline endpoint has no reliable county
+  // field), and it is the fallback whenever the Google key is absent or Google
+  // fails. `resolveJurisdiction` needs BOTH county and municipality to select
+  // a city, so on that path a valid Tampa address resolved to nothing at all:
+  // municipality "Tampa", county null, no adapter, "no county adapter" back to
+  // the reader.
+  //
+  // `reverseCounty` was written for exactly this ("when Census is the only
+  // geocoder available we still need a county") and was never wired in here.
+  // A failure leaves county null, which is unknown, not a guess.
+  if (!county && lat != null && lng != null) {
+    try {
+      county = await reverseCounty(lat, lng);
+    } catch {
+      county = null;
     }
   }
 
