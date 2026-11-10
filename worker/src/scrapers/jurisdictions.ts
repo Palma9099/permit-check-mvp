@@ -473,10 +473,25 @@ export const CITIZENSERVE_NO_CODE: CitizenserveAgency[] = [
 // 26 tenants answered. 22 are listed below. THE OTHER FOUR ARE NOT COVERAGE,
 // and the difference is the whole point:
 //
-//   Sanibel          6,382  runs EnerGov, module 5 switched OFF for the tenant
+//   Sanibel          6,382  TWO RUNS DISAGREED, see below
 //   Marco Island    15,760  portal could not be read on the verification run
 //   Neptune Beach    7,217  portal could not be read on the verification run
 //   Marianna         6,245  portal could not be read on the verification run
+//
+// Sanibel is the interesting one and the reason this list is worth reading.
+// The first verification run refused it with "runs EnerGov but does not
+// publish code cases - that module is switched off", which is the note that
+// fires only after the live module list HAS been read and found to lack
+// module 5. Fourteen minutes later a second run read it as usable, answering
+// a PERIWINKLE WAY search with zero cases.
+//
+// Both readings cannot be right, and a tenant whose module list answers
+// differently fourteen minutes apart is UNSTABLE, which is not the same as
+// usable. It stays out. Routing it would mean a property in Sanibel could
+// report clear on a run that happened to read the module list successfully
+// while the records behind it were never searched - and picking the
+// convenient reading of two contradictory ones is exactly the habit this
+// product exists to not have. It can be routed when runs agree.
 //
 // Each was left out rather than entered hopefully. A hostname answering says
 // nothing about whether code cases are public, and the three unreadable ones

@@ -48,9 +48,13 @@ async function main() {
        !!j?.portalLinks.some((l) => /Property Appraiser/i.test(l.label)));
   }
 
-  // The four tenants left out on purpose: a host that answers is not coverage.
+  // The four tenants left out on purpose: a host that answers is not coverage,
+  // and neither is a host that answers differently each time it is asked.
   for (const [county, muni] of [
-    ['lee', 'SANIBEL'],        // module 5 switched off for the tenant
+    // Sanibel: two verification runs fourteen minutes apart disagreed, one
+    // reading module 5 as absent and one reading the tenant as usable. An
+    // unstable answer is not a usable one, so it stays out until runs agree.
+    ['lee', 'SANIBEL'],
     ['collier', 'MARCO ISLAND'], // portal unreadable on the verification run
     ['duval', 'NEPTUNE BEACH'],
     ['jackson', 'MARIANNA'],
