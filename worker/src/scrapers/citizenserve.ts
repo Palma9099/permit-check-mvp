@@ -44,6 +44,7 @@ import {
   fileTypesFrom,
   hasCode,
   parseCaseRows,
+  unreadableRowsNote,
   coverageNote,
   noCodeModuleNote,
   describeOutcome,
@@ -54,6 +55,7 @@ export {
   fileTypesFrom,
   hasCode,
   parseCaseRows,
+  unreadableRowsNote,
   coverageNote,
   noCodeModuleNote,
   describeOutcome,
@@ -132,7 +134,7 @@ const GRID_HEADERS = ['file#', 'address', 'type', 'status'];
  * does not fire it, and submitting without the fields lands on an empty
  * results page reading "Please enter search criteria".
  */
-async function selectCodeFileType(ctx: ScraperCtx): Promise<boolean> {
+export async function selectCodeFileType(ctx: ScraperCtx): Promise<boolean> {
   const { page, log } = ctx;
   const sel = page.locator('#filetype');
   if (!(await sel.count())) return false;
@@ -164,7 +166,13 @@ async function selectCodeFileType(ctx: ScraperCtx): Promise<boolean> {
 async function runSearch(
   ctx: ScraperCtx,
   address: string,
-): Promise<{ ran: boolean; cases: CitizenserveCase[] }> {
+): Promise<{
+  ran: boolean;
+  cases: CitizenserveCase[];
+  unreadable?: number;
+  /** The tenant refused because an address alone is not enough for it. */
+  needsMoreCriteria?: boolean;
+}> {
   const { page, log } = ctx;
 
   if (!(await selectCodeFileType(ctx))) {
@@ -193,10 +201,28 @@ async function runSearch(
   await page.waitForTimeout(1000);
 
   const body = (await page.innerText('body').catch(() => '')) ?? '';
-  if (/Please enter search criteria/i.test(body)) {
-    log('citizenserve: portal rejected the search for missing criteria');
+  // Two different rejections, and the second was not recognised before.
+  //
+  //   "Please enter search criteria"            we sent nothing usable
+  //   "Please enter ADDITIONAL search criteria" the tenant wants MORE than an
+  //                                            address, so an address alone
+  //                                            cannot search it at all
+  //
+  // Titusville (installationID 403) is the second kind: its Code search
+  // renders #address and #parcelNumber, accepts a street, and then refuses.
+  // The old regex missed the word "additional", so this came back as the
+  // generic "the portal did not run our search" instead of the real reason.
+  // The outcome was right by luck of the fallback, not by recognition.
+  const rejected = /Please enter (additional )?search criteria/i.test(body);
+  if (rejected) {
+    const needsMore = /additional search criteria/i.test(body);
+    log(
+      needsMore
+        ? 'citizenserve: tenant demands additional criteria beyond an address - cannot search by address here'
+        : 'citizenserve: portal rejected the search for missing criteria',
+    );
     await debugDump(page, 'citizenserve-results', log);
-    return { ran: false, cases: [] };
+    return { ran: false, cases: [], needsMoreCriteria: needsMore };
   }
 
   // Pick the grid by its header, then map rows. Never read the page text for
@@ -238,9 +264,19 @@ async function runSearch(
     await debugDump(page, 'citizenserve-grid', log);
     return { ran: false, cases: [] };
   }
-  const cases = parseCaseRows(grid.rows);
-  log(`citizenserve: ${cases.length} code case row(s) for "${address}"`);
-  return { ran: true, cases };
+  const { cases, unreadable } = parseCaseRows(grid.rows);
+  log(
+    `citizenserve: ${cases.length} code case row(s) for "${address}"` +
+      (unreadable ? `, ${unreadable} populated row(s) unreadable` : ''),
+  );
+  // A populated grid we could only partly read is not a result to publish. The
+  // rows we lost may be the open case, and a shortened list reads as a clean
+  // property. Refuse and let the caller say so.
+  if (unreadable > 0) {
+    await debugDump(page, 'citizenserve-unreadable-rows', log);
+    return { ran: false, cases: [], unreadable };
+  }
+  return { ran: true, cases, unreadable: 0 };
 }
 
 /**
@@ -338,8 +374,15 @@ export async function runCitizenserveScrape(
 
     const r = await runSearch(ctx, ctx.address);
     if (!r.ran) {
+      // Name the reason when we know it. "The portal did not run our search"
+      // would be wrong for a grid we read and could not interpret, and the
+      // reader needs to know a row was lost rather than that nothing ran.
       result.notes.push(
-        'Code enforcement search: the portal did not run our search this run - use the portal link below to confirm.',
+        r.unreadable
+          ? unreadableRowsNote(r.unreadable, j.agency.name)
+          : r.needsMoreCriteria
+            ? `${j.agency.name}'s portal will not search code cases by address alone - it asks for additional criteria we do not have. Its code records were NOT searched, which is not the same as the property being clear. Use the portal link below.`
+            : 'Code enforcement search: the portal did not run our search this run - use the portal link below to confirm.',
       );
       return result;
     }

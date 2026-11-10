@@ -60,12 +60,47 @@ export {
 
 const SEARCH_API = /\/api\/energov\/search\/search\b/i;
 
-/** Read the module ids the tenant actually exposes, live. */
-async function liveModules(ctx: ScraperCtx): Promise<number[]> {
+/**
+ * Read the module ids the tenant actually exposes, live.
+ *
+ * WAIT FOR THE OPTIONS, not just for the select.
+ *
+ * `#SearchModule` attaches to the DOM before Angular fills it, so reading it
+ * the moment it exists returns an EMPTY option list. That made this check
+ * silently dead: an empty list is indistinguishable from "this tenant has no
+ * modules", and the caller can only act on a non-empty one, so the whole
+ * "trust the live page over the registry snapshot" protection never ran.
+ *
+ * Caught on West Palm Beach, 2026-11-10: a probe built on the old read
+ * reported `modules=[]` for seven tenants in a row, and the page in front of
+ * a human plainly listed All/Permit/Plan/Inspection/CODE CASE/Request/Project.
+ * Seven cities and 675,709 people would have been written off as having no
+ * code module on the strength of a failed read - the same mistake as calling
+ * an unchecked source clear, pointed the other way.
+ *
+ * Returns null when the list could not be read at all, so the caller can tell
+ * that apart from a list it read that genuinely lacks module 5.
+ */
+async function liveModules(ctx: ScraperCtx): Promise<number[] | null> {
+  const ok = await ctx.page
+    .waitForFunction(
+      () => {
+        const el = document.querySelector('#SearchModule') as HTMLSelectElement | null;
+        return !!el && el.options.length > 0;
+      },
+      { timeout: 20000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  if (!ok) {
+    ctx.log('energov: the module list never populated - keeping the registry snapshot');
+    return null;
+  }
   const values = await ctx.page
     .$$eval('#SearchModule option', (opts) => opts.map((o) => (o as HTMLOptionElement).value))
     .catch(() => [] as string[]);
-  return moduleIdsFrom(values as string[]);
+  const ids = moduleIdsFrom(values as string[]);
+  return ids.length ? ids : null;
 }
 
 /**
@@ -219,7 +254,7 @@ export async function runEnergovScrape(
     // Trust the live page over the registry snapshot: a tenant can switch the
     // module off between releases.
     const live = await liveModules(ctx);
-    if (live.length && !hasCodeModule(live)) {
+    if (live && !hasCodeModule(live)) {
       log(`energov: ${t.name} no longer exposes Code Case (live modules: ${live.join(', ')})`);
       result.notes.push(noCodeModuleNote({ ...t, modules: live }));
       return result;

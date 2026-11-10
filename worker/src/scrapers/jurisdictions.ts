@@ -378,8 +378,9 @@ const CS_CITY_ROUTES: Array<{
   /** The county property appraiser, so the reader can find their parcel id. */
   pa?: string;
 }> = [
-  // Titusville is NOT here. See CITIZENSERVE_NO_CODE: it offers the Code file
-  // type and then no way to search it, which is not coverage.
+  // Titusville is NOT here. See CITIZENSERVE_NO_CODE: its code search refuses
+  // an address alone and asks for additional criteria, so it cannot answer the
+  // only question this product asks.
   { id: 221, county: 'seminole', municipality: 'CASSELBERRY', pop: 28794, pa: 'https://www.scpafl.org/' },
   // City of Seminole sits in PINELLAS County. Not Seminole County.
   { id: 441, county: 'pinellas', municipality: 'SEMINOLE', pop: 19364, pa: 'https://www.pcpao.gov/' },
@@ -424,13 +425,25 @@ for (const route of CS_CITY_ROUTES) {
  * like coverage from the tenant list and is not.
  */
 export const CITIZENSERVE_NO_CODE: CitizenserveAgency[] = [
-  // Verified live 2026-11-10. Selecting its only file type, "Code Complaints",
-  // and submitting renders NO criteria fields at all: the page goes straight
-  // to "CODE ENFORCEMENT SEARCH RESULTS" carrying both "No records found" and
-  // "Error / Please enter search criteria". There is no address, parcel or
-  // case field to search by, so no property can be looked up. The adapter
-  // refuses it correctly, which is how this was caught - a probe that only
-  // asked "did it answer" would have recorded a clean property instead.
+  // Verified live 2026-11-10, and the FIRST reason recorded here was wrong.
+  //
+  // It is not that no criteria fields render. They do: selecting the only file
+  // type, "Code Complaints", renders #address and #parcelNumber, both visible
+  // at 885x35, once the page's own handler has run. An earlier check missed
+  // them because a plain selectOption leaves them hidden and only the
+  // keystroke fallback brings them up, so "no fields" was a reading of a
+  // half-driven form.
+  //
+  // The real blocker is one step later. Filling #address with a real
+  // Titusville street and submitting returns:
+  //
+  //   "No records found" + "Error / Please enter additional search criteria"
+  //
+  // The tenant demands more than an address. Since an address is what this
+  // product has, no property can be looked up here. Same conclusion, correct
+  // reason. Its fileTypes are recorded as [] to keep it out of any search,
+  // and the adapter now recognises that rejection by name rather than
+  // reaching the right answer through a fallback.
   { installationID: 403, name: 'Titusville', kind: 'city', fileTypes: [] },
   { installationID: 245, name: 'Walton County', kind: 'county', fileTypes: ['Development'] },
   { installationID: 175, name: 'Wakulla County', kind: 'county', fileTypes: ['Permit', 'License', 'Development'] },

@@ -45,15 +45,39 @@ export function fileTypesFrom(html: string): FileType[] {
 export const hasCode = (types: FileType[]): boolean => types.includes('Code');
 
 /**
- * Map a result table's rows onto cases.
+ * Map a result table's rows onto cases, and say how many rows were lost.
  *
  * The grid is File#, Address, Type, Status, Open Date, Close Date, Description.
- * The File# cell is blank on some rows in live data (Alachua has several), so a
- * row is kept when it carries an address, not when it carries a file number.
+ *
+ * THE ROW FILTER USED TO BE A FALSE-ZERO PATH. It kept a row only when the
+ * ADDRESS cell was populated, because File# is blank on several live Alachua
+ * rows. But address can be blank too, and then a row like
+ *
+ *   ["CE-123", "", "Unsafe structure", "Open", "01/01/2026", "", "..."]
+ *
+ * was silently discarded: a real open case with a case number, a type, a
+ * status, a date and a narrative. The grid WAS populated, so the empty-grid
+ * guard never ran, the search still reported as executed, and the email
+ * printed "Code-enforcement cases (0): none found" over an open dangerous
+ * building case.
+ *
+ * Two changes. A row now survives on ANY identifying field, not one chosen
+ * field. And rows that carry content but cannot be interpreted at all are
+ * COUNTED and returned, so the caller can refuse rather than publish a
+ * silently shortened list. Dropping rows and then reporting the survivor
+ * count as the truth is the same mistake as reconciling a permit count
+ * against rows that are about to be filtered out; getting it twice in two
+ * adapters is why this now fails closed instead of filtering quietly.
  */
-export function parseCaseRows(rows: string[][]): CitizenserveCase[] {
-  return rows
-    .map((r) => ({
+export function parseCaseRows(rows: string[][]): {
+  cases: CitizenserveCase[];
+  /** Rows with text in them that produced no identifiable case. */
+  unreadable: number;
+} {
+  const cases: CitizenserveCase[] = [];
+  let unreadable = 0;
+  for (const r of rows) {
+    const c: CitizenserveCase = {
       fileNumber: cellOf(r, 0),
       address: cellOf(r, 1),
       type: cellOf(r, 2),
@@ -61,8 +85,25 @@ export function parseCaseRows(rows: string[][]): CitizenserveCase[] {
       openDate: cellOf(r, 4),
       closeDate: cellOf(r, 5),
       description: cellOf(r, 6),
-    }))
-    .filter((c) => c.address);
+    };
+    // Identifying content: anything that names the case or the property. A
+    // row with only a status or only a date identifies nothing.
+    if (c.fileNumber || c.address) {
+      cases.push(c);
+      continue;
+    }
+    // The row had text, so the grid was not empty, but nothing in it names a
+    // case. That is a parse failure on a populated row, not an absence.
+    if (r.some((x) => (x ?? '').trim())) unreadable++;
+  }
+  return { cases, unreadable };
+}
+
+/** What to tell a reader when a populated grid could not be fully read. */
+export function unreadableRowsNote(unreadable: number, agencyName: string): string {
+  return `${agencyName}'s portal returned ${unreadable} result row${
+    unreadable === 1 ? '' : 's'
+  } that could not be read, so this list is incomplete and nothing here is a clear result. Open the portal link below and check the property directly.`;
 }
 
 function cellOf(row: string[], i: number): string | null {

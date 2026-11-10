@@ -24,6 +24,7 @@ import {
   fileTypesFrom,
   hasCode,
   parseCaseRows,
+  unreadableRowsNote,
   coverageNote,
   noCodeModuleNote,
   describeOutcome,
@@ -130,7 +131,7 @@ describe('result rows', () => {
   ];
 
   it('maps the grid onto cases', () => {
-    const cases = parseCaseRows(rows);
+    const { cases } = parseCaseRows(rows);
     expect(cases).toHaveLength(2);
     expect(cases[1]).toMatchObject({
       fileNumber: '23-013194',
@@ -143,21 +144,24 @@ describe('result rows', () => {
   });
 
   it('keeps a case whose File# is blank, because live data has them', () => {
-    const cases = parseCaseRows(rows);
+    const { cases } = parseCaseRows(rows);
     expect(cases[0].fileNumber).toBeNull();
     expect(cases[0].address).toBe('6211 NW 44TH PL');
   });
 
   it('keeps the inspector narrative, which is the useful part', () => {
-    expect(parseCaseRows(rows)[1].description).toMatch(/elevated accessory structure/);
+    expect(parseCaseRows(rows).cases[1].description).toMatch(/elevated accessory structure/);
   });
 
-  it('drops a filler row with no address', () => {
-    expect(parseCaseRows([['', '', '', '', '', '', '']])).toEqual([]);
+  it('drops a genuinely empty filler row without calling it unreadable', () => {
+    // No text at all: nothing was lost, so this is not a parse failure.
+    const r = parseCaseRows([['', '', '', '', '', '', '']]);
+    expect(r.cases).toEqual([]);
+    expect(r.unreadable).toBe(0);
   });
 
   it('invents no fine or lien amount, because the portal shows none', () => {
-    expect(JSON.stringify(parseCaseRows(rows))).not.toMatch(/\$\s*[\d,]+/);
+    expect(JSON.stringify(parseCaseRows(rows).cases)).not.toMatch(/\$\s*[\d,]+/);
   });
 });
 
@@ -198,5 +202,81 @@ describe('registry', () => {
       .filter((j): j is CitizenserveJurisdiction => j.platform === 'citizenserve')
       .map((j) => j.agency.installationID);
     for (const a of CITIZENSERVE_NO_CODE) expect(registered).not.toContain(a.installationID);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Codex citizenserve round 1, F-01 (HIGH). A populated grid became a
+// confirmed zero.
+//
+// The row filter kept a row only when the ADDRESS cell had content, chosen
+// because File# is blank on several live Alachua rows. But address can be
+// blank too, and then a real open case was discarded in silence. The grid was
+// populated, so the empty-grid guard never ran; the search still reported as
+// executed; and the email printed "Code-enforcement cases (0): none found"
+// over an open dangerous-building case.
+//
+// This is the same shape as the Palm Beach permit finding one round earlier:
+// drop rows, then report the survivor count as the truth. Twice in two
+// adapters is why the parser now fails closed instead of filtering quietly.
+// ---------------------------------------------------------------------------
+describe('F-01: a populated grid is never a confirmed zero', () => {
+  // Codex's trigger, verbatim.
+  const BLANK_ADDRESS_ROW = [
+    'CE-123',
+    '',
+    'Unsafe structure',
+    'Open',
+    '01/01/2026',
+    '',
+    'Active dangerous building case',
+  ];
+
+  it('keeps an open case whose address cell is blank', () => {
+    const { cases, unreadable } = parseCaseRows([BLANK_ADDRESS_ROW]);
+    expect(cases).toHaveLength(1);
+    expect(cases[0].fileNumber).toBe('CE-123');
+    expect(cases[0].status).toBe('Open');
+    expect(cases[0].description).toMatch(/dangerous building/i);
+    expect(unreadable).toBe(0);
+  });
+
+  it('keeps Codex control row too, so the fix is not one-sided', () => {
+    const control = ['CE-123', '100 MAIN ST', 'Unsafe structure', 'Open', '01/01/2026', '', 'x'];
+    expect(parseCaseRows([control]).cases).toHaveLength(1);
+  });
+
+  it('survives on either identifying field, not one chosen field', () => {
+    const noFileNo = ['', '6211 NW 44TH PL', 'Work without Permit', 'Open', '', '', ''];
+    const noAddress = ['CE-9', '', 'Work without Permit', 'Open', '', '', ''];
+    expect(parseCaseRows([noFileNo]).cases).toHaveLength(1);
+    expect(parseCaseRows([noAddress]).cases).toHaveLength(1);
+  });
+
+  it('COUNTS a populated row that identifies no case, instead of dropping it', () => {
+    // Text present, but nothing naming a case or a property. This is a parse
+    // failure on a populated row, not an absence of cases.
+    const odd = ['', '', '', 'Open', '01/01/2026', '', ''];
+    const r = parseCaseRows([odd]);
+    expect(r.cases).toEqual([]);
+    expect(r.unreadable).toBe(1);
+  });
+
+  it('counts the lost rows alongside the ones it read', () => {
+    const good = ['CE-1', '1 MAIN ST', 'T', 'Open', '', '', ''];
+    const lost = ['', '', '', 'Open', '', '', ''];
+    const r = parseCaseRows([good, lost, lost]);
+    expect(r.cases).toHaveLength(1);
+    expect(r.unreadable).toBe(2);
+  });
+
+  it('tells the reader a row was lost rather than that nothing ran', () => {
+    const n = unreadableRowsNote(2, 'Alachua County');
+    expect(n).toMatch(/Alachua County/);
+    expect(n).toMatch(/2 result rows/);
+    expect(n).toMatch(/incomplete/i);
+    expect(n).toMatch(/nothing here is a clear result/i);
+    // Singular reads correctly too; a bad plural undermines the warning.
+    expect(unreadableRowsNote(1, 'Alachua County')).toMatch(/1 result row that/);
   });
 });
