@@ -71,11 +71,21 @@ export {
  * The portal's own links point at www4 and rely on a redirect, so pinning it -
  * as the first version of this adapter did - makes one sick shard look like
  * the whole county going dark. Try them in turn and accept the first that
- * actually renders the search form. www4 stays in the list, last, because an
- * outage is not a permanent fact; www7 is excluded because a 200 serving a
- * stub is worse than a failure - it looks like success.
+ * actually renders the search form. A 200 serving a stub is worse than a
+ * failure, because it looks like success, so the health check tests for the
+ * form rather than the status code.
  */
-const SHARDS = ['www6', 'www3', 'www5', 'www8', 'www2', 'www', 'www4'];
+// Measured again on 2026-11-10, and the picture had INVERTED in one day:
+//
+//   2026-11-09   healthy: www, www2, www3, www5, www6, www8   stub: www7   down: www4
+//   2026-11-10   healthy: www, www2, www3, www4, www5         stub: www6, www7, www8
+//
+// So a shard's health is not a fact worth hardcoding a preference on, and
+// excluding www7 by name was wrong-headed: www8 serves the same 2.6 KB stub
+// today and may be fine tomorrow. Every shard is listed, in a fixed order for
+// reproducibility, and the live health check decides. The check is what has to
+// be right, not the ordering.
+const SHARDS = ['www', 'www2', 'www3', 'www4', 'www5', 'www6', 'www7', 'www8'];
 
 const searchUrlOn = (shard: string, id: number) =>
   `https://${shard}.citizenserve.com/Portal/PortalController?Action=showSearchPage&ctzPagePrefix=Portal_&installationID=${id}`;
@@ -201,25 +211,67 @@ async function runSearch(
     // no data rows, so "no grid" covers both a genuinely clean property and a
     // layout change that broke the parse - and reporting the second as the
     // first is exactly how this product lies. An address with a known open
-    // case was reported clean this way during development. The portal does
-    // render an explicit empty state, so require it before claiming zero.
-    const emptyState = /no records found/i.test(
-      await page.evaluate(() => {
-        const el = document.querySelector('#resultsDiv, .results, #divResults');
-        return el ? (el as HTMLElement).innerText : '';
-      }).catch(() => ''),
-    );
-    if (emptyState) {
-      log('citizenserve: portal reported an empty result set');
+    // case was reported clean this way during development.
+    //
+    // Require POSITIVE evidence of an empty result instead. Read live against
+    // Alachua on 2026-11-10, a zero-hit search renders the results table fully
+    // headed, with a single completely empty row:
+    //
+    //   <table class="table">
+    //     <thead><tr><th>File#</th><th>Address</th>...<th>Description</th></tr></thead>
+    //     <tbody><tr></tr></tbody>
+    //   </table>
+    //
+    // and the words "No records found" in a <p> OUTSIDE that table. So the
+    // honest test is "the grid rendered with its real headers and carried no
+    // cell-bearing rows" - that proves the result region loaded, which a
+    // broken parse or a changed layout does not. The earlier check looked for
+    // the text inside #resultsDiv/.results/#divResults, and none of those
+    // selectors exist on this page, so it could never fire: every clean
+    // property read as "could not check" and the whole tier was stuck amber.
+    const empty = await resultGridIsEmpty(page);
+    if (empty) {
+      log('citizenserve: results grid rendered with no rows - a confirmed zero');
       return { ran: true, cases: [] };
     }
-    log('citizenserve: no result grid and no empty state - treating as a failed read');
+    log('citizenserve: no result grid and no confirmed empty grid - treating as a failed read');
     await debugDump(page, 'citizenserve-grid', log);
     return { ran: false, cases: [] };
   }
   const cases = parseCaseRows(grid.rows);
   log(`citizenserve: ${cases.length} code case row(s) for "${address}"`);
   return { ran: true, cases };
+}
+
+/**
+ * Did the results grid render, headed and with no data rows?
+ *
+ * This is the one thing that may stand in for a row count, and only because it
+ * is positive evidence: the table has to be there, carrying the real column
+ * headers, with nothing in its body. A page that failed to render its result
+ * region has no such table and gets a refusal instead.
+ */
+async function resultGridIsEmpty(page: ScraperCtx['page']): Promise<boolean> {
+  return page
+    .evaluate((needles: string[]) => {
+      const tables = Array.from(document.querySelectorAll('table'));
+      for (const t of tables) {
+        const headers = Array.from(t.querySelectorAll('thead th, thead td')).map((h) =>
+          (h.textContent || '').toLowerCase().replace(/\s+/g, ''),
+        );
+        if (!headers.length) continue;
+        const headed = needles.every((k) => headers.some((h) => h.includes(k)));
+        if (!headed) continue;
+        // Any row carrying a cell with text means this is not an empty grid,
+        // and the caller should have parsed it rather than asking us.
+        const dataRows = Array.from(t.querySelectorAll('tbody tr')).filter((r) =>
+          Array.from(r.querySelectorAll('td')).some((c) => (c.textContent || '').trim()),
+        );
+        return dataRows.length === 0;
+      }
+      return false;
+    }, GRID_HEADERS.map((k) => k.replace(/\s+/g, '')))
+    .catch(() => false);
 }
 
 export async function runCitizenserveScrape(
