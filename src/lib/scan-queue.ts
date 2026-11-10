@@ -34,6 +34,20 @@ export interface EnqueueInput {
   address?: string | null;
   folio?: string | null;
   county?: string | null;
+  /**
+   * The incorporated place containing the PARCEL POINT, e.g. "TAMPA".
+   *
+   * The worker uses this to pick the city's own code adapter; without it, it
+   * falls back to the county's, which in most Florida counties covers only
+   * unincorporated land. Omitting it made all 36 city adapters unreachable
+   * from this queue, so a Tampa address was answered by Hillsborough County's
+   * unincorporated search.
+   *
+   * Null means we could not establish it. It is never a finding of
+   * unincorporated land, and it must never be filled from the postal city in
+   * the typed address.
+   */
+  municipality?: string | null;
   lat?: number | null;
   lng?: number | null;
 }
@@ -75,6 +89,7 @@ export interface ScanJobRow {
   address: string | null;
   folio: string | null;
   county: string | null;
+  municipality: string | null;
   result: unknown;
   error: string | null;
   created_at: string;
@@ -90,6 +105,7 @@ export async function enqueueScan(input: EnqueueInput): Promise<{ id: string }> 
       address: input.address ?? null,
       folio: input.folio ?? null,
       county: input.county ?? null,
+      municipality: input.municipality ?? null,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
     },
@@ -109,7 +125,7 @@ export async function enqueueScan(input: EnqueueInput): Promise<{ id: string }> 
 export async function getScan(id: string): Promise<ScanJobRow | null> {
   const res = await pgrest(
     'GET',
-    `/scan_jobs?select=id,status,email,address,folio,county,result,error,created_at,finished_at&id=eq.${encodeURIComponent(id)}&limit=1`,
+    `/scan_jobs?select=id,status,email,address,folio,county,municipality,result,error,created_at,finished_at&id=eq.${encodeURIComponent(id)}&limit=1`,
   );
   if (!res.ok) return null;
   const rows = await res.json();
