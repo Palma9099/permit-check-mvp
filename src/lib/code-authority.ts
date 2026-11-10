@@ -30,6 +30,17 @@ export interface CodeAuthority {
   cityChecked: boolean;
   /** True when we searched the county's code records. */
   countyChecked: boolean;
+  /**
+   * True when the property appraiser actually told us which jurisdiction this
+   * parcel sits in, including when the answer was "unincorporated".
+   *
+   * A null municipality is NOT evidence of unincorporated land. It is the
+   * absence of an answer, and the two have to be separable: an unincorporated
+   * parcel the county searched is genuinely clear, while a parcel whose
+   * jurisdiction we never established cannot be, because the authority we
+   * failed to identify may be a city holding an open case.
+   */
+  municipalityKnown: boolean;
 }
 
 export type CodeVerdict =
@@ -56,13 +67,22 @@ export function cityLabel(municipality: string | null): string | null {
 /**
  * Is a municipality the code authority at this parcel?
  *
- * Unknown municipality counts as NOT governed by a city, because the common
- * case for a blank is unincorporated county. That is a deliberate choice and
- * it is the less safe one, so callers get `municipality: null` and can still
- * tell the difference.
+ * Only a NAMED city governs. A blank is not a vote for the county: see
+ * `municipalityKnown`, which is what separates "the appraiser said
+ * unincorporated" from "the appraiser told us nothing".
  */
 export function cityGoverns(municipality: string | null): boolean {
   return cityLabel(municipality) !== null;
+}
+
+/**
+ * Did the source actually name a jurisdiction for this parcel?
+ *
+ * "UNINCORPORATED" (and the other spellings of it the appraisers use) is an
+ * answer. An empty string or a missing field is not.
+ */
+export function municipalityKnown(municipality: string | null | undefined): boolean {
+  return (municipality ?? '').trim().length > 0;
 }
 
 /**
@@ -92,6 +112,19 @@ export function codeVerdict(
   // Nobody searched anything at all: also not clear.
   if (!authority.cityChecked && !authority.countyChecked) {
     return { kind: 'unchecked', authority: 'the code authority', searched: null, portalUrl: null };
+  }
+
+  // We never established which jurisdiction this parcel is in, so a county
+  // search cannot stand in for the authority. A blank municipality is the
+  // absence of an answer, not a finding of unincorporated land, and inside a
+  // city the county holds nothing even when the city holds a lien.
+  if (!authority.municipalityKnown && !authority.cityChecked) {
+    return {
+      kind: 'unchecked',
+      authority: 'the city or county that governs this address',
+      searched: authority.countyChecked ? 'the county' : null,
+      portalUrl: null,
+    };
   }
 
   return { kind: 'clear' };

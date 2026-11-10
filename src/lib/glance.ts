@@ -5,6 +5,7 @@
 import {
   codeVerdict,
   cityGoverns,
+  municipalityKnown,
   verdictValue,
   verdictDetail,
   verdictTone,
@@ -137,6 +138,9 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
     cityGoverns: cityGoverns(municipality),
     cityChecked: r.codeEnforcement.cityCodeChecked === true,
     countyChecked: r.codeEnforcement.countyCodeChecked !== false,
+    // A blank municipality is the appraiser telling us nothing, not telling us
+    // the parcel is unincorporated. Only a non-empty answer counts as known.
+    municipalityKnown: municipalityKnown(municipality),
   };
   const verdict = codeVerdict(authority, open, liens);
   const code: GlanceItem = {

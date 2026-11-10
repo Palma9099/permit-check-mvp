@@ -218,7 +218,14 @@ export const miamiDadeAdapter: CountyAdapter = {
       found: true,
       // Miami-Dade is the one county whose code records this adapter queries.
       // That covers the county's own jurisdiction, not a city's.
-      codeCasesChecked: true,
+      //
+      // Gated on every violation source having answered. A failed source is
+      // caught into an empty list above, so an unconditional `true` here let a
+      // total code-source outage read as a confirmed zero and print a green
+      // "None open". The limitation note alone was not enough: the tile is
+      // what a reader believes. A partial failure can also be hiding the one
+      // source that held the hit, so partial counts as not checked too.
+      codeCasesChecked: codeEnf.failed.length === 0,
       propertyBasics: {
         folio,
         prettyFolio: prettyFolio(folio),

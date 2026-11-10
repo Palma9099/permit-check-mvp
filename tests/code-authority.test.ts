@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cityLabel,
   cityGoverns,
+  municipalityKnown,
   codeVerdict,
   verdictValue,
   verdictDetail,
@@ -31,13 +32,28 @@ const hialeah: CodeAuthority = {
   cityGoverns: true,
   cityChecked: false,
   countyChecked: true,
+  municipalityKnown: true,
 };
 
+// The appraiser SAID unincorporated. This is an answer, and the county is the
+// authority, so a county search that finds nothing genuinely clears it.
 const unincorporated: CodeAuthority = {
+  municipality: 'UNINCORPORATED',
+  cityGoverns: false,
+  cityChecked: false,
+  countyChecked: true,
+  municipalityKnown: true,
+};
+
+// The appraiser said NOTHING. Previously this fixture was also called
+// "unincorporated", which is the conflation that shipped the bug: a blank is
+// the absence of an answer, and the authority it hides may be a city.
+const jurisdictionUnknown: CodeAuthority = {
   municipality: null,
   cityGoverns: false,
   cityChecked: false,
   countyChecked: true,
+  municipalityKnown: false,
 };
 
 describe('reading the municipality', () => {
@@ -102,7 +118,7 @@ describe('the Hialeah report must never read as clear', () => {
 });
 
 describe('a verdict is only clear when the deciding authority was asked', () => {
-  it('is clear for unincorporated land the county searched', () => {
+  it('is clear for land the appraiser CALLED unincorporated and the county searched', () => {
     const v = codeVerdict(unincorporated, 0, 0);
     expect(v.kind).toBe('clear');
     expect(verdictTone(v)).toBe('green');
@@ -117,7 +133,13 @@ describe('a verdict is only clear when the deciding authority was asked', () => 
 
   it('is not clear when nothing at all was searched', () => {
     const v = codeVerdict(
-      { municipality: null, cityGoverns: false, cityChecked: false, countyChecked: false },
+      {
+        municipality: null,
+        cityGoverns: false,
+        cityChecked: false,
+        countyChecked: false,
+        municipalityKnown: false,
+      },
       0,
       0,
     );
@@ -169,5 +191,47 @@ describe('pointing the reader at the city search we could not run', () => {
     expect(p.publicSearch).toBe(true);
     expect(p.platform).toMatch(/EnerGov/);
     expect(cityCodePortal('UNKNOWN CITY')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Codex round 1, F-01. An unidentified jurisdiction was clearing off a
+// county-only search, because cityGoverns(null) is false and the verdict fell
+// straight through to 'clear'. The source comment even admitted the choice was
+// "the less safe one". A blank is not a vote for the county.
+// ---------------------------------------------------------------------------
+describe('an unknown jurisdiction is not a finding of unincorporated land', () => {
+  it('tells a named answer apart from no answer', () => {
+    expect(municipalityKnown('UNINCORPORATED')).toBe(true);
+    expect(municipalityKnown('HIALEAH')).toBe(true);
+    expect(municipalityKnown(null)).toBe(false);
+    expect(municipalityKnown(undefined)).toBe(false);
+    expect(municipalityKnown('   ')).toBe(false);
+  });
+
+  it('refuses to clear a parcel whose authority we never identified', () => {
+    const v = codeVerdict(jurisdictionUnknown, 0, 0);
+    expect(v.kind).toBe('unchecked');
+    expect(verdictTone(v)).not.toBe('green');
+    expect(verdictValue(v)).toBe('Not checked');
+  });
+
+  it('says which authority is missing, and that the county was searched', () => {
+    const v = codeVerdict(jurisdictionUnknown, 0, 0);
+    if (v.kind !== 'unchecked') throw new Error('expected unchecked');
+    expect(v.authority).toMatch(/city or county that governs/i);
+    expect(v.searched).toBe('the county');
+  });
+
+  it('still clears once the city itself has been searched', () => {
+    // Jurisdiction unknown, but we read the city's records anyway (a city
+    // adapter ran). The deciding authority was asked, so this is clear.
+    const v = codeVerdict({ ...jurisdictionUnknown, cityChecked: true }, 0, 0);
+    expect(v.kind).toBe('clear');
+  });
+
+  it('still reports hits regardless of what we know about jurisdiction', () => {
+    expect(codeVerdict(jurisdictionUnknown, 1, 0).kind).toBe('hits');
+    expect(verdictTone(codeVerdict(jurisdictionUnknown, 0, 2))).toBe('red');
   });
 });

@@ -134,3 +134,30 @@ export function pcnRefusal(folio: string | null): { notes: string[] } | null {
   }
   return null;
 }
+
+/**
+ * Does the number of rows we parsed agree with the number the portal says it
+ * found?
+ *
+ * ePZB prints "Total Records: N" above its grid. Recognising only that LABEL,
+ * and not the number beside it, let a real defect through: a valid PCN whose
+ * search ran and reported 1 record, read against a grid our selectors no
+ * longer matched, came back as ok with zero cases. The report then printed a
+ * clean property that had an open case.
+ *
+ * Reading FEWER rows than reported is a shortfall and a refusal. Reading more
+ * than reported, or reading rows when the portal printed no number at all, is
+ * not treated as a failure: the number is the portal's own and it is not
+ * always the row count for the grid in front of us. The asymmetry is
+ * deliberate. Over-reporting makes a reader check; under-reporting makes them
+ * relax, and only one of those is safe to get wrong.
+ */
+export function readMatchesReport(read: number, reported: number | null): boolean {
+  if (reported === null) return true;
+  return read >= reported;
+}
+
+/** How to say a shortfall out loud, for the reader rather than the log. */
+export function shortfallNote(read: number, reported: number, what: string): string {
+  return `Palm Beach County's portal reported ${reported} ${what} for this parcel but only ${read} could be read, so this list is incomplete and nothing here should be read as a clear result. Use the portal link below.`;
+}
