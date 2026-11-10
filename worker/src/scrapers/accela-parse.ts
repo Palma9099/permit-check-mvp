@@ -381,120 +381,19 @@ export function extractionShortfallNote(read: number, shown: number, name: strin
   } on this page but only ${read} could be read, so the extraction is incomplete and nothing here is a clear result. Open the portal link below and check the property directly.`;
 }
 
-/**
- * Do two address strings name the same property?
- *
- * The first version compared only the street NUMBER and the stripped street
- * NAME, and streetNameOf deliberately removes the direction and the street
- * type. So these all agreed, and all three are different properties:
- *
- *   1234 N FLORIDA AVE  vs  1234 S FLORIDA AVE
- *   1234 E MAIN ST      vs  1234 W MAIN ST
- *   1234 FLORIDA AVE    vs  1234 FLORIDA ST
- *
- * Codex reproduced the first of those through the production adapter, getting
- * matchedAddress 1234 S FLORIDA AVE for a request about 1234 N FLORIDA AVE.
- * North and South Florida Avenue are not the same road, and in Tampa they run
- * in opposite directions from downtown.
- *
- * Every component now has to agree, and a component present on one side and
- * missing on the other is a DISAGREEMENT rather than a wildcard: "1234
- * FLORIDA AVE" does not identify which of N or S is meant, so it cannot
- * confirm either. Declining to confirm a match costs a reader one extra
- * check; confirming the wrong one hands them a neighbour's lien.
- */
-export interface AddressParts {
-  number: string | null;
-  direction: string | null;
-  name: string | null;
-  type: string | null;
-  /**
-   * The unit, apartment, suite or lot, when the address states one.
-   *
-   * Round 4: addressParts STRIPPED this to protect street-number extraction,
-   * which erased it from the match decision - so APT A agreed with APT B, and
-   * a bare street address agreed with APT B. Codex put it exactly right:
-   * parsing a unit away to protect street-number extraction must not erase it
-   * from the match.
-   *
-   * Different apartments at one street address are different households with
-   * different owners, and a code case against one is not a finding about the
-   * other.
-   */
-  unit: string | null;
-}
-
-const DIRECTION = /^(n|s|e|w|ne|nw|se|sw|north|south|east|west|northeast|northwest|southeast|southwest)$/i;
-const STREET_TYPE =
-  /^(aly|alley|ave|avenue|blvd|boulevard|br|branch|cir|circle|cswy|causeway|ct|court|ctr|center|dr|drive|expy|expressway|fwy|freeway|hill|hwy|highway|land|ln|lane|loop|mall|pkwy|parkway|pl|place|plz|plaza|pt|point|rd|road|rnch|ranch|sq|square|st|street|ter|terrace|trail|trl|vis|vista|vly|valley|way)$/i;
-
-/** Canonical short forms, so AVE and AVENUE compare equal. */
-const CANON: Record<string, string> = {
-  north: 'N', south: 'S', east: 'E', west: 'W',
-  northeast: 'NE', northwest: 'NW', southeast: 'SE', southwest: 'SW',
-  avenue: 'AVE', boulevard: 'BLVD', circle: 'CIR', court: 'CT', center: 'CTR',
-  drive: 'DR', highway: 'HWY', lane: 'LN', parkway: 'PKWY', place: 'PL',
-  plaza: 'PLZ', point: 'PT', road: 'RD', square: 'SQ', street: 'ST',
-  terrace: 'TER', trail: 'TRL', valley: 'VLY', vista: 'VIS', alley: 'ALY',
-  branch: 'BR', causeway: 'CSWY', expressway: 'EXPY', freeway: 'FWY',
-  ranch: 'RNCH',
-};
-
-const canon = (w: string): string => {
-  const u = w.toUpperCase();
-  return CANON[w.toLowerCase()] ?? u;
-};
-
-/** Split an address into the parts that decide whether two of them match. */
-export function addressParts(address: string | null): AddressParts {
-  const a = (address ?? '').split(',')[0].trim();
-  if (!a) return { number: null, direction: null, name: null, type: null, unit: null };
-  // KEEP THE SUFFIX LETTER. The first version matched /^(\d+)[A-Z]?\s/ and
-  // captured only the digits, so 1234A and 1234B N FLORIDA AVE compared
-  // equal. Codex reproduced that through the production adapter: a request
-  // for 1234A came back with matchedAddress 1234B. A half-address is a
-  // different property - often a different unit of a duplex - and its code
-  // case belongs to its own owner.
-  const numMatch = a.match(/^(\d+[A-Z]?)(?=\s|$)/i);
-  const number = numMatch ? numMatch[1].toUpperCase() : null;
-  // Separate the unit rather than deleting it: it must not pollute the street
-  // parse AND it must not vanish from the comparison.
-  const unitMatch = a.match(/\s(?:apt|unit|ste|suite|rm|room|#|bldg|lot)\s*\.?\s*([A-Z0-9-]+)/i);
-  const unit = unitMatch ? unitMatch[1].toUpperCase() : null;
-  let rest = a
-    .replace(/^\d+[A-Z]?\s+/i, '')
-    .replace(/\s+(apt|unit|ste|suite|rm|room|#|bldg|lot)\b.*$/i, '')
-    .trim();
-  const words = rest.split(/\s+/).filter(Boolean);
-  let direction: string | null = null;
-  // A leading direction prefixes the name ("N FLORIDA AVE"); a trailing one
-  // suffixes it ("FLORIDA AVE NW"). Take whichever is there.
-  if (words.length > 1 && DIRECTION.test(words[0])) direction = canon(words.shift()!);
-  if (!direction && words.length > 1 && DIRECTION.test(words[words.length - 1])) {
-    direction = canon(words.pop()!);
-  }
-  let type: string | null = null;
-  if (words.length > 1 && STREET_TYPE.test(words[words.length - 1])) type = canon(words.pop()!);
-  const name = words.length ? words.join(' ').toUpperCase() : null;
-  return { number, direction, name, type, unit };
-}
-
-export function addressesAgree(recordAddr: string | null, requested: string | null): boolean {
-  const a = addressParts(recordAddr);
-  const b = addressParts(requested);
-  // The number and the name must both be present and equal.
-  if (!a.number || !b.number || a.number !== b.number) return false;
-  if (!a.name || !b.name || a.name !== b.name) return false;
-  // Direction and type must agree where stated, and a value on one side with
-  // nothing on the other is ambiguous, which is not agreement. "1234 FLORIDA
-  // AVE" cannot confirm "1234 N FLORIDA AVE": it does not say which one.
-  if (a.direction !== b.direction) return false;
-  if (a.type !== b.type) return false;
-  // Same ambiguity rule, now for the unit: APT A does not confirm APT B, and a
-  // bare street address does not confirm any particular apartment at it.
-  if (a.unit !== b.unit) return false;
-  return true;
-}
+// addressesAgree / addressParts / AddressParts USED TO LIVE HERE.
+//
+// They decided whether a portal record's address named the requested
+// property. Five review rounds found five ways for that decision to be wrong
+// - a failed fill, N vs S, 1234A vs 1234B, APT A vs APT B, and finally a unit
+// lost to a comma plus a building number shadowing an apartment - each fix
+// leaving the next gap load-bearing.
+//
+// They are deleted, not kept unused, because the adapter no longer confirms a
+// matched address on any path and dead code with passing tests is an
+// invitation to wire it back in. The reader is given every record's own
+// address instead and compares it themselves. See the long comment at the
+// matchedAddress decision in accela.ts.
 
 /** "1234 N FLORIDA AVE" -> "1234". */
 export function streetNumberOf(address: string | null): string | null {

@@ -22,8 +22,6 @@ import {
   searchUrl,
   type AccelaTenant,
   type AccelaResultCount,
-  addressesAgree,
-  addressParts,
   streetNumberOf,
 } from '../worker/src/scrapers/accela-parse.js';
 
@@ -251,122 +249,38 @@ describe('per-agency configuration is never defaulted', () => {
 // records[0].address as the matched address. So a request about
 // 1234 N FLORIDA AVE reported 9999 FLORIDA AVE as its address.
 // ---------------------------------------------------------------------------
-describe('B3 and R2-B2: no record is attributed to a property it does not name', () => {
-  it('agrees when every component agrees', () => {
-    expect(addressesAgree('1234 N FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(true);
+// ---------------------------------------------------------------------------
+// The address-attribution tests that used to live here are gone with the code
+// they tested.
+//
+// Five review rounds found five ways for string address equality to confirm
+// the wrong property: a failed fill, N vs S, 1234A vs 1234B, APT A vs APT B,
+// and a unit lost to a comma alongside a building number shadowing an
+// apartment. Each fix left the next gap load-bearing, so the adapter no
+// longer confirms a matched address on ANY path and addressesAgree is
+// deleted.
+//
+// What replaces those tests is the pair below: the requested address survives
+// untouched, and every record carries its own address so a reader can compare
+// them. That is a weaker claim than "we matched your property" and it is one
+// the adapter can actually keep.
+// ---------------------------------------------------------------------------
+describe('no record can become the matched address', () => {
+  it('every record carries the address it is filed against', () => {
+    const HEADERS = ['Date', 'Record Number', 'Record Type', 'Address', 'Status', 'Short Notes'];
+    const r = parseRecords(HEADERS, [
+      ['11/05/2026', 'CMP-1', 'Complaint', '9999 FLORIDA AVE', 'Open', 'someone else'],
+    ]);
+    // The address is on the record, so a reader comparing it to their own
+    // address has something to compare.
+    expect(r.records[0].address).toBe('9999 FLORIDA AVE');
   });
 
-  it('normalises long forms, so AVENUE equals AVE and NORTH equals N', () => {
-    expect(addressesAgree('1234 NORTH FLORIDA AVENUE', '1234 N FLORIDA AVE')).toBe(true);
-  });
-
-  it('CODEX B3 TRIGGER: a neighbour at a different number does not agree', () => {
-    expect(addressesAgree('9999 FLORIDA AVE', '1234 FLORIDA AVE')).toBe(false);
-  });
-
-  // Round 2. The first version compared only number and the STRIPPED name,
-  // and streetNameOf deliberately removes the direction and the street type,
-  // so opposite sides of a city agreed. Codex reproduced the first of these
-  // through the production adapter, getting matchedAddress 1234 S FLORIDA AVE
-  // for a request about 1234 N FLORIDA AVE.
-  it('CODEX R2 TRIGGER: opposite directions do NOT agree', () => {
-    expect(addressesAgree('1234 S FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
-    expect(addressesAgree('1234 E MAIN ST', '1234 W MAIN ST')).toBe(false);
-    expect(addressesAgree('1234 NE 1 ST', '1234 SW 1 ST')).toBe(false);
-  });
-
-  it('different street TYPES do not agree', () => {
-    // Florida Ave and Florida St are different roads in plenty of FL cities.
-    expect(addressesAgree('1234 FLORIDA ST', '1234 FLORIDA AVE')).toBe(false);
-  });
-
-  it('a missing component is ambiguity, not a wildcard', () => {
-    // "1234 FLORIDA AVE" does not say which of N or S, so it confirms neither.
-    expect(addressesAgree('1234 FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
-    expect(addressesAgree('1234 N FLORIDA AVE', '1234 FLORIDA AVE')).toBe(false);
-  });
-
-  it('reads a trailing direction too', () => {
-    expect(addressesAgree('1234 FLORIDA AVE NW', '1234 FLORIDA AVE NW')).toBe(true);
-    expect(addressesAgree('1234 FLORIDA AVE NW', '1234 FLORIDA AVE SE')).toBe(false);
-  });
-
-  it('a different street at the same number does not agree', () => {
-    expect(addressesAgree('1234 MAIN ST', '1234 FLORIDA ST')).toBe(false);
-  });
-
-  it('declines rather than guesses when either address is unusable', () => {
-    expect(addressesAgree(null, '1234 N FLORIDA AVE')).toBe(false);
-    expect(addressesAgree('FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
-    expect(addressesAgree('1234 N FLORIDA AVE', null)).toBe(false);
-  });
-
-  it('a unit number is never read as the street number or type', () => {
-    expect(addressParts('1234 N FLORIDA AVE APT 9999').number).toBe('1234');
-    expect(addressesAgree('9999 N FLORIDA AVE APT 1234', '1234 N FLORIDA AVE')).toBe(false);
-  });
-
-  // Round 4. addressParts STRIPPED the unit to protect street-number
-  // extraction, which erased it from the match decision - so APT A agreed
-  // with APT B, and a bare street address agreed with APT B. Codex put it
-  // exactly right: parsing a unit away to protect street-number extraction
-  // must not erase it from the match. Different apartments at one street
-  // address are different households with different owners.
-  it('CODEX R4 TRIGGER: different apartments are different properties', () => {
-    expect(addressesAgree('1234 N FLORIDA AVE APT B', '1234 N FLORIDA AVE APT A')).toBe(false);
-    expect(addressesAgree('1234 N FLORIDA AVE UNIT 2', '1234 N FLORIDA AVE UNIT 1')).toBe(false);
-  });
-
-  it('a bare street address does not confirm any apartment at it', () => {
-    expect(addressesAgree('1234 N FLORIDA AVE APT B', '1234 N FLORIDA AVE')).toBe(false);
-    expect(addressesAgree('1234 N FLORIDA AVE', '1234 N FLORIDA AVE APT B')).toBe(false);
-  });
-
-  it('matches a unit to itself, across designator wording and case', () => {
-    expect(addressesAgree('1234 N FLORIDA AVE apt a', '1234 N FLORIDA AVE APT A')).toBe(true);
-    expect(addressesAgree('1234 N FLORIDA AVE STE 200', '1234 N FLORIDA AVE SUITE 200')).toBe(true);
-  });
-
-  it('keeps the unit alongside a suffixed street number', () => {
-    expect(addressParts('1234A N FLORIDA AVE APT B')).toEqual({
-      number: '1234A', direction: 'N', name: 'FLORIDA', type: 'AVE', unit: 'B',
-    });
-  });
-
-  // Round 3. addressParts matched /^(\d+)[A-Z]?\s/ and captured only the
-  // digits, so the suffix letter was matched and then thrown away. Codex
-  // reproduced it through the production adapter: a request for 1234A came
-  // back with matchedAddress 1234B. A half-address is a different property,
-  // often a different unit of a duplex, and its case belongs to its owner.
-  it('CODEX R3 TRIGGER: 1234A and 1234B are different properties', () => {
-    expect(addressesAgree('1234B N FLORIDA AVE', '1234A N FLORIDA AVE')).toBe(false);
-    expect(addressParts('1234A N FLORIDA AVE').number).toBe('1234A');
-    expect(addressParts('1234B N FLORIDA AVE').number).toBe('1234B');
-  });
-
-  it('matches a suffixed number to itself, case-insensitively', () => {
-    expect(addressesAgree('1234a N FLORIDA AVE', '1234A N FLORIDA AVE')).toBe(true);
-  });
-
-  it('a bare number does not confirm a suffixed one, or the reverse', () => {
-    // Same ambiguity rule as the direction: 1234 does not say which of
-    // 1234A or 1234B, so it confirms neither.
-    expect(addressesAgree('1234 N FLORIDA AVE', '1234A N FLORIDA AVE')).toBe(false);
-    expect(addressesAgree('1234A N FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
-  });
-
-  it('streetNumberOf stays digits-only, because it feeds a numeric form field', () => {
-    // Deliberately different from addressParts: Accela's Street No. control
-    // rejects a letter. Narrowing the SEARCH cannot widen a MATCH, because
-    // the suffix-sensitive comparison lives in addressParts.
-    expect(streetNumberOf('1234A N FLORIDA AVE')).toBe('1234');
-    expect(streetNumberOf('1234 N FLORIDA AVE')).toBe('1234');
-  });
-
-  it('splits an address into the parts that decide a match', () => {
-    expect(addressParts('1234 N FLORIDA AVE')).toEqual({
-      number: '1234', direction: 'N', name: 'FLORIDA', type: 'AVE', unit: null,
-    });
-    expect(addressParts('10049 N Florida Ave T 33612').number).toBe('10049');
+  it('a record with no address is still counted, never silently dropped', () => {
+    const HEADERS = ['Date', 'Record Number', 'Record Type', 'Address', 'Status', 'Short Notes'];
+    const r = parseRecords(HEADERS, [['11/05/2026', 'CMP-2', 'Complaint', '', 'Open', 'x']]);
+    expect(r.records).toHaveLength(1);
+    expect(r.records[0].address).toBeNull();
+    expect(r.unreadable).toBe(0);
   });
 });

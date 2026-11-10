@@ -38,7 +38,6 @@ import type { AccelaJurisdiction } from './jurisdictions.js';
 import { readTables, debugDump } from './util.js';
 import {
   GRID_HEADERS,
-  addressesAgree,
   streetNameOf,
   streetNumberOf,
   extractionMatchesPage,
@@ -65,7 +64,6 @@ import {
 
 export {
   GRID_HEADERS,
-  addressesAgree,
   streetNameOf,
   streetNumberOf,
   extractionMatchesPage,
@@ -466,30 +464,36 @@ export async function runAccelaScrape(
         details: rec.shortNotes,
       }),
     );
-    // A STREET SEARCH NEVER CONFIRMS A MATCHED ADDRESS.
+    // NOTHING HERE CONFIRMS A MATCHED ADDRESS. ON ANY PATH.
     //
-    // This is the structural answer to four consecutive findings, all in the
-    // same comparison and each narrower than the last: a failed fill
-    // publishing a stranger's case, then N agreeing with S, then 1234A with
-    // 1234B, then APT A with APT B. Every one was a real way for the wrong
-    // property to be confirmed, and every fix left the comparison
-    // load-bearing for the next one.
+    // Five consecutive review rounds found five ways for a record's address
+    // to be matched against the requested one wrongly, each narrower than the
+    // last and every one a real route to confirming someone else's property:
     //
-    // matchedAddress means "we found YOUR property". A street search does not
-    // find a property; it finds a street. So on that path nothing is
-    // confirmed: the requested address stays, the records are published with
-    // their own addresses attached, and the scope is disclosed. Hand-rolled
-    // address equality is a deep problem and this takes it off the critical
-    // path rather than betting the product on getting it right.
+    //   1  a failed form fill published a stranger's case outright
+    //   2  N FLORIDA AVE compared equal to S FLORIDA AVE
+    //   3  1234A compared equal to 1234B
+    //   4  APT A compared equal to APT B
+    //   5  "..., APT A" lost its unit to a comma split, and
+    //      "BLDG 1 APT A" kept the building and dropped the apartment
     //
-    // A PARCEL search is different. There the portal matched the parcel key,
-    // not a string, so a record it returns is about that parcel and may
-    // confirm the address - and addressesAgree still guards it, because an
-    // Accela parcel search can return adjacent records too.
-    if (r.searchedBy === 'parcel') {
-      const match = r.records.find((rec) => addressesAgree(rec.address, ctx.address));
-      if (match?.address) result.matchedAddress = match.address;
-    }
+    // Round 5 took the comparison off the STREET path and left it guarding the
+    // parcel path. Finding 5 arrived in the parcel path. At that point the
+    // honest reading is not that the parser needs a fifth fix: it is that
+    // string address equality is the wrong mechanism for deciding whether a
+    // record belongs to a property, and I had been treating each failure as a
+    // bug rather than as evidence about the approach.
+    //
+    // So matchedAddress stays exactly as the caller supplied it. Every record
+    // is published carrying its OWN address (recordAddress, and prefixed into
+    // the description), the search scope is disclosed, and the reader compares
+    // them - which they can do, because the data is in front of them.
+    //
+    // What is given up is cosmetic: a tidier, portal-spelled version of an
+    // address we already had. What is bought is that no parsing gap anywhere
+    // in this adapter can put another property's lien under this one's
+    // heading. addressesAgree and addressParts are deleted rather than left
+    // unused, so nothing can quietly wire them back into this decision.
 
     // And if the search was by street, say so plainly. These records belong
     // to the street, not to this parcel, and a reader scanning a case list
