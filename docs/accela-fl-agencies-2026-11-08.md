@@ -917,3 +917,42 @@ posts the DOM value, so the form can be filled directly rather than driven as ke
   is accurate about its ArcGIS layer, which really is permits-only, but incomplete as a statement
   about the city: Tampa's code cases are public, on Accela. Worth correcting when the adapter
   lands.
+
+### 2026-11-10: which agencies actually serve it — 14 of 28 confirmed
+
+Probe kept in the repo at `scripts/probe_accela_enforcement.py`; results at
+`docs/accela-enforcement-2026-11-10.json`.
+
+**THE MODULE NAME IS PER-AGENCY.** One hardcoded `module=Enforcement` was wrong for 17 of 28.
+Variants observed:
+
+| Module | Agencies |
+|---|---|
+| `Enforcement` | Hillsborough, Pasco, Seminole, Tampa, Fort Lauderdale, Hollywood, Nassau, Bradenton, Cooper City, Longboat Key, Mulberry |
+| `CodeEnforcement` | Lee County |
+| `CodeCompliance` | Leon County |
+| `Code` | North Port |
+| `Enforce` | Brevard (linked, but did not serve a readable search) |
+
+**AND THE LANDING PAGE DOES NOT LINK EVERY MODULE IT SERVES.** Fort Lauderdale's `Default.aspx`
+links only `Permits`, `Planning`, `TAM` — and `module=Enforcement` answers that agency with 19
+record types, 12 of them code enforcement. Deriving the module list from the landing page alone
+wrote Fort Lauderdale off, and that is 182,760 people. The probe now tries the union of what an
+agency links and the five variants above, and takes the first that serves the form with code-ish
+record types.
+
+That is the fourth time in one day that a probe reported a failed read as a finding here (after
+the EnerGov module list read before Angular filled it, and two bad versions of the citizenserve
+evidence capture). The pattern is always the same: a shape was guessed instead of read. The probe
+keeps `UNREADABLE` strictly separate from "the module is absent" for that reason, and nothing is
+credited on an unreadable result.
+
+**Confirmed (14):** Hillsborough, Lee, Pasco, Seminole, Leon, Nassau counties; Tampa, Fort
+Lauderdale, Hollywood, North Port, Bradenton, Cooper City, Longboat Key, Mulberry cities.
+The 8 cities are 897,135 residents. **County figures are NOT summed**: a county code office covers
+unincorporated area only, which is the trap that cut Broward from 1.94M to 16,888.
+
+**Unreadable (14), not written off:** Pinellas, Polk, Brevard, Sarasota, Manatee, Osceola,
+Charlotte, Martin, Citrus counties; Clearwater, Weston, DeLand, Winter Park, Key Biscayne cities.
+None of the five known module names served a readable search. They may use another name, need a
+session, or have the module switched off — unknown, and recorded as unknown.
