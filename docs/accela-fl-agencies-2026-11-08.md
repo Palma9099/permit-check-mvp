@@ -853,3 +853,67 @@ was not in GIS.
   private API was off limits and not probed around.
 - **`permits.myokaloosa.com`**: did not resolve from here.
 - **`claycountygov.com`**: returns HTTP 403 to a plain request.
+
+---
+
+## 2026-11-10: the ACA Enforcement search is public, and it is the biggest lever left
+
+Tested live against `TAMPA`, the largest city on the list above. **Accela Citizen Access exposes a
+full code-enforcement search with no login and no App ID.** The portal says so itself: *"many
+functions can be used without a log-in, just type the address you are looking for above."*
+
+**URL pattern**, the whole reason this is one adapter rather than 28:
+
+```
+https://aca-prod.accela.com/<AGENCY>/Cap/CapHome.aspx?module=Enforcement&TabName=Enforcement
+```
+
+**The form.** Standard ASP.NET WebForms control names, which is what makes them portable across
+agencies (confirmed on TAMPA; each agency still needs its own live check before being credited):
+
+| Field | Control id |
+|---|---|
+| Record number | `ctl00_PlaceHolderMain_generalSearchForm_txtGSPermitNumber` |
+| Record type | `ctl00_PlaceHolderMain_generalSearchForm_ddlGSPermitType` |
+| Street number (from/to) | `..._txtGSNumber_ChildControl0` / `ChildControl1` |
+| Street name | `..._txtGSStreetName` |
+| Street type | `..._ddlGSStreetSuffix` |
+| Direction | `..._ddlGSDirection` |
+| **Parcel number** | `..._txtGSParcelNo` |
+| Submit | `ctl00_PlaceHolderMain_btnNewSearch` |
+
+**A parcel-keyed code search is the prize.** `txtGSParcelNo` means this platform answers the
+question this product actually asks, without needing the address to match the city's spelling.
+
+**Record types on TAMPA**: Alcohol and Beverage, Bank Owned Foreclosure, Civil Case, **Code Case**,
+Complaint, Damage Assessment, Demolition, Diversion, Notice to Appear, Remedial Order, Signs. The
+type list is per-agency configuration, so it must be read live, exactly like EnerGov's module 5 and
+citizenserve's file types. Assuming a type exists is how an adapter searches nothing and reports a
+clean property.
+
+**Results grid**: Date, Record Number, Record Type, Address, Expiration Date, Created By, Status,
+Action, Short Notes. A real search on `FLORIDA` + `Ave` returned open work, e.g.
+`CMP-26-0015410` Complaint at 10049 N Florida Ave, status **Open**, and `CIV-26-0007651` Civil Case
+at 4510 N Florida Ave, status **Investigation In-Progress**.
+
+**IT PAGES, AND IT CAPS.** The header read *"100+ Record results matching your search"* and
+*"Showing 1-10 of 100+"*. Note `100+`, not a number: this portal will not even tell you how many
+records exist beyond a hundred. So the EnerGov truncation rule applies here and is harder - there
+is no count to reconcile against, only a cap. Any adapter must disclose that the list is partial
+and must never treat a first page as a property's whole history. There is a **Download results**
+link, which is worth testing as a way to get the full set rather than scraping pages.
+
+**Script-set `.value` DOES bind here**, unlike Palm Beach's AngularJS ePZB shell. Plain WebForms
+posts the DOM value, so the form can be filled directly rather than driven as keystrokes.
+
+### What this does not yet establish
+
+- Only TAMPA was tested. The other 27 agency codes have a confirmed *portal*, not a confirmed
+  *Enforcement module* - several may have it switched off, which is the Sanibel/St Lucie pattern on
+  other platforms.
+- Counties on this list are still unincorporated-only, so their county populations overstate reach
+  badly. Hillsborough County's 1,459,762 is not 1,459,762 people of coverage.
+- Tampa is recorded as `codeCasesSupported: false` in `src/lib/counties/municipal-permits.ts`. That
+  is accurate about its ArcGIS layer, which really is permits-only, but incomplete as a statement
+  about the city: Tampa's code cases are public, on Accela. Worth correcting when the adapter
+  lands.
