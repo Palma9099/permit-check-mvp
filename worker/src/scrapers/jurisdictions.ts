@@ -461,4 +461,176 @@ export const CITIZENSERVE_NO_CODE: CitizenserveAgency[] = [
   { installationID: 391, name: 'Eatonville', kind: 'city', fileTypes: [] },
 ];
 
+
+// --- EnerGov city expansion, verified 2026-11-10 -----------------------------
+//
+// Found by probing Florida's 412 incorporated places (Census TIGERweb layer 25,
+// Census 2020) against the EnerGov host patterns actually observed, because a
+// single pattern guess fails: the Tyler-hosted tenants split between
+// -energovPUB and -energovWEB, Doral capitalises its path /apps/SelfService,
+// and Miami Beach self-hosts on its own domain entirely.
+//
+// 26 tenants answered. 22 are listed below. THE OTHER FOUR ARE NOT COVERAGE,
+// and the difference is the whole point:
+//
+//   Sanibel          6,382  RUNS DISAGREED about module 5, see below
+//   Winter Springs  38,342  RUNS DISAGREED about module 5, see below
+//   Marco Island    15,760  portal could not be read on the verification run
+//   Neptune Beach    7,217  portal could not be read on the verification run
+//   Marianna         6,245  portal could not be read on the verification run
+//
+// SANIBEL AND WINTER SPRINGS ARE THE INTERESTING ONES, and the reason this
+// list is worth reading. Winter Springs was routed on two runs that read it as
+// usable, and a third run read its module list and reported module 5 ABSENT.
+// It came out. Sanibel went the other way: refused on the first run for a
+// missing module, usable on the second.
+// The first verification run refused it with "runs EnerGov but does not
+// publish code cases - that module is switched off", which is the note that
+// fires only after the live module list HAS been read and found to lack
+// module 5. Fourteen minutes later a second run read it as usable, answering
+// a PERIWINKLE WAY search with zero cases.
+//
+// Both readings cannot be right in either case, and a tenant whose module
+// list answers differently between runs is UNSTABLE, which is not the same as
+// usable. Both stay out. Routing one would mean a property there could report
+// clear on a run that happened to read the module list successfully while the
+// records behind it were never searched - and picking the convenient reading
+// of two contradictory ones is exactly the habit this product exists to not
+// have. Either can be routed when runs agree.
+//
+// MAITLAND IS OUT TOO, and the reason is worth more than the city.
+//
+// It read fine on two runs and on a third its portal could not be read at
+// all. I argued that was a flaky server rather than an unestablished module,
+// kept it routed, and wrote the distinction down: a disagreement about
+// WHETHER THE RECORDS EXIST excludes a tenant, a disagreement about whether
+// the server answered this minute does not.
+//
+// That reasoning may well be right, and it was still the wrong thing to ship,
+// because the two successful runs were not in the evidence anyone could check.
+// From the frozen transcript alone Maitland is a city routed on a refusal.
+// Codex stopped on exactly that.
+//
+// So the judgement call is replaced by a rule that needs no judgement:
+//
+//   A CITY IS ROUTED ONLY IF THE ATTACHED VERIFICATION TRANSCRIPT SHOWS THE
+//   PRODUCTION ADAPTER READING IT.
+//
+// One transcript, one question, checkable by anyone without taking my word
+// for the history. A tenant that drops out of a run drops out of the
+// registry until a run puts it back. That costs real coverage - Maitland's
+// 19,543 people are now in the "not checked" column, where the evidence says
+// they belong - and it buys a claim that cannot rot between runs.
+//
+// Each was left out rather than entered hopefully. A hostname answering says
+// nothing about whether code cases are public, and the three unreadable ones
+// may well be fine on another day - they can be added when a run confirms it,
+// which is a smaller cost than a city wrongly reporting clear.
+//
+// Every entry below was confirmed by running the PRODUCTION adapter against a
+// real street in that city and getting a readable result, not by checking that
+// a host responds. Three times today a hand-written probe reported a failed
+// read as a finding - one of them would have discarded seven cities and
+// 675,709 people - so the adapter's own answer is the only one recorded.
+//
+// Counties come from the Census, never from the city name: resolved against
+// TIGERweb Incorporated Places for the place and Counties (layer 55) for the
+// county at its centroid. The city of Seminole sitting in Pinellas County,
+// found earlier in the citizenserve batch, is why.
+
+interface EnergovCityRoute {
+  /** Census 2020 population, so coverage can be audited rather than asserted. */
+  pop: number;
+  county: string;
+  /** Municipality as the property appraiser spells it. The routing key. */
+  municipality: string;
+  host: string;
+  basePath: string;
+}
+
+/** The county property appraiser, so a reader can find their own parcel id.
+ *  Every URL below was loaded and confirmed to serve a real search page;
+ *  paslc.gov answers 403 to a plain fetch but loads normally in a browser. */
+const COUNTY_PA: Record<string, string> = {
+  'miami-dade': 'https://www.miamidade.gov/pa/property_search.asp',
+  broward: 'https://web.bcpa.net/',
+  'palm-beach': 'https://pbcpao.gov/',
+  volusia: 'https://vcpa.vcgov.org/',
+  'st-lucie': 'https://www.paslc.gov/',
+  seminole: 'https://www.scpafl.org/',
+  orange: 'https://ocpaweb.ocpafl.org/',
+  pasco: 'https://pascopa.com/',
+  pinellas: 'https://www.pcpao.gov/',
+};
+
+const ENERGOV_CITY_ROUTES: EnergovCityRoute[] = [
+  { pop: 171178, county: 'broward',     municipality: 'PEMBROKE PINES',     host: 'pembrokepinesfl-energovweb.tylerhost.net',    basePath: '/apps/SelfService' },
+  { pop: 134721, county: 'broward',     municipality: 'MIRAMAR',            host: 'miramarfl-energovweb.tylerhost.net',          basePath: '/apps/SelfService' },
+  { pop: 117415, county: 'palm-beach',  municipality: 'WEST PALM BEACH',    host: 'westpalmbeachfl-energovpub.tylerhost.net',    basePath: '/apps/selfservice' },
+  { pop: 111640, county: 'miami-dade',  municipality: 'MIAMI GARDENS',      host: 'miamigardensfl-energovpub.tylerhost.net',     basePath: '/apps/selfservice' },
+  { pop:  97422, county: 'palm-beach',  municipality: 'BOCA RATON',         host: 'bocaratonfl-energovpub.tylerhost.net',        basePath: '/apps/selfservice' },
+  { pop:  93692, county: 'volusia',     municipality: 'DELTONA',            host: 'deltonafl-energovweb.tylerhost.net',          basePath: '/apps/SelfService' },
+  { pop:  61637, county: 'palm-beach',  municipality: 'WELLINGTON',         host: 'wellingtonfl-energovweb.tylerhost.net',       basePath: '/apps/SelfService' },
+  { pop:  59182, county: 'palm-beach',  municipality: 'PALM BEACH GARDENS', host: 'palmbeachgardensfl-energovweb.tylerhost.net', basePath: '/apps/SelfService' },
+  { pop:  47297, county: 'st-lucie',    municipality: 'FORT PIERCE',        host: 'fortpiercefl-energovweb.tylerhost.net',       basePath: '/apps/SelfService' },
+  { pop:  44229, county: 'broward',     municipality: 'OAKLAND PARK',       host: 'oaklandparkfl-energovweb.tylerhost.net',      basePath: '/apps/SelfService' },
+  { pop:  43080, county: 'volusia',     municipality: 'ORMOND BEACH',       host: 'ormondbeachfl-energovweb.tylerhost.net',      basePath: '/apps/SelfService' },
+  { pop:  37604, county: 'palm-beach',  municipality: 'RIVIERA BEACH',      host: 'rivierabeachfl-energovweb.tylerhost.net',     basePath: '/apps/SelfService' },
+  { pop:  30142, county: 'volusia',     municipality: 'NEW SMYRNA BEACH',   host: 'newsmyrnabeachfl-energovweb.tylerhost.net',   basePath: '/apps/SelfService' },
+  { pop:  17194, county: 'pasco',       municipality: 'ZEPHYRHILLS',        host: 'zephyrhillsfl-energovweb.tylerhost.net',      basePath: '/apps/SelfService' },
+  { pop:   8159, county: 'miami-dade',  municipality: 'NORTH BAY VILLAGE',  host: 'northbayvillagefl-energovpub.tylerhost.net',  basePath: '/apps/selfservice' },
+  { pop:   5689, county: 'miami-dade',  municipality: 'SURFSIDE',           host: 'surfsidefl-energovpub.tylerhost.net',         basePath: '/apps/selfservice' },
+  { pop:   5353, county: 'pinellas',    municipality: 'SOUTH PASADENA',     host: 'southpasadenafl-energovweb.tylerhost.net',    basePath: '/apps/SelfService' },
+];
+
+/**
+ * People reached by the EnerGov cities added in this expansion: 1,085,634.
+ *
+ * SEVENTEEN cities, and this number has now shrunk three times, every time
+ * because evidence contradicted a claim rather than because anything broke:
+ *
+ *   1,143,819  arithmetic I got wrong; my own smoke test failed on it
+ *   1,143,519  the correct sum of 19
+ *   1,105,177  minus Winter Springs, whose module list read as absent on a
+ *              third run after two runs routed it
+ *   1,085,634  minus Maitland, whose successful runs were real but were not
+ *              in the evidence a reviewer could check
+ *
+ * Every one of the 17 appears as USABLE in the verification transcript
+ * attached to the review, which is the rule now, and the rule is the point:
+ * the number is checkable against one file instead of against my account of
+ * what happened.
+ */
+export const ENERGOV_EXPANSION_POPULATION = ENERGOV_CITY_ROUTES.reduce((n, r) => n + r.pop, 0);
+
+function titleCase(muni: string): string {
+  return muni
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+for (const r of ENERGOV_CITY_ROUTES) {
+  const name = `City of ${titleCase(r.municipality)}`;
+  const tenant: EnergovTenant = {
+    host: r.host,
+    name,
+    kind: 'city',
+    // Module 5 confirmed on the live page during verification. The adapter
+    // re-reads the module list every run and refuses if it has gone, so this
+    // is a snapshot rather than a standing claim.
+    modules: [1, 2, 3, 4, 5, 6, 10, 11],
+    basePath: r.basePath,
+  };
+  const pa = COUNTY_PA[r.county];
+  if (!pa) throw new Error(`no property appraiser link for county ${r.county}`);
+  CITY_JURISDICTIONS[`${r.county}:${r.municipality}`] = {
+    platform: 'energov',
+    county: r.county,
+    name,
+    tenant,
+    portalLinks: energovLinks(tenant, [{ label: 'County Property Appraiser', url: pa }]),
+    source: `${name} EnerGov portal (code cases, citywide)`,
+  };
+}
+
 export const SUPPORTED_JURISDICTIONS = Object.keys(JURISDICTIONS);

@@ -215,3 +215,37 @@ export function truncationNote(read: number, reported: number, name: string): st
 /** The caveat that always applies on this platform. */
 export const AMOUNT_NOTE =
   'EnerGov shows a case status but not the dollar amount. A status of "Lien" means one is recorded against the property; the figure comes from the county records or the city directly.';
+
+
+/**
+ * Does a verification transcript support routing this city?
+ *
+ * The rule, after Codex stopped a review round on Maitland: a city is routed
+ * only if the attached transcript shows the production adapter reading it.
+ *
+ * A REFUSAL IS DISQUALIFYING EVEN WHEN A SUCCESS IS ALSO PRESENT. The first
+ * checker read "if usable, continue", so one USABLE line won regardless of a
+ * REFUSED line for the same city; Codex reproduced that by appending a
+ * Pembroke Pines refusal and getting a clean pass. A false pass in the tool
+ * written to stop false passes is worse than no tool, because it launders the
+ * exact claim it exists to test.
+ *
+ * Both lines for one city in one transcript is not a judgement call either:
+ * it is the Sanibel and Winter Springs instability inside a single run rather
+ * than across two, and those were excluded. So refused loses to nothing.
+ */
+export type EvidenceVerdict = 'supported' | 'refused' | 'contradictory' | 'absent';
+
+export function evidenceFor(transcript: string, tenantName: string): EvidenceVerdict {
+  const bare = tenantName.replace(/^(City|Town|Village) of /, '');
+  const esc = bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const usable = new RegExp(`^USABLE\\s+${esc}\\s`, 'mi').test(transcript);
+  const refused = new RegExp(`^REFUSED\\s+${esc}\\s`, 'mi').test(transcript);
+  if (usable && refused) return 'contradictory';
+  if (refused) return 'refused';
+  if (usable) return 'supported';
+  return 'absent';
+}
+
+/** Only a clean read supports routing. */
+export const evidenceSupportsRouting = (v: EvidenceVerdict): boolean => v === 'supported';

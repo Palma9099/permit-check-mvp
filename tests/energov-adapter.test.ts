@@ -29,6 +29,8 @@ import {
   noCodeModuleNote,
   coverageNote,
   truncationNote,
+  evidenceFor,
+  evidenceSupportsRouting,
   searchUrl,
   type EnergovTenant,
 } from '../worker/src/scrapers/energov-parse.js';
@@ -291,5 +293,69 @@ describe('the three Miami-Dade cities route and are usable', () => {
 
   it('still falls back to the county for a Miami-Dade city we have not wired', () => {
     expect(resolveJurisdiction('miami-dade', 'SWEETWATER')?.platform).not.toBe('energov');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Codex EnerGov round 4, F-01. A FALSE PASS IN THE TOOL BUILT TO STOP FALSE
+// PASSES.
+//
+// After a review round was stopped on Maitland - routed while the only frozen
+// transcript refused it - the rule became: a city is routed only if the
+// attached transcript shows the production adapter reading it. I wrote a
+// checker to enforce it and the checker read `if (usable) continue`, so one
+// USABLE line won regardless of a REFUSED line for the same city. Codex
+// reproduced it by appending a Pembroke Pines refusal to the transcript and
+// getting "every routed city is shown reading", exit 0.
+//
+// That is worse than having no checker, because it launders the exact claim
+// it exists to test. These tests exist so the checker's own correctness is
+// pinned rather than asserted.
+// ---------------------------------------------------------------------------
+describe('F-01: the evidence checker cannot be talked into a pass', () => {
+  const USABLE = 'USABLE   Pembroke Pines           171178  "PINES BLVD" -> 10 case(s)';
+  const REFUSED = 'REFUSED  Pembroke Pines           171178  portal unreadable on this run';
+
+  it('supports a city the transcript shows reading', () => {
+    expect(evidenceFor(USABLE, 'City of Pembroke Pines')).toBe('supported');
+    expect(evidenceSupportsRouting('supported')).toBe(true);
+  });
+
+  it('refuses a city the transcript refuses', () => {
+    expect(evidenceFor(REFUSED, 'City of Pembroke Pines')).toBe('refused');
+    expect(evidenceSupportsRouting('refused')).toBe(false);
+  });
+
+  it('refuses a city absent from the transcript', () => {
+    expect(evidenceFor('USABLE   Doral  75874  "NW 53 ST" -> 10 case(s)', 'City of Pembroke Pines')).toBe('absent');
+    expect(evidenceSupportsRouting('absent')).toBe(false);
+  });
+
+  it('CODEX TRIGGER: both lines present does not pass', () => {
+    // Exactly what was appended to the attached transcript to break it.
+    const both = `${USABLE}\n${REFUSED}`;
+    expect(evidenceFor(both, 'City of Pembroke Pines')).toBe('contradictory');
+    expect(evidenceSupportsRouting('contradictory')).toBe(false);
+  });
+
+  it('order does not rescue it either', () => {
+    const both = `${REFUSED}\n${USABLE}`;
+    expect(evidenceFor(both, 'City of Pembroke Pines')).toBe('contradictory');
+  });
+
+  it('strips the City of / Town of / Village of prefix the transcript omits', () => {
+    expect(evidenceFor('USABLE   Longboat Key   7505  "x" -> 0 case(s)', 'Town of Longboat Key')).toBe('supported');
+    expect(evidenceFor('USABLE   Wellington     61637 "x" -> 1 case(s)', 'Village of Wellington')).toBe('supported');
+  });
+
+  it('does not match one city on another city\'s line', () => {
+    // "Miami Gardens" must not be satisfied by a "Miami Beach" line.
+    const line = 'USABLE   Miami Beach              82890  "WASHINGTON AVE" -> 10 case(s)';
+    expect(evidenceFor(line, 'City of Miami Gardens')).toBe('absent');
+  });
+
+  it('only matches at the start of a line, so prose cannot satisfy it', () => {
+    const prose = 'a note mentioning USABLE Pembroke Pines in passing should not count';
+    expect(evidenceFor(prose, 'City of Pembroke Pines')).toBe('absent');
   });
 });
