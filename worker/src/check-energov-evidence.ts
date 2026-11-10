@@ -45,7 +45,13 @@ for (const r of routed) {
   console.log(`FAIL  ${r.name.replace(/^(City|Town|Village) of /, '').padEnd(22)} ${why}`);
 }
 
-const transcriptTotal = (transcript.match(/^USABLE\s/gim) ?? []).length;
+// Count tenant ROWS, not every line starting with USABLE: the transcript's own
+// summary line reads "USABLE : 21 tenants, ..." and was being counted as a
+// 22nd row. Codex flagged it as cosmetic and it is - no per-city verdict or
+// population depends on it - but a printed number that is wrong by one is
+// still a printed number that is wrong, and this file exists to make counts
+// checkable. A tenant row has a name immediately after USABLE, never a colon.
+const transcriptTotal = (transcript.match(/^USABLE\s+(?!:)\S/gim) ?? []).length;
 console.log(`\nrouted expansion cities: ${routed.length}`);
 console.log(`claimed population:      ${ENERGOV_EXPANSION_POPULATION.toLocaleString()}`);
 console.log(`USABLE lines in file:    ${transcriptTotal}`);
