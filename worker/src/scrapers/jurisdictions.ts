@@ -14,6 +14,7 @@
 import type { PortalLink } from '../types.js';
 import type { PortalConfig } from './portal-config.js';
 import { DEFAULT_SHARD, searchUrlOn, type CitizenserveAgency } from './citizenserve-parse.js';
+import { accelaLinks, type AccelaTenant } from './accela-parse.js';
 import { searchUrl as energovSearchUrl, type EnergovTenant } from './energov-parse.js';
 import { COUNTY_CONFIGS } from './counties.js';
 
@@ -21,9 +22,7 @@ export interface AccelaJurisdiction {
   platform: 'accela';
   county: string;
   name: string;
-  agency: string;               // ACA agency code, e.g. 'BROWARD' → aca-prod.accela.com/BROWARD/
-  buildingModule: string;       // Accela module name for building permits
-  enforcementModule: string | null; // module name for code cases, or null if none
+  tenant: AccelaTenant;
   portalLinks: PortalLink[];
   source: string;
 }
@@ -631,6 +630,154 @@ for (const r of ENERGOV_CITY_ROUTES) {
     portalLinks: energovLinks(tenant, [{ label: 'County Property Appraiser', url: pa }]),
     source: `${name} EnerGov portal (code cases, citywide)`,
   };
+}
+
+// --- Accela Citizen Access, surveyed 2026-11-10 ------------------------------
+//
+// ACA serves hundreds of agencies from one ASP.NET application, so one flow
+// reaches all of them. Full survey in docs/accela-fl-agencies-2026-11-08.md
+// and the probe that produced it in scripts/probe_accela_enforcement.py.
+//
+// TWO THINGS ARE PER-AGENCY AND NEITHER MAY BE DEFAULTED.
+//
+// The MODULE name. One hardcoded `module=Enforcement` was wrong for 17 of the
+// 28 Florida agencies probed. Florida uses Enforcement, CodeEnforcement,
+// CodeCompliance, Code and Enforce. Worse, an agency's landing page does not
+// list every module it serves: Fort Lauderdale links only Permits, Planning
+// and TAM, and still answers module=Enforcement with 19 record types. Reading
+// the landing page alone wrote Fort Lauderdale off, which is 182,760 people.
+//
+// The RECORD TYPES. Also per-agency, and the adapter re-reads them live every
+// run. Assuming a code type exists means submitting a search that matches
+// nothing and reporting a clean property - the same failure module 5 produced
+// on EnerGov and file types produced on citizenserve.
+//
+// 14 of 28 confirmed. The other 14 did not serve a readable code search under
+// any of the five known module names and are recorded in the survey as
+// UNKNOWN, not absent. They are deliberately absent from this registry rather
+// than entered hopefully.
+//
+// AND THIS PORTAL CAPS ITS COUNT. "Showing 1-10 of 100+" - past a hundred it
+// will not say how many records exist, so unlike EnerGov there is no number to
+// reconcile a row count against. Every partial list carries a sentence saying
+// so; see partialListNote in accela-parse.ts.
+
+interface AccelaRoute {
+  /** ACA agency code. */
+  agency: string;
+  /** This agency's code-enforcement module name. Established live. */
+  module: string;
+  name: string;
+  kind: 'county' | 'city';
+  /** Record types read off the live search page on 2026-11-10. */
+  recordTypes: string[];
+  /**
+   * County key for a county agency, or the county (or counties) a city sits
+   * in. A city is routed under every county key it can appear under, because
+   * over-routing costs an unused key and under-routing costs a missed town.
+   */
+  counties: string[];
+  /** Municipality as the property appraiser spells it; cities only. */
+  municipality?: string;
+  pop: number;
+}
+
+const ACCELA_ROUTES: AccelaRoute[] = [
+  // --- cities: the whole city is covered -----------------------------------
+  { agency: 'TAMPA', module: 'Enforcement', name: 'City of Tampa', kind: 'city',
+    counties: ['hillsborough'], municipality: 'TAMPA', pop: 384959,
+    recordTypes: ['Code Case', 'Complaint', 'Civil Case', 'Demolition', 'Remedial Order', 'Notice to Appear'] },
+  { agency: 'FTL', module: 'Enforcement', name: 'City of Fort Lauderdale', kind: 'city',
+    counties: ['broward'], municipality: 'FORT LAUDERDALE', pop: 182760,
+    recordTypes: ['Code Case', 'Complaint', 'Lien', 'Nuisance Abatement', 'Unsafe Structure'] },
+  { agency: 'HOLLYWOOD', module: 'Enforcement', name: 'City of Hollywood', kind: 'city',
+    counties: ['broward'], municipality: 'HOLLYWOOD', pop: 153067,
+    recordTypes: ['Code Violation', 'Complaint', 'Lien'] },
+  { agency: 'NORTHPORT', module: 'Code', name: 'City of North Port', kind: 'city',
+    counties: ['sarasota'], municipality: 'NORTH PORT', pop: 74793,
+    recordTypes: ['Code Violation', 'Complaint', 'Nuisance', 'Zoning Violation'] },
+  { agency: 'BRADENTON', module: 'Enforcement', name: 'City of Bradenton', kind: 'city',
+    counties: ['manatee'], municipality: 'BRADENTON', pop: 55698,
+    recordTypes: ['Code Enforcement', 'Complaint'] },
+  { agency: 'COOPER', module: 'Enforcement', name: 'Cooper City', kind: 'city',
+    counties: ['broward'], municipality: 'COOPER CITY', pop: 34401,
+    recordTypes: ['Code Violation'] },
+  // Longboat Key straddles a county line: the island runs up the Manatee and
+  // Sarasota coast. A Census centroid puts it in Manatee and can only name
+  // one, and a geometry-intersect query failed its own sanity check (it
+  // returned no counties for Tampa, which is impossible), so rather than
+  // trust a reading that was demonstrably broken the town is routed under
+  // BOTH. The cost of being wrong here is an unused key; the cost of the
+  // other mistake is a Sarasota-side property falling through to the county
+  // and reading as unchecked while the town's own records sit unread.
+  { agency: 'LONGBOAT', module: 'Enforcement', name: 'Town of Longboat Key', kind: 'city',
+    counties: ['manatee', 'sarasota'], municipality: 'LONGBOAT KEY', pop: 7505,
+    recordTypes: ['Code Enforcement', 'Complaint'] },
+  { agency: 'MULBERRY', module: 'Enforcement', name: 'City of Mulberry', kind: 'city',
+    counties: ['polk'], municipality: 'MULBERRY', pop: 3952,
+    recordTypes: ['Code Enforcement'] },
+
+  // --- counties: UNINCORPORATED AREA ONLY ----------------------------------
+  // Their populations are recorded for identification and are NOT coverage.
+  // Broward's county code office covers 16,888 people out of 1,944,375, and
+  // crediting a county source with county population is the single biggest
+  // overcount available in this product.
+  { agency: 'HCFL', module: 'Enforcement', name: 'Hillsborough County', kind: 'county',
+    counties: ['hillsborough'], pop: 1459762,
+    recordTypes: ['Code Case', 'Complaint', 'Code Violation', 'Lien', 'Demolition'] },
+  { agency: 'LEECO', module: 'CodeEnforcement', name: 'Lee County', kind: 'county',
+    counties: ['lee'], pop: 760822,
+    recordTypes: ['Code Case', 'Complaint', 'Code Violation'] },
+  { agency: 'PASCO', module: 'Enforcement', name: 'Pasco County', kind: 'county',
+    counties: ['pasco'], pop: 561891,
+    recordTypes: ['Code Enforcement', 'Complaint', 'Nuisance', 'Lien', 'Zoning'] },
+  { agency: 'SEMINOLECO', module: 'Enforcement', name: 'Seminole County', kind: 'county',
+    counties: ['seminole'], pop: 470856,
+    recordTypes: ['Code Enforcement', 'Complaint'] },
+  { agency: 'LEONCO', module: 'CodeCompliance', name: 'Leon County', kind: 'county',
+    counties: ['leon'], pop: 292198,
+    recordTypes: ['Code Compliance', 'Complaint', 'Violation', 'Lien'] },
+  { agency: 'NASSAU', module: 'Enforcement', name: 'Nassau County', kind: 'county',
+    counties: ['nassau'], pop: 90352,
+    recordTypes: ['Code Enforcement', 'Complaint', 'Violation'] },
+];
+
+/** The 8 Accela CITY agencies reach 897,135 people. Counties are not summed. */
+export const ACCELA_CITY_POPULATION = ACCELA_ROUTES.filter((r) => r.kind === 'city').reduce(
+  (n, r) => n + r.pop,
+  0,
+);
+
+for (const r of ACCELA_ROUTES) {
+  const tenant: AccelaTenant = {
+    agency: r.agency,
+    name: r.name,
+    kind: r.kind,
+    module: r.module,
+    recordTypes: r.recordTypes,
+  };
+  const pa = COUNTY_PA[r.counties[0]];
+  const links = accelaLinks(tenant, pa ? [{ label: 'County Property Appraiser', url: pa }] : []);
+  const entry: Jurisdiction = {
+    platform: 'accela',
+    county: r.counties[0],
+    name: r.name,
+    tenant,
+    portalLinks: links,
+    source:
+      r.kind === 'county'
+        ? `${r.name} Accela portal (code enforcement, unincorporated county only)`
+        : `${r.name} Accela portal (code enforcement, citywide)`,
+  };
+  if (r.municipality) {
+    for (const c of r.counties) CITY_JURISDICTIONS[`${c}:${r.municipality}`] = { ...entry, county: c };
+  } else if (!JURISDICTIONS[r.counties[0]]) {
+    // Only fill a county slot that is empty. A county already served by a
+    // dedicated adapter - Broward's Posse search, Palm Beach's ePZB - keeps
+    // it, because those were built against the system that county really
+    // runs and are not replaced by a generic one.
+    JURISDICTIONS[r.counties[0]] = entry;
+  }
 }
 
 export const SUPPORTED_JURISDICTIONS = Object.keys(JURISDICTIONS);
