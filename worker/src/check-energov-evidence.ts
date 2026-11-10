@@ -13,6 +13,7 @@
 // ahead of its evidence fails here instead of in front of a reviewer.
 import { readFileSync } from 'node:fs';
 import { CITY_JURISDICTIONS, ENERGOV_EXPANSION_POPULATION, type EnergovJurisdiction } from './scrapers/jurisdictions.js';
+import { evidenceFor, evidenceSupportsRouting } from './scrapers/energov-parse.js';
 
 const file = process.argv[2];
 if (!file) {
@@ -32,13 +33,16 @@ const routed = Object.entries(CITY_JURISDICTIONS)
 
 let bad = 0;
 for (const r of routed) {
-  // The transcript prints the tenant name without the "City of" prefix.
-  const bare = r.name.replace(/^(City|Town|Village) of /, '');
-  const usable = new RegExp(`^USABLE\\s+${bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s`, 'mi').test(transcript);
-  const refused = new RegExp(`^REFUSED\\s+${bare.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s`, 'mi').test(transcript);
-  if (usable) continue;
+  const v = evidenceFor(transcript, r.name);
+  if (evidenceSupportsRouting(v)) continue;
   bad++;
-  console.log(`FAIL  ${bare.padEnd(22)} ${refused ? 'REFUSED in the transcript' : 'absent from the transcript'}`);
+  const why =
+    v === 'contradictory'
+      ? 'BOTH usable and refused in the same transcript - unstable, not usable'
+      : v === 'refused'
+        ? 'REFUSED in the transcript'
+        : 'absent from the transcript';
+  console.log(`FAIL  ${r.name.replace(/^(City|Town|Village) of /, '').padEnd(22)} ${why}`);
 }
 
 const transcriptTotal = (transcript.match(/^USABLE\s/gim) ?? []).length;
