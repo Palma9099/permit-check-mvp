@@ -1,0 +1,158 @@
+[
+ {
+  "name": "Hialeah city",
+  "pop": 223109,
+  "url": "https://hialeahfl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 27440
+ },
+ {
+  "name": "Pembroke Pines city",
+  "pop": 171178,
+  "url": "https://pembrokepinesfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27271
+ },
+ {
+  "name": "Miramar city",
+  "pop": 134721,
+  "url": "https://miramarfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27440
+ },
+ {
+  "name": "West Palm Beach city",
+  "pop": 117415,
+  "url": "https://westpalmbeachfl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 26182
+ },
+ {
+  "name": "Miami Gardens city",
+  "pop": 111640,
+  "url": "https://miamigardensfl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 27272
+ },
+ {
+  "name": "Boca Raton city",
+  "pop": 97422,
+  "url": "https://bocaratonfl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 26182
+ },
+ {
+  "name": "Deltona city",
+  "pop": 93692,
+  "url": "https://deltonafl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27440
+ },
+ {
+  "name": "Doral city",
+  "pop": 75874,
+  "url": "https://doralfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27272
+ },
+ {
+  "name": "Wellington village",
+  "pop": 61637,
+  "url": "https://wellingtonfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27440
+ },
+ {
+  "name": "Palm Beach Gardens city",
+  "pop": 59182,
+  "url": "https://palmbeachgardensfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27272
+ },
+ {
+  "name": "Coral Gables city",
+  "pop": 49248,
+  "url": "https://coralgablesfl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 27271
+ },
+ {
+  "name": "Fort Pierce city",
+  "pop": 47297,
+  "url": "https://fortpiercefl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 26182
+ },
+ {
+  "name": "Oakland Park city",
+  "pop": 44229,
+  "url": "https://oaklandparkfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 26182
+ },
+ {
+  "name": "Ormond Beach city",
+  "pop": 43080,
+  "url": "https://ormondbeachfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 26182
+ },
+ {
+  "name": "Winter Springs city",
+  "pop": 38342,
+  "url": "https://winterspringsfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27272
+ },
+ {
+  "name": "Riviera Beach city",
+  "pop": 37604,
+  "url": "https://rivierabeachfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27440
+ },
+ {
+  "name": "New Smyrna Beach city",
+  "pop": 30142,
+  "url": "https://newsmyrnabeachfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27440
+ },
+ {
+  "name": "Maitland city",
+  "pop": 19543,
+  "url": "https://maitlandfl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 27440
+ },
+ {
+  "name": "Zephyrhills city",
+  "pop": 17194,
+  "url": "https://zephyrhillsfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 27440
+ },
+ {
+  "name": "Marco Island city",
+  "pop": 15760,
+  "url": "https://marcoislandfl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 27272
+ },
+ {
+  "name": "North Bay Village city",
+  "pop": 8159,
+  "url": "https://northbayvillagefl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 27440
+ },
+ {
+  "name": "Neptune Beach city",
+  "pop": 7217,
+  "url": "https://neptunebeachfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 19574
+ },
+ {
+  "name": "Sanibel city",
+  "pop": 6382,
+  "url": "https://sanibelfl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 19420
+ },
+ {
+  "name": "Marianna city",
+  "pop": 6245,
+  "url": "https://mariannafl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 19518
+ },
+ {
+  "name": "Surfside town",
+  "pop": 5689,
+  "url": "https://surfsidefl-energovpub.tylerhost.net/apps/selfservice",
+  "size": 26182
+ },
+ {
+  "name": "South Pasadena city",
+  "pop": 5353,
+  "url": "https://southpasadenafl-energovweb.tylerhost.net/apps/SelfService",
+  "size": 26182
+ }
+]
