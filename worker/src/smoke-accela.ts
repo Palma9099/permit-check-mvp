@@ -65,7 +65,12 @@ async function main() {
     viewport: { width: 1366, height: 900 },
   });
   const page = await context.newPage();
-  page.setDefaultTimeout(45000);
+  // 90s: this portal took 22 seconds to serve its search page during
+  // verification and the adapter allows 60 for the load alone, so a 45s page
+  // default made the smoke fail on a portal the adapter could read perfectly.
+  // A smoke test that is less patient than the code it tests reports a defect
+  // that is its own.
+  page.setDefaultTimeout(90000);
   try {
     const j = resolveJurisdiction('hillsborough', 'TAMPA') as AccelaJurisdiction;
     const ctx: ScraperCtx = { page, address: 'N FLORIDA AVE', folio: null, lat: null, lng: null, municipality: 'TAMPA', log: (m) => console.log('      ' + m) };
