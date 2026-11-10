@@ -473,25 +473,38 @@ export const CITIZENSERVE_NO_CODE: CitizenserveAgency[] = [
 // 26 tenants answered. 22 are listed below. THE OTHER FOUR ARE NOT COVERAGE,
 // and the difference is the whole point:
 //
-//   Sanibel          6,382  TWO RUNS DISAGREED, see below
+//   Sanibel          6,382  RUNS DISAGREED about module 5, see below
+//   Winter Springs  38,342  RUNS DISAGREED about module 5, see below
 //   Marco Island    15,760  portal could not be read on the verification run
 //   Neptune Beach    7,217  portal could not be read on the verification run
 //   Marianna         6,245  portal could not be read on the verification run
 //
-// Sanibel is the interesting one and the reason this list is worth reading.
+// SANIBEL AND WINTER SPRINGS ARE THE INTERESTING ONES, and the reason this
+// list is worth reading. Winter Springs was routed on two runs that read it as
+// usable, and a third run read its module list and reported module 5 ABSENT.
+// It came out. Sanibel went the other way: refused on the first run for a
+// missing module, usable on the second.
 // The first verification run refused it with "runs EnerGov but does not
 // publish code cases - that module is switched off", which is the note that
 // fires only after the live module list HAS been read and found to lack
 // module 5. Fourteen minutes later a second run read it as usable, answering
 // a PERIWINKLE WAY search with zero cases.
 //
-// Both readings cannot be right, and a tenant whose module list answers
-// differently fourteen minutes apart is UNSTABLE, which is not the same as
-// usable. It stays out. Routing it would mean a property in Sanibel could
-// report clear on a run that happened to read the module list successfully
-// while the records behind it were never searched - and picking the
-// convenient reading of two contradictory ones is exactly the habit this
-// product exists to not have. It can be routed when runs agree.
+// Both readings cannot be right in either case, and a tenant whose module
+// list answers differently between runs is UNSTABLE, which is not the same as
+// usable. Both stay out. Routing one would mean a property there could report
+// clear on a run that happened to read the module list successfully while the
+// records behind it were never searched - and picking the convenient reading
+// of two contradictory ones is exactly the habit this product exists to not
+// have. Either can be routed when runs agree.
+//
+// A DIFFERENT CASE, deliberately treated differently: Maitland read fine on
+// two runs and on a third the portal could not be read at all. That is a
+// flaky portal, not an unstable module, and the adapter refuses safely every
+// time it cannot read - so its failure mode is "unchecked", never "clear".
+// It stays routed. The distinction that matters is whether the disagreement
+// is about WHETHER THE RECORDS EXIST TO SEARCH (exclude) or about whether the
+// server answered this minute (refuse and say so).
 //
 // Each was left out rather than entered hopefully. A hostname answering says
 // nothing about whether code cases are public, and the three unreadable ones
@@ -546,7 +559,6 @@ const ENERGOV_CITY_ROUTES: EnergovCityRoute[] = [
   { pop:  47297, county: 'st-lucie',    municipality: 'FORT PIERCE',        host: 'fortpiercefl-energovweb.tylerhost.net',       basePath: '/apps/SelfService' },
   { pop:  44229, county: 'broward',     municipality: 'OAKLAND PARK',       host: 'oaklandparkfl-energovweb.tylerhost.net',      basePath: '/apps/SelfService' },
   { pop:  43080, county: 'volusia',     municipality: 'ORMOND BEACH',       host: 'ormondbeachfl-energovweb.tylerhost.net',      basePath: '/apps/SelfService' },
-  { pop:  38342, county: 'seminole',    municipality: 'WINTER SPRINGS',     host: 'winterspringsfl-energovweb.tylerhost.net',    basePath: '/apps/SelfService' },
   { pop:  37604, county: 'palm-beach',  municipality: 'RIVIERA BEACH',      host: 'rivierabeachfl-energovweb.tylerhost.net',     basePath: '/apps/SelfService' },
   { pop:  30142, county: 'volusia',     municipality: 'NEW SMYRNA BEACH',   host: 'newsmyrnabeachfl-energovweb.tylerhost.net',   basePath: '/apps/SelfService' },
   { pop:  19543, county: 'orange',      municipality: 'MAITLAND',           host: 'maitlandfl-energovpub.tylerhost.net',         basePath: '/apps/selfservice' },
@@ -556,7 +568,17 @@ const ENERGOV_CITY_ROUTES: EnergovCityRoute[] = [
   { pop:   5353, county: 'pinellas',    municipality: 'SOUTH PASADENA',     host: 'southpasadenafl-energovweb.tylerhost.net',    basePath: '/apps/SelfService' },
 ];
 
-/** People reached by the EnerGov cities added in this expansion: 1,143,519. */
+/**
+ * People reached by the EnerGov cities added in this expansion: 1,105,177.
+ *
+ * Eighteen cities, not nineteen. Winter Springs (38,342) was removed after a
+ * third verification run read its module list and reported no code module,
+ * contradicting the two runs it had been routed on. This figure has now
+ * shrunk twice on evidence, which is the process working rather than a
+ * problem with it: 1,143,819 was arithmetic I got wrong, 1,143,519 was the
+ * correct sum of nineteen, and this is the sum of the eighteen that hold up
+ * across runs.
+ */
 export const ENERGOV_EXPANSION_POPULATION = ENERGOV_CITY_ROUTES.reduce((n, r) => n + r.pop, 0);
 
 function titleCase(muni: string): string {

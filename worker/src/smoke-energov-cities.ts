@@ -34,9 +34,13 @@ const ROUTED: Array<[string, string, string]> = [
   ['pinellas', 'SOUTH PASADENA', 'PASADENA AVE'],
 ];
 
+// Routed on two runs, then a third read its module list and reported no code
+// module. Unstable is not usable, so it came out; see jurisdictions.ts.
+const UNSTABLE: Array<[string, string]> = [['seminole', 'WINTER SPRINGS']];
+
 async function main() {
   console.log(`EnerGov expansion population: ${ENERGOV_EXPANSION_POPULATION.toLocaleString()}`);
-  ck('the expansion total is the 19 cities verified', ENERGOV_EXPANSION_POPULATION === 1143519,
+  ck('the expansion total is the 18 cities that hold up across runs', ENERGOV_EXPANSION_POPULATION === 1105177,
      String(ENERGOV_EXPANSION_POPULATION));
 
   console.log('\n--- routing, offline ---');
@@ -54,6 +58,7 @@ async function main() {
     // Sanibel: two verification runs fourteen minutes apart disagreed, one
     // reading module 5 as absent and one reading the tenant as usable. An
     // unstable answer is not a usable one, so it stays out until runs agree.
+    ...UNSTABLE,
     ['lee', 'SANIBEL'],
     ['collier', 'MARCO ISLAND'], // portal unreadable on the verification run
     ['duval', 'NEPTUNE BEACH'],
