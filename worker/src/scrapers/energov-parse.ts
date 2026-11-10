@@ -88,11 +88,24 @@ export function parseSearchResponse(body: unknown): {
   cases: EnergovCase[];
   counts: EnergovCounts;
 } {
+  const nothing = { ok: false, cases: [], counts: { codeCases: 0, permits: 0, total: 0 } };
   const r = (body as any)?.Result;
   const success = (body as any)?.Success === true;
-  if (!r || !success) return { ok: false, cases: [], counts: { codeCases: 0, permits: 0, total: 0 } };
+  if (!r || !success) return nothing;
 
-  const rows: any[] = Array.isArray(r.EntityResults) ? r.EntityResults : [];
+  // Validate the shape before believing the answer.
+  //
+  // `Success: true` with a Result we do not recognise - `{}`, a missing
+  // EntityResults, a count that is not a finite number - is a response we
+  // cannot read, NOT a property with no cases. Defaulting a missing array to
+  // [] made a schema change on Tyler's side indistinguishable from a
+  // confirmed clean parcel, which is the one answer this product must never
+  // get wrong. Fail closed instead.
+  if (!Array.isArray(r.EntityResults)) return nothing;
+  const counted = countOf(r.CodeCasesFound);
+  if (counted === null) return nothing;
+
+  const rows: any[] = r.EntityResults;
   const cases = rows
     // ModuleName 5 is a code case. A module-5 search should only return those,
     // but filter anyway so an "All" search cannot smuggle permits in as cases.
@@ -109,15 +122,35 @@ export function parseSearchResponse(body: unknown): {
       }),
     );
 
+  // The portal reporting FEWER cases than it handed us is incoherent, so the
+  // response is not trustworthy enough to clear a property on. (More is
+  // normal: that is paging, and truncationNote discloses it.)
+  if (counted < cases.length) return nothing;
+
   return {
     ok: true,
     cases,
     counts: {
-      codeCases: Number(r.CodeCasesFound) || 0,
-      permits: Number(r.PermitsFound) || 0,
-      total: Number(r.TotalFound) || 0,
+      codeCases: counted,
+      permits: countOf(r.PermitsFound) ?? 0,
+      total: countOf(r.TotalFound) ?? 0,
     },
   };
+}
+
+/**
+ * A record count from the portal, or null when the field is absent or not a
+ * usable count.
+ *
+ * `Number(undefined) || 0` silently turns a MISSING count into a confident
+ * zero, which is the bug this exists to stop. A missing count has to be
+ * distinguishable from a reported zero.
+ */
+export function countOf(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) return null;
+  return n;
 }
 
 /**

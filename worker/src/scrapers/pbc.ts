@@ -45,7 +45,7 @@ import type { ScrapeResult, ScrapedPermit, ScrapedViolation } from '../types.js'
 import type { ScraperCtx } from './types.js';
 import type { PbcJurisdiction } from './jurisdictions.js';
 import { readTables, pickTable, colIndex, cell, debugDump } from './util.js';
-import { normalizePcn, isUnincorporatedPcn, parseCaseDetailText, pcnRefusal, type CaseDetail } from './pbc-parse.js';
+import { normalizePcn, isUnincorporatedPcn, parseCaseDetailText, pcnRefusal, readMatchesReport, shortfallNote, type CaseDetail } from './pbc-parse.js';
 
 export { normalizePcn, isUnincorporatedPcn, parseCaseDetailText, pcnRefusal, type CaseDetail };
 
@@ -113,11 +113,31 @@ async function submitSearch(ctx: ScraperCtx): Promise<void> {
  * apart from "the form refused us" (not an answer). ePZB prints "Total Records:"
  * once a search has executed, and shows its own validation text when it has not.
  */
-async function searchOutcome(ctx: ScraperCtx): Promise<'ran' | 'rejected' | 'unknown'> {
+interface SearchOutcome {
+  kind: 'ran' | 'rejected' | 'unknown';
+  /**
+   * The number ePZB printed after "Total Records:", or null when it printed a
+   * label with no readable number.
+   *
+   * Reading the LABEL alone was not enough. "Total Records: 7" beside a table
+   * our selectors no longer recognise produced ok=true with zero cases, so a
+   * property with seven records printed as clean. The count is the portal
+   * telling us how many rows should exist; reconciling it against the rows we
+   * actually parsed is what turns a silent parse failure into a refusal.
+   */
+  reported: number | null;
+}
+
+async function searchOutcome(ctx: ScraperCtx): Promise<SearchOutcome> {
   const body = (await ctx.page.innerText('body').catch(() => '')) ?? '';
-  if (/Total Records\s*:/i.test(body)) return 'ran';
-  if (/please enter|please provide|valid format/i.test(body)) return 'rejected';
-  return 'unknown';
+  const m = body.match(/Total Records\s*:\s*([\d,]+)/i);
+  if (m) {
+    const n = Number(m[1].replace(/,/g, ''));
+    return { kind: 'ran', reported: Number.isFinite(n) ? n : null };
+  }
+  if (/Total Records\s*:/i.test(body)) return { kind: 'ran', reported: null };
+  if (/please enter|please provide|valid format/i.test(body)) return { kind: 'rejected', reported: null };
+  return { kind: 'unknown', reported: null };
 }
 
 // --- Code compliance --------------------------------------------------------
@@ -177,7 +197,7 @@ async function readCaseDetail(ctx: ScraperCtx, caseNo: string): Promise<CaseDeta
 async function scrapeCodeCases(
   ctx: ScraperCtx,
   pcn: string,
-): Promise<{ ran: boolean; violations: ScrapedViolation[]; matchedAddress: string | null }> {
+): Promise<{ ran: boolean; violations: ScrapedViolation[]; matchedAddress: string | null; refusal?: string }> {
   const { page, log } = ctx;
   await page.goto(CODE_SEARCH_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForTimeout(1200);
@@ -196,15 +216,29 @@ async function scrapeCodeCases(
   await submitSearch(ctx);
 
   const outcome = await searchOutcome(ctx);
-  if (outcome !== 'ran') {
-    log(`pbc/code: search did not execute (${outcome})`);
+  if (outcome.kind !== 'ran') {
+    log(`pbc/code: search did not execute (${outcome.kind})`);
     await debugDump(page, 'pbc-code-results', log);
     return { ran: false, violations: [], matchedAddress: null };
   }
 
   const table = pickTable(await readTables(page), ['case', 'violation', 'address', 'status']);
   const rows = table ? parseCodeRows(table.headers, table.rows) : [];
-  log(`pbc/code: ${rows.length} case row(s) for ${pcn}`);
+  log(`pbc/code: ${rows.length} case row(s) for ${pcn} (portal reported ${outcome.reported ?? 'no count'})`);
+
+  // Reconcile what the portal says it holds against what we read. Reading
+  // fewer rows than the portal reports means our parse lost records, and
+  // publishing that as the property's case list understates it. Refuse.
+  if (!readMatchesReport(rows.length, outcome.reported)) {
+    log(`pbc/code: read ${rows.length} of ${outcome.reported} reported rows - refusing to report a partial set as complete`);
+    await debugDump(page, 'pbc-code-shortfall', log);
+    return {
+      ran: false,
+      violations: [],
+      matchedAddress: null,
+      refusal: shortfallNote(rows.length, outcome.reported as number, 'code compliance cases'),
+    };
+  }
 
   // Enrich the cases a buyer actually cares about first.
   const ordered = [...rows].sort((a, b) => {
@@ -236,7 +270,10 @@ async function scrapeCodeCases(
 
 // --- Permits ----------------------------------------------------------------
 
-type PermitOutcome = { kind: 'ran'; permits: ScrapedPermit[] } | { kind: 'gated' } | { kind: 'failed' };
+type PermitOutcome =
+  | { kind: 'ran'; permits: ScrapedPermit[] }
+  | { kind: 'gated' }
+  | { kind: 'failed'; reason?: string };
 
 async function scrapePermits(ctx: ScraperCtx, pcn: string): Promise<PermitOutcome> {
   const { page, log } = ctx;
@@ -267,14 +304,23 @@ async function scrapePermits(ctx: ScraperCtx, pcn: string): Promise<PermitOutcom
   await submitSearch(ctx);
 
   const outcome = await searchOutcome(ctx);
-  if (outcome !== 'ran') {
-    log(`pbc/permits: search did not execute (${outcome})`);
+  if (outcome.kind !== 'ran') {
+    log(`pbc/permits: search did not execute (${outcome.kind})`);
     await debugDump(page, 'pbc-permit-results', log);
     return { kind: 'failed' };
   }
 
   const table = pickTable(await readTables(page), ['permit', 'status', 'owner', 'address']);
-  if (!table) return { kind: 'ran', permits: [] };
+  if (!table) {
+    // No table at all. Only a readable zero from the portal can make this an
+    // empty permit history rather than a failed read.
+    if (!readMatchesReport(0, outcome.reported)) {
+      log(`pbc/permits: no results table and no readable zero (reported ${outcome.reported}) - failed read`);
+      await debugDump(page, 'pbc-permit-shortfall', log);
+      return { kind: 'failed', reason: shortfallNote(0, outcome.reported, 'permits') };
+    }
+    return { kind: 'ran', permits: [] };
+  }
 
   const iNo = colIndex(table.headers, ['permit no']);
   const iDesc = colIndex(table.headers, ['permit desc', 'description']);
@@ -298,7 +344,21 @@ async function scrapePermits(ctx: ScraperCtx, pcn: string): Promise<PermitOutcom
     // The results table embeds its own filter row; real rows carry a permit number.
     .filter((p) => p.permitNumber && /^[A-Z]{1,3}-\d{4}-\d+/i.test(p.permitNumber));
 
-  log(`pbc/permits: ${permits.length} permit row(s) for ${pcn}`);
+  log(`pbc/permits: ${permits.length} permit row(s) for ${pcn} (portal reported ${outcome.reported ?? 'no count'})`);
+
+  // Reconcile AFTER filtering, the way the code-case side already does.
+  //
+  // Reconciling the raw rows let a grid whose only row was the embedded filter
+  // row satisfy "Total Records: 1", after which the filter discarded it and
+  // the adapter returned a successful empty permit history. The count has to
+  // be checked against the records we are actually going to publish, not
+  // against rows we are about to throw away.
+  if (!readMatchesReport(permits.length, outcome.reported)) {
+    log(`pbc/permits: portal reported ${outcome.reported}, kept ${permits.length} valid permit row(s) - failed read`);
+    await debugDump(page, 'pbc-permit-shortfall', log);
+    return { kind: 'failed', reason: shortfallNote(permits.length, outcome.reported, 'permits') };
+  }
+
   return { kind: 'ran', permits };
 }
 
@@ -316,6 +376,14 @@ export async function runPbcScrape(ctx: ScraperCtx, j: PbcJurisdiction): Promise
     notes: [],
     portalLinks: j.portalLinks,
     source: j.source,
+    // Two independent searches run below, so each axis carries its own read
+    // state. Nothing is read until proven otherwise, on every path out of
+    // here including the PCN refusal: a result that leaves these undefined
+    // falls back to `ok`, and `ok` is set by EITHER search succeeding, which
+    // let a confirmed-zero code search certify a permit side that was
+    // redirected to a login page.
+    permitsChecked: false,
+    violationsChecked: false,
   };
 
   // One pure decision covers both "that is not a PCN" and "the county is not
@@ -334,6 +402,7 @@ export async function runPbcScrape(ctx: ScraperCtx, j: PbcJurisdiction): Promise
     if (r.kind === 'ran') {
       result.permits = r.permits;
       result.ok = true;
+      result.permitsChecked = true;
     } else if (r.kind === 'gated') {
       // Say exactly what happened. "No permits found" would be a lie here: we
       // were never allowed to look, and an empty permit list on a lien check is
@@ -342,7 +411,10 @@ export async function runPbcScrape(ctx: ScraperCtx, j: PbcJurisdiction): Promise
         'Open permits were NOT checked. Palm Beach County publishes its permit search free and without an account, but it refuses automated sessions, and we do not work around that. Run it yourself with this PCN using the "PBC building permit search" link below - it takes about a minute. Treat the permit side of this report as unchecked, not as clear.',
       );
     } else {
-      result.notes.push('Permit search: the county portal did not run our search this time - use the portal link to confirm.');
+      result.notes.push(
+        r.reason ??
+          'Permit search: the county portal did not run our search this time - use the portal link to confirm.',
+      );
     }
   } catch (e: any) {
     log(`pbc permit error: ${e?.message ?? e}`);
@@ -354,9 +426,13 @@ export async function runPbcScrape(ctx: ScraperCtx, j: PbcJurisdiction): Promise
     if (r.ran) {
       result.violations = r.violations;
       result.ok = true;
+      result.violationsChecked = true;
       if (r.matchedAddress) result.matchedAddress = r.matchedAddress;
     } else {
-      result.notes.push('Code compliance search: the county portal did not run our search this time - use the portal link to confirm.');
+      result.notes.push(
+        r.refusal ??
+          'Code compliance search: the county portal did not run our search this time - use the portal link to confirm.',
+      );
     }
   } catch (e: any) {
     log(`pbc code error: ${e?.message ?? e}`);

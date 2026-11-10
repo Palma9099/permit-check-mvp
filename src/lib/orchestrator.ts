@@ -502,7 +502,11 @@ export async function runDiagnostic(input: {
         adapterResult.codeCasesOpen = municipal.codeCasesOpen;
         adapterResult.codeCasesClosedPast5 = municipal.codeCasesClosedPast5;
       }
-      if (municipal.codeCasesSupported) {
+      // Both flags, not just the first. `codeCasesSupported` says the city
+      // publishes code cases; `codeCasesRead` says its layer answered on THIS
+      // run. A permit layer that answered cannot certify a code layer that
+      // did not: that path turned a 503 into a green "None open".
+      if (municipal.codeCasesSupported && municipal.codeCasesRead) {
         cityCodeChecked = true;
         cityCodeSource = municipal.cityName;
       }

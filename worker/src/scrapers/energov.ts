@@ -192,6 +192,10 @@ export async function runEnergovScrape(
     source: j.source,
   };
 
+  // Nothing is read until proven otherwise, on every path out of here.
+  result.permitsChecked = false;
+  result.violationsChecked = false;
+
   // Refuse before searching if this tenant never published code cases.
   if (!hasCodeModule(t.modules)) {
     result.notes.push(noCodeModuleNote(t));
@@ -230,6 +234,11 @@ export async function runEnergovScrape(
     }
 
     result.ok = true;
+    // This adapter searches module 5 (Code Case) and nothing else, so the
+    // permit side was never looked at. Without this the email printed
+    // "No permits found" for a permit history nobody queried.
+    result.violationsChecked = true;
+    result.permitsChecked = false;
     result.violations = r.cases.map(
       (c): ScrapedViolation => ({
         caseNumber: c.caseNumber,

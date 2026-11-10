@@ -153,7 +153,12 @@ export async function arcgisQuery(service: string, where: string, out: string = 
   if (data?.error) {
     throw new Error(`county query rejected (${service}): ${data.error.code} ${data.error.message}`);
   }
-  if (!data || !Array.isArray(data.features)) return [];
+  // A body with no `features` array is a shape we do not recognise. Returning
+  // [] here would make it indistinguishable from a layer that answered with no
+  // rows, which is the same failure as the {error} case above.
+  if (!data || !Array.isArray(data.features)) {
+    throw new Error(`county query returned an unreadable shape (${service})`);
+  }
   return data.features.map((f: any) => f.attributes ?? {});
 }
 

@@ -12,7 +12,22 @@ const COUNTY_LABEL: Record<string, string> = {
   'palm-beach': 'Palm Beach County',
 };
 
-function permitRows(permits: ScrapedPermit[]): string {
+/**
+ * Was this axis actually searched? Absent flags fall back to the overall `ok`,
+ * so an adapter that does not set them behaves as before.
+ */
+function checked(result: ScrapeResult, axis: 'permits' | 'violations'): boolean {
+  const flag = axis === 'permits' ? result.permitsChecked : result.violationsChecked;
+  return flag === undefined ? result.ok : flag;
+}
+
+/** What to print instead of a count when nothing was read. */
+const NOT_SEARCHED = 'not searched';
+
+function permitRows(permits: ScrapedPermit[], wasChecked: boolean): string {
+  if (permits.length === 0 && !wasChecked) {
+    return '<tr><td colspan="5" style="padding:8px;color:#9a3412">This property\'s permit history was NOT searched on this run. That is not the same as having no permits - use the portal links below.</td></tr>';
+  }
   if (permits.length === 0) return '<tr><td colspan="5" style="padding:8px;color:#888">No permits found in the portal for this property.</td></tr>';
   return permits
     .map(
@@ -27,7 +42,10 @@ function permitRows(permits: ScrapedPermit[]): string {
     .join('');
 }
 
-function violationRows(v: ScrapedViolation[]): string {
+function violationRows(v: ScrapedViolation[], wasChecked: boolean): string {
+  if (v.length === 0 && !wasChecked) {
+    return '<tr><td colspan="4" style="padding:8px;color:#9a3412">Code enforcement was NOT searched for this property on this run. Nobody has confirmed it is clear - use the portal links below.</td></tr>';
+  }
   if (v.length === 0) return '<tr><td colspan="4" style="padding:8px;color:#888">No code-enforcement cases found in the portal for this property.</td></tr>';
   return v
     .map(
@@ -61,6 +79,21 @@ export function buildEmail(result: ScrapeResult, requestedAddress: string | null
   const title = result.matchedAddress || requestedAddress || result.folio || 'your property';
   const subject = `Permit & violation history — ${title}`;
 
+  const permitsRead = checked(result, 'permits');
+  const violationsRead = checked(result, 'violations');
+  // A heading may only carry a count for an axis we actually read. "(0)" on an
+  // unsearched axis reads as a finding of none, which is the lie.
+  const permitCount = permitsRead ? String(result.permits.length) : NOT_SEARCHED;
+  const violationCount = violationsRead ? String(result.violations.length) : NOT_SEARCHED;
+  // The banner must fire on a PARTIAL read too. Keying it on `ok` alone meant
+  // a result where one of two searches failed looked fully successful at the
+  // top of the email, with only a note further down to contradict it.
+  const fullyRead = result.ok && permitsRead && violationsRead;
+  const unread = [!permitsRead ? 'permits' : null, !violationsRead ? 'code enforcement' : null].filter(
+    Boolean,
+  ) as string[];
+  const unreadLabel = unread.length ? ` (${unread.join(' and ')} not searched)` : '';
+
   const links = result.portalLinks
     .map((l) => `<a href="${esc(l.url)}" style="color:#1f3864">${esc(l.label)}</a>`)
     .join(' &nbsp;·&nbsp; ');
@@ -78,33 +111,33 @@ export function buildEmail(result: ScrapeResult, requestedAddress: string | null
     </div>
 
     ${
-      result.ok
+      fullyRead
         ? ''
         : `<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px;margin-bottom:16px;font-size:14px;color:#9a3412">
-            We couldn't fully read the county portal for this property automatically this time. The portal links below take you straight to the records. ${notes}
+            We couldn't fully read the records for this property automatically this time${esc(unreadLabel)}, so nothing below is a confirmed clear result. The portal links take you straight to the records.
           </div>`
     }
 
-    <h3 style="font-size:15px;margin:18px 0 6px">Permits (${result.permits.length})</h3>
+    <h3 style="font-size:15px;margin:18px 0 6px">Permits (${esc(permitCount)})</h3>
     <table style="border-collapse:collapse;width:100%;font-size:13px">
       <thead><tr style="text-align:left;background:#f6f6f6">
         <th style="padding:6px 8px">Permit #</th><th style="padding:6px 8px">Type</th>
         <th style="padding:6px 8px">Status</th><th style="padding:6px 8px">Issued</th>
         <th style="padding:6px 8px">Description</th>
       </tr></thead>
-      <tbody>${permitRows(result.permits)}</tbody>
+      <tbody>${permitRows(result.permits, permitsRead)}</tbody>
     </table>
 
-    <h3 style="font-size:15px;margin:18px 0 6px">Code-enforcement cases (${result.violations.length})</h3>
+    <h3 style="font-size:15px;margin:18px 0 6px">Code-enforcement cases (${esc(violationCount)})</h3>
     <table style="border-collapse:collapse;width:100%;font-size:13px">
       <thead><tr style="text-align:left;background:#f6f6f6">
         <th style="padding:6px 8px">Case #</th><th style="padding:6px 8px">Status</th>
         <th style="padding:6px 8px">Opened</th><th style="padding:6px 8px">Description</th>
       </tr></thead>
-      <tbody>${violationRows(result.violations)}</tbody>
+      <tbody>${violationRows(result.violations, violationsRead)}</tbody>
     </table>
 
-    ${result.ok && notes ? `<div style="margin-top:14px">${notes}</div>` : ''}
+    ${notes ? `<div style="margin-top:14px">${notes}</div>` : ''}
 
     <div style="margin-top:18px;font-size:13px;color:#333">Verify directly: ${links}</div>
 
@@ -117,23 +150,57 @@ export function buildEmail(result: ScrapeResult, requestedAddress: string | null
     </div>
   </div>`;
 
+  // The plain-text alternative is a DELIVERED surface, not a fallback: plenty
+  // of clients render it instead of the HTML. It used to print
+  // "Permits (0): none found" regardless of whether anything was read, and it
+  // dropped result.notes entirely - so every authority caveat, failure note
+  // and pagination disclosure vanished on the half of the audience reading
+  // text. It now carries the same claims and the same limits as the HTML.
+  const textSection = (
+    label: string,
+    wasChecked: boolean,
+    count: number,
+    body: () => string,
+    unchecked: string,
+  ) =>
+    wasChecked
+      ? `${label} (${count}):\n` + (count ? body() : '  none found')
+      : `${label} (${NOT_SEARCHED}):\n  ${unchecked}`;
+
   const text =
     `Deep permit & violation scan\n${title} · ${countyName}\n\n` +
-    `Permits (${result.permits.length}):\n` +
-    (result.permits.length
-      ? result.permits.map((p) => `  - ${p.permitNumber ?? '—'} | ${p.type ?? ''} | ${p.status ?? ''} | ${p.issuedDate ?? ''}`).join('\n')
-      : '  none found') +
-    `\n\nCode-enforcement cases (${result.violations.length}):\n` +
-    (result.violations.length
-      ? result.violations
+    (fullyRead
+      ? ''
+      : `WE COULD NOT FULLY READ THE RECORDS FOR THIS PROPERTY THIS TIME${unreadLabel.toUpperCase()}.\nNothing below is a confirmed clear result. Use the portal links.\n\n`) +
+    textSection(
+      'Permits',
+      permitsRead,
+      result.permits.length,
+      () =>
+        result.permits
+          .map((p) => `  - ${p.permitNumber ?? '—'} | ${p.type ?? ''} | ${p.status ?? ''} | ${p.issuedDate ?? ''}`)
+          .join('\n'),
+      'This property\'s permit history was NOT searched on this run. That is not the same as having no permits.',
+    ) +
+    `\n\n` +
+    textSection(
+      'Code-enforcement cases',
+      violationsRead,
+      result.violations.length,
+      () =>
+        result.violations
           .map((c) => {
             const head = `  - ${c.caseNumber ?? '—'} | ${c.status ?? ''} | ${c.description ?? ''}`;
             const codes = c.codes?.length ? `\n      ${c.codes.join('\n      ')}` : '';
             const det = c.details ? `\n      ${c.details}` : '';
             return head + det + codes;
           })
-          .join('\n')
-      : '  none found') +
+          .join('\n'),
+      'Code enforcement was NOT searched for this property on this run. Nobody has confirmed it is clear.',
+    ) +
+    (result.notes.length
+      ? `\n\nWhat this does and does not cover:\n` + result.notes.map((n) => `  - ${n}`).join('\n')
+      : '') +
     `\n\nPortals: ${result.portalLinks.map((l) => l.url).join('  ')}\n` +
     `Source: ${result.source}. Not legal advice — verify with the AHJ.`;
 

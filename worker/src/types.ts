@@ -57,4 +57,16 @@ export interface ScrapeResult {
   notes: string[];             // human-readable caveats / what we did
   portalLinks: PortalLink[];   // always provided so the email is useful even on failure
   source: string;              // which portal(s) were read
+  /**
+   * Did we actually search each axis on this run? Absent means "same as `ok`".
+   *
+   * `ok` is one flag for a result with two independent halves, and an adapter
+   * that searches only one of them was reporting the other as empty. The
+   * EnerGov adapter searches code cases only (module 5), so its successful
+   * runs were printing "No permits found" for a permit history nobody looked
+   * at. An empty list is only ever publishable as "none" when the matching
+   * flag here is true.
+   */
+  permitsChecked?: boolean;
+  violationsChecked?: boolean;
 }

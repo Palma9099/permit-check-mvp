@@ -324,6 +324,13 @@ export async function runBrowardScrape(ctx: ScraperCtx, j: BrowardJurisdiction):
     notes: [],
     portalLinks: j.portalLinks,
     source: j.source,
+    // Broward reads permits and code cases as two independent searches, so
+    // each axis carries its own read state. Codex found this shape in the
+    // Palm Beach adapter; it was here too, unprobed: either search succeeding
+    // set `ok`, and a result with these undefined falls back to `ok`, so a
+    // good code read certified a permit read that returned no table.
+    permitsChecked: false,
+    violationsChecked: false,
   };
 
   const refusal = folioRefusal(ctx.folio);
@@ -360,6 +367,7 @@ export async function runBrowardScrape(ctx: ScraperCtx, j: BrowardJurisdiction):
     if (r.ran) {
       result.permits = r.permits;
       result.ok = true;
+      result.permitsChecked = true;
     } else {
       result.notes.push('County permit list: automated read did not return a table - use the portal link to confirm.');
     }
@@ -374,6 +382,7 @@ export async function runBrowardScrape(ctx: ScraperCtx, j: BrowardJurisdiction):
       result.notes.push('County code-case list: automated read did not return a table - use the portal link to confirm.');
     } else {
       result.ok = true;
+      result.violationsChecked = true;
       // Enrich what matters: a recorded lien or an open violation first.
       const ordered = [...list.rows].sort((a, b) => {
         const score = (s: string | null) => (s && LIVE_STATUSES.includes(s.toLowerCase()) ? 0 : 1);

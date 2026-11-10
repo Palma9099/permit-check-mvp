@@ -30,6 +30,17 @@ export interface MunicipalResult {
    *  whose feed is permits-only has not had its code records searched, and the
    *  report must not read as though it has. */
   codeCasesSupported: boolean;
+  /**
+   * True only when the city's CODE layer actually answered on this run.
+   *
+   * Separate from `codeCasesSupported` on purpose. That flag says the city
+   * publishes code cases at all; this one says we read them just now. A city
+   * can publish a code layer and have it return 503 while its permit layer
+   * answers fine, and the permit rows must not be allowed to vouch for the
+   * code side: that produces a green "None open" on a property nobody asked
+   * the code office about.
+   */
+  codeCasesRead: boolean;
   permits: Permit[];
   codeCasesOpen: CodeCase[];
   codeCasesClosedPast5: CodeCase[];
@@ -38,18 +49,26 @@ export interface MunicipalResult {
 }
 
 function empty(): MunicipalResult {
-  return { found: false, cityName: null, codeCasesSupported: false, permits: [], codeCasesOpen: [], codeCasesClosedPast5: [], sources: [], notes: [] };
+  return { found: false, cityName: null, codeCasesSupported: false, codeCasesRead: false, permits: [], codeCasesOpen: [], codeCasesClosedPast5: [], sources: [], notes: [] };
+}
+
+/** One layer's answer: whether it answered at all, kept apart from its rows. */
+interface LayerRead {
+  ok: boolean;
+  rows: any[];
 }
 
 // Query an ArcGIS FeatureServer/MapServer layer by a small envelope around a
-// point. Returns attribute rows (never throws - failures yield []).
+// point. Never throws. Returns `ok: false` when the layer did not answer, so a
+// caller can tell a failed read from a genuinely empty one; collapsing both to
+// [] is how an unread source becomes a clean report.
 async function queryByPoint(
   layerQueryUrl: string,
   lat: number,
   lng: number,
   outFields: string,
   opts: { meters?: number; orderBy?: string; max?: number; label?: string } = {},
-): Promise<any[]> {
+): Promise<LayerRead> {
   const { meters = 30, orderBy, max = 25, label = 'municipal' } = opts;
   // ~degrees for the requested radius at South Florida latitudes.
   const dLat = meters / 111_320;
@@ -73,12 +92,17 @@ async function queryByPoint(
     const res = await fetchWithTimeout(`${layerQueryUrl}?${params.toString()}`, {
       cache: 'no-store', timeoutMs: 10000, retries: 1, label,
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { ok: false, rows: [] };
     const data: any = await res.json();
-    if (data?.error) return [];
-    return Array.isArray(data?.features) ? data.features.map((f: any) => f.attributes ?? {}) : [];
+    // ArcGIS reports its own errors inside an HTTP 200, so this is a failure,
+    // not an empty result.
+    if (data?.error) return { ok: false, rows: [] };
+    // A response with no `features` array is a shape we do not recognise. It
+    // is not a confirmed zero either.
+    if (!Array.isArray(data?.features)) return { ok: false, rows: [] };
+    return { ok: true, rows: data.features.map((f: any) => f.attributes ?? {}) };
   } catch {
-    return [];
+    return { ok: false, rows: [] };
   }
 }
 
@@ -119,7 +143,7 @@ async function querySocrataCircle(
   lat: number,
   lng: number,
   opts: { meters?: number; order?: string; max?: number; label?: string } = {},
-): Promise<any[]> {
+): Promise<LayerRead> {
   const { meters = 50, order, max = 30, label = 'socrata' } = opts;
   const params = new URLSearchParams({
     $where: `within_circle(${pointField}, ${lat}, ${lng}, ${meters})`,
@@ -130,11 +154,14 @@ async function querySocrataCircle(
     const res = await fetchWithTimeout(`${resourceUrl}?${params.toString()}`, {
       cache: 'no-store', timeoutMs: 10000, retries: 1, label,
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { ok: false, rows: [] };
     const data: any = await res.json();
-    return Array.isArray(data) ? data : [];
+    // Socrata answers with a bare array. Anything else is a shape we do not
+    // recognise, which is a failed read, not zero permits.
+    if (!Array.isArray(data)) return { ok: false, rows: [] };
+    return { ok: true, rows: data };
   } catch {
-    return [];
+    return { ok: false, rows: [] };
   }
 }
 
@@ -147,7 +174,7 @@ const FTL_PERMITS = 'https://gis.fortlauderdale.gov/arcgis/rest/services/General
 const FTL_CODE = 'https://gis.fortlauderdale.gov/arcgis/rest/services/GeneralPurpose/gisdata/MapServer/30/query';
 
 async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult> {
-  const [permitRows, codeRows] = await Promise.all([
+  const [permitRead, codeRead] = await Promise.all([
     queryByPoint(FTL_PERMITS, lat, lng,
       'PERMITID,PERMITTYPE,PERMITSTAT,PERMITDESC,SUBMITDT,APPROVEDT,FULLADDR,CONTRACTOR,ESTCOST,COISSUE',
       { meters: 30, orderBy: 'SUBMITDT DESC', max: 30, label: 'ftl-permits' }),
@@ -156,7 +183,7 @@ async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult
       { meters: 30, orderBy: 'INITDATE DESC', max: 20, label: 'ftl-code' }),
   ]);
 
-  const permits: Permit[] = permitRows.map((r) => ({
+  const permits: Permit[] = permitRead.rows.map((r) => ({
     permitNumber: s(r.PERMITID) || null,
     processNumber: null,
     appType: s(r.PERMITTYPE) || null,
@@ -170,7 +197,7 @@ async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult
   const fiveYearsAgo = Date.now() - 5 * 365.25 * 24 * 3600 * 1000;
   const open: CodeCase[] = [];
   const closedPast5: CodeCase[] = [];
-  for (const r of codeRows) {
+  for (const r of codeRead.rows) {
     const status = s(r.CASESTATUS);
     const initMs = typeof r.INITDATE === 'number' ? r.INITDATE : 0;
     const cc: CodeCase = {
@@ -188,22 +215,41 @@ async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult
     }
   }
 
-  const found = permits.length > 0 || open.length > 0 || closedPast5.length > 0;
+  // `found` means we retrieved something, OR a layer answered cleanly with
+  // nothing. A confirmed empty code layer is a real result and the report is
+  // entitled to say so; what it may never do is reach that state off the back
+  // of a layer that failed.
+  const found =
+    permits.length > 0 || open.length > 0 || closedPast5.length > 0 || codeRead.ok || permitRead.ok;
   if (!found) return empty();
+
+  const notes = [
+    'Fort Lauderdale permit and code records are matched by map location (records at or immediately around this point), so confirm each record’s address matches the subject property before relying on it. Broward has no countywide permit feed; only city-published data is pulled.',
+  ];
+  if (!codeRead.ok) {
+    notes.push(
+      'The City of Fort Lauderdale code compliance layer did not answer on this run, so its code cases were NOT searched. That is not the same as the property being clear - search the city directly before relying on anything here.',
+    );
+  }
+  if (!permitRead.ok) {
+    notes.push(
+      'The City of Fort Lauderdale permit layer did not answer on this run, so "no permits" is not confirmed for this property.',
+    );
+  }
 
   return {
     found: true,
     cityName: 'Fort Lauderdale',
     codeCasesSupported: true, // the city publishes a code-case layer
+    // ...but only this run's read of it may certify the code side as searched.
+    codeCasesRead: codeRead.ok,
     permits,
     codeCasesOpen: open,
     codeCasesClosedPast5: closedPast5,
     sources: [
       'City of Fort Lauderdale GIS (ArcGIS): Building/Land-Use Permits and Code Compliance Cases - queried live by location.',
     ],
-    notes: [
-      'Fort Lauderdale permit and code records are matched by map location (records at or immediately around this point), so confirm each record’s address matches the subject property before relying on it. Broward has no countywide permit feed; only city-published data is pulled.',
-    ],
+    notes,
   };
 }
 
@@ -226,7 +272,7 @@ async function tampa(lat: number, lng: number): Promise<MunicipalResult> {
     queryByPoint(`${TAMPA_BASE}/2/query`, lat, lng, TAMPA_FIELDS, { meters: 40, orderBy: 'CREATEDDATE DESC', max: 15, label: 'tampa-res' }),
   ]);
 
-  const permits: Permit[] = [...com, ...twn, ...res].map((r) => {
+  const permits: Permit[] = [...com.rows, ...twn.rows, ...res.rows].map((r) => {
     const swo = /^y/i.test(s(r.STOPWORKORDER));
     const base = s(r.PROJECTSTATUS) || null;
     const status = swo ? `${base ? `${base} · ` : ''}STOP WORK ORDER` : base;
@@ -242,11 +288,14 @@ async function tampa(lat: number, lng: number): Promise<MunicipalResult> {
     };
   });
 
-  if (permits.length === 0) return empty();
+  // All three layers failing is a failed read, not an empty one.
+  if (permits.length === 0 && !com.ok && !twn.ok && !res.ok) return empty();
   return {
     found: true,
     cityName: 'Tampa',
     codeCasesSupported: false, // active-permit feed only, no code cases
+    // Nothing to read, so nothing read. Keeps the city off the code axis.
+    codeCasesRead: false,
     permits,
     codeCasesOpen: [],
     codeCasesClosedPast5: [],
@@ -266,11 +315,11 @@ async function tampa(lat: number, lng: number): Promise<MunicipalResult> {
 const ORLANDO_PERMITS = 'https://data.cityoforlando.net/resource/ryhf-m453.json';
 
 async function orlando(lat: number, lng: number): Promise<MunicipalResult> {
-  const rows = await querySocrataCircle(ORLANDO_PERMITS, 'geocoded_column', lat, lng, {
+  const read = await querySocrataCircle(ORLANDO_PERMITS, 'geocoded_column', lat, lng, {
     meters: 50, order: 'issue_permit_date DESC', max: 30, label: 'orlando-permits',
   });
 
-  const permits: Permit[] = rows.map((r) => ({
+  const permits: Permit[] = read.rows.map((r) => ({
     permitNumber: s(r.permit_number) || null,
     processNumber: null,
     appType: s(r.application_type) || s(r.worktype) || null,
@@ -281,11 +330,12 @@ async function orlando(lat: number, lng: number): Promise<MunicipalResult> {
     scope: s(r.project_name) || s(r.worktype) || null,
   }));
 
-  if (permits.length === 0) return empty();
+  if (permits.length === 0 && !read.ok) return empty();
   return {
     found: true,
     cityName: 'Orlando',
     codeCasesSupported: false, // permit data only
+    codeCasesRead: false,
     permits,
     codeCasesOpen: [],
     codeCasesClosedPast5: [],
@@ -329,6 +379,10 @@ function mergeResults(results: MunicipalResult[]): MunicipalResult {
     found: true,
     cityName: hits.map((h) => h.cityName).filter(Boolean).join(', ') || null,
     codeCasesSupported: hits.some((h) => h.codeCasesSupported),
+    // AND, not OR across the two flags: only a city that both publishes code
+    // cases and successfully read them this run may mark the code axis
+    // searched. A second city with no code layer cannot vouch for the first.
+    codeCasesRead: hits.some((h) => h.codeCasesSupported && h.codeCasesRead),
     permits: hits.flatMap((h) => h.permits),
     codeCasesOpen: hits.flatMap((h) => h.codeCasesOpen),
     codeCasesClosedPast5: hits.flatMap((h) => h.codeCasesClosedPast5),
