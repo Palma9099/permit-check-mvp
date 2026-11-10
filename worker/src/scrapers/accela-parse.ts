@@ -384,19 +384,91 @@ export function extractionShortfallNote(read: number, shown: number, name: strin
 /**
  * Do two address strings name the same property?
  *
- * Deliberately conservative: the street number must match and the street name
- * must appear in both. A street search returns the whole street, and treating
- * a neighbour's record as this property's is a worse error than declining to
- * confirm a match we are not sure of.
+ * The first version compared only the street NUMBER and the stripped street
+ * NAME, and streetNameOf deliberately removes the direction and the street
+ * type. So these all agreed, and all three are different properties:
+ *
+ *   1234 N FLORIDA AVE  vs  1234 S FLORIDA AVE
+ *   1234 E MAIN ST      vs  1234 W MAIN ST
+ *   1234 FLORIDA AVE    vs  1234 FLORIDA ST
+ *
+ * Codex reproduced the first of those through the production adapter, getting
+ * matchedAddress 1234 S FLORIDA AVE for a request about 1234 N FLORIDA AVE.
+ * North and South Florida Avenue are not the same road, and in Tampa they run
+ * in opposite directions from downtown.
+ *
+ * Every component now has to agree, and a component present on one side and
+ * missing on the other is a DISAGREEMENT rather than a wildcard: "1234
+ * FLORIDA AVE" does not identify which of N or S is meant, so it cannot
+ * confirm either. Declining to confirm a match costs a reader one extra
+ * check; confirming the wrong one hands them a neighbour's lien.
  */
+export interface AddressParts {
+  number: string | null;
+  direction: string | null;
+  name: string | null;
+  type: string | null;
+}
+
+const DIRECTION = /^(n|s|e|w|ne|nw|se|sw|north|south|east|west|northeast|northwest|southeast|southwest)$/i;
+const STREET_TYPE =
+  /^(aly|alley|ave|avenue|blvd|boulevard|br|branch|cir|circle|cswy|causeway|ct|court|ctr|center|dr|drive|expy|expressway|fwy|freeway|hill|hwy|highway|land|ln|lane|loop|mall|pkwy|parkway|pl|place|plz|plaza|pt|point|rd|road|rnch|ranch|sq|square|st|street|ter|terrace|trail|trl|vis|vista|vly|valley|way)$/i;
+
+/** Canonical short forms, so AVE and AVENUE compare equal. */
+const CANON: Record<string, string> = {
+  north: 'N', south: 'S', east: 'E', west: 'W',
+  northeast: 'NE', northwest: 'NW', southeast: 'SE', southwest: 'SW',
+  avenue: 'AVE', boulevard: 'BLVD', circle: 'CIR', court: 'CT', center: 'CTR',
+  drive: 'DR', highway: 'HWY', lane: 'LN', parkway: 'PKWY', place: 'PL',
+  plaza: 'PLZ', point: 'PT', road: 'RD', square: 'SQ', street: 'ST',
+  terrace: 'TER', trail: 'TRL', valley: 'VLY', vista: 'VIS', alley: 'ALY',
+  branch: 'BR', causeway: 'CSWY', expressway: 'EXPY', freeway: 'FWY',
+  ranch: 'RNCH',
+};
+
+const canon = (w: string): string => {
+  const u = w.toUpperCase();
+  return CANON[w.toLowerCase()] ?? u;
+};
+
+/** Split an address into the parts that decide whether two of them match. */
+export function addressParts(address: string | null): AddressParts {
+  const a = (address ?? '').split(',')[0].trim();
+  if (!a) return { number: null, direction: null, name: null, type: null };
+  const numMatch = a.match(/^(\d+)[A-Z]?\s/i);
+  const number = numMatch ? numMatch[1] : null;
+  let rest = a
+    .replace(/^\d+[A-Z]?\s+/i, '')
+    // Drop a unit designator and whatever follows it, so a unit number is
+    // never read as the street number or the street type.
+    .replace(/\s+(apt|unit|ste|suite|rm|room|#|bldg|lot)\b.*$/i, '')
+    .trim();
+  const words = rest.split(/\s+/).filter(Boolean);
+  let direction: string | null = null;
+  // A leading direction prefixes the name ("N FLORIDA AVE"); a trailing one
+  // suffixes it ("FLORIDA AVE NW"). Take whichever is there.
+  if (words.length > 1 && DIRECTION.test(words[0])) direction = canon(words.shift()!);
+  if (!direction && words.length > 1 && DIRECTION.test(words[words.length - 1])) {
+    direction = canon(words.pop()!);
+  }
+  let type: string | null = null;
+  if (words.length > 1 && STREET_TYPE.test(words[words.length - 1])) type = canon(words.pop()!);
+  const name = words.length ? words.join(' ').toUpperCase() : null;
+  return { number, direction, name, type };
+}
+
 export function addressesAgree(recordAddr: string | null, requested: string | null): boolean {
-  const a = streetNumberOf(recordAddr);
-  const b = streetNumberOf(requested);
-  if (!a || !b || a !== b) return false;
-  const an = streetNameOf(recordAddr);
-  const bn = streetNameOf(requested);
-  if (!an || !bn) return false;
-  return an.toUpperCase() === bn.toUpperCase();
+  const a = addressParts(recordAddr);
+  const b = addressParts(requested);
+  // The number and the name must both be present and equal.
+  if (!a.number || !b.number || a.number !== b.number) return false;
+  if (!a.name || !b.name || a.name !== b.name) return false;
+  // Direction and type must agree where stated, and a value on one side with
+  // nothing on the other is ambiguous, which is not agreement. "1234 FLORIDA
+  // AVE" cannot confirm "1234 N FLORIDA AVE": it does not say which one.
+  if (a.direction !== b.direction) return false;
+  if (a.type !== b.type) return false;
+  return true;
 }
 
 /** "1234 N FLORIDA AVE" -> "1234". */

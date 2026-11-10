@@ -23,6 +23,7 @@ import {
   type AccelaTenant,
   type AccelaResultCount,
   addressesAgree,
+  addressParts,
 } from '../worker/src/scrapers/accela-parse.js';
 
 const TAMPA: AccelaTenant = {
@@ -249,30 +250,65 @@ describe('per-agency configuration is never defaulted', () => {
 // records[0].address as the matched address. So a request about
 // 1234 N FLORIDA AVE reported 9999 FLORIDA AVE as its address.
 // ---------------------------------------------------------------------------
-describe('B3: no record is attributed to a property it does not name', () => {
-  it('agrees only when number AND street name match', () => {
+describe('B3 and R2-B2: no record is attributed to a property it does not name', () => {
+  it('agrees when every component agrees', () => {
     expect(addressesAgree('1234 N FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(true);
-    expect(addressesAgree('1234 FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(true);
   });
 
-  it('CODEX TRIGGER: a neighbour on the same street does not agree', () => {
-    expect(addressesAgree('9999 FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
+  it('normalises long forms, so AVENUE equals AVE and NORTH equals N', () => {
+    expect(addressesAgree('1234 NORTH FLORIDA AVENUE', '1234 N FLORIDA AVE')).toBe(true);
+  });
+
+  it('CODEX B3 TRIGGER: a neighbour at a different number does not agree', () => {
+    expect(addressesAgree('9999 FLORIDA AVE', '1234 FLORIDA AVE')).toBe(false);
+  });
+
+  // Round 2. The first version compared only number and the STRIPPED name,
+  // and streetNameOf deliberately removes the direction and the street type,
+  // so opposite sides of a city agreed. Codex reproduced the first of these
+  // through the production adapter, getting matchedAddress 1234 S FLORIDA AVE
+  // for a request about 1234 N FLORIDA AVE.
+  it('CODEX R2 TRIGGER: opposite directions do NOT agree', () => {
+    expect(addressesAgree('1234 S FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
+    expect(addressesAgree('1234 E MAIN ST', '1234 W MAIN ST')).toBe(false);
+    expect(addressesAgree('1234 NE 1 ST', '1234 SW 1 ST')).toBe(false);
+  });
+
+  it('different street TYPES do not agree', () => {
+    // Florida Ave and Florida St are different roads in plenty of FL cities.
+    expect(addressesAgree('1234 FLORIDA ST', '1234 FLORIDA AVE')).toBe(false);
+  });
+
+  it('a missing component is ambiguity, not a wildcard', () => {
+    // "1234 FLORIDA AVE" does not say which of N or S, so it confirms neither.
+    expect(addressesAgree('1234 FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
+    expect(addressesAgree('1234 N FLORIDA AVE', '1234 FLORIDA AVE')).toBe(false);
+  });
+
+  it('reads a trailing direction too', () => {
+    expect(addressesAgree('1234 FLORIDA AVE NW', '1234 FLORIDA AVE NW')).toBe(true);
+    expect(addressesAgree('1234 FLORIDA AVE NW', '1234 FLORIDA AVE SE')).toBe(false);
   });
 
   it('a different street at the same number does not agree', () => {
-    expect(addressesAgree('1234 MAIN ST', '1234 N FLORIDA AVE')).toBe(false);
+    expect(addressesAgree('1234 MAIN ST', '1234 FLORIDA ST')).toBe(false);
   });
 
   it('declines rather than guesses when either address is unusable', () => {
-    // Conservative on purpose: treating a neighbour's case as this property's
-    // is a worse error than declining to confirm a match.
     expect(addressesAgree(null, '1234 N FLORIDA AVE')).toBe(false);
     expect(addressesAgree('FLORIDA AVE', '1234 N FLORIDA AVE')).toBe(false);
     expect(addressesAgree('1234 N FLORIDA AVE', null)).toBe(false);
   });
 
-  it('is not fooled by a number appearing inside a unit', () => {
-    expect(addressesAgree('1234 FLORIDA AVE APT 9999', '1234 N FLORIDA AVE')).toBe(true);
-    expect(addressesAgree('9999 FLORIDA AVE APT 1234', '1234 N FLORIDA AVE')).toBe(false);
+  it('a unit number is never read as the street number or type', () => {
+    expect(addressesAgree('1234 N FLORIDA AVE APT 9999', '1234 N FLORIDA AVE')).toBe(true);
+    expect(addressesAgree('9999 N FLORIDA AVE APT 1234', '1234 N FLORIDA AVE')).toBe(false);
+  });
+
+  it('splits an address into the parts that decide a match', () => {
+    expect(addressParts('1234 N FLORIDA AVE')).toEqual({
+      number: '1234', direction: 'N', name: 'FLORIDA', type: 'AVE',
+    });
+    expect(addressParts('10049 N Florida Ave T 33612').number).toBe('10049');
   });
 });

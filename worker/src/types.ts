@@ -40,6 +40,16 @@ export interface ScrapedViolation {
   codes?: string[];
   /** The inspector's narrative, which names the specific structure or condition cited. */
   details?: string | null;
+  /**
+   * The address THIS record is filed against, when the source gives one.
+   *
+   * Required whenever a search was broader than one parcel. An Accela street
+   * search returns the whole street, and the adapter told the reader to
+   * "check the address on each row" while dropping the address from every
+   * row - an instruction the data made impossible to follow. A caveat the
+   * reader cannot act on is not a caveat.
+   */
+  recordAddress?: string | null;
 }
 
 export interface PortalLink {

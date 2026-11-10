@@ -450,7 +450,14 @@ export async function runAccelaScrape(
         status: rec.status,
         openedDate: rec.date,
         closedDate: null,
-        description: [rec.recordType, rec.shortNotes].filter(Boolean).join(' - ') || null,
+        // The address is part of the record, not decoration. A street search
+        // returns the whole street, so a row without its address cannot be
+        // checked against the subject property by anyone.
+        recordAddress: rec.address,
+        description:
+          [rec.address ? `[${rec.address}]` : null, rec.recordType, rec.shortNotes]
+            .filter(Boolean)
+            .join(' - ') || null,
         lastAction: isEncumbering(rec.status)
           ? `Status "${rec.status}" - money may be attached to the property`
           : isOpen(rec.status)
@@ -477,9 +484,9 @@ export async function runAccelaScrape(
     // under a property's heading will otherwise assume every row is theirs.
     if (r.searchedBy === 'street') {
       result.notes.push(
-        `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. Check the address on each row against ${
+        `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. Each row is prefixed with the address it is filed against - compare it to ${
           ctx.address ?? 'the subject property'
-        } before relying on it.`,
+        } before relying on that row.`,
       );
     }
 
@@ -509,7 +516,11 @@ export async function runAccelaScrape(
             status: rec.status,
             issuedDate: rec.date,
             finaledDate: null,
-            description: [rec.recordType, rec.shortNotes].filter(Boolean).join(' - ') || null,
+            // Same reason as the code side: a street search spans the street.
+            description:
+              [rec.address ? `[${rec.address}]` : null, rec.recordType, rec.shortNotes]
+                .filter(Boolean)
+                .join(' - ') || null,
             value: null,
             contractor: null,
           }));
