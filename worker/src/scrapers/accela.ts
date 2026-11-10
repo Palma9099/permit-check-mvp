@@ -38,6 +38,12 @@ import type { AccelaJurisdiction } from './jurisdictions.js';
 import { readTables, debugDump } from './util.js';
 import {
   GRID_HEADERS,
+  addressesAgree,
+  streetNameOf,
+  streetNumberOf,
+  extractionMatchesPage,
+  extractionShortfallNote,
+  portalSaysNoRecords,
   gridFromRows,
   pickGrid,
   accelaLinks,
@@ -59,6 +65,12 @@ import {
 
 export {
   GRID_HEADERS,
+  addressesAgree,
+  streetNameOf,
+  streetNumberOf,
+  extractionMatchesPage,
+  extractionShortfallNote,
+  portalSaysNoRecords,
   gridFromRows,
   pickGrid,
   accelaLinks,
@@ -92,6 +104,18 @@ const F = {
   parcelNo: 'input[id$="txtGSParcelNo"]',
   submit: 'input[id$="btnNewSearch"], a[id$="btnNewSearch"]',
 };
+
+/** Fill one field, reporting whether the value actually went in. */
+async function fillOrFail(ctx: ScraperCtx, sel: string, value: string): Promise<boolean> {
+  try {
+    await ctx.page.fill(sel, value, { timeout: 10000 });
+    // Read it back: a control can accept a fill and discard the value.
+    const got = await ctx.page.inputValue(sel).catch(() => '');
+    return got.trim() === value.trim();
+  } catch {
+    return false;
+  }
+}
 
 /** Fill the first selector that exists. Returns false when none do. */
 async function fillFirstOf(ctx: ScraperCtx, sels: string[], value: string): Promise<boolean> {
@@ -146,20 +170,6 @@ async function readAcaGrid(
 const moduleUrl = (t: AccelaTenant, module: string) =>
   `https://aca-prod.accela.com/${t.agency}/Cap/CapHome.aspx?module=${module}&TabName=${module}`;
 
-/** "1234 N FLORIDA AVE" -> "1234". */
-export function streetNumberOf(address: string | null): string | null {
-  const m = (address ?? '').trim().match(/^(\d+)[A-Z]?\s/i);
-  return m ? m[1] : null;
-}
-
-/**
- * The record types this agency offers, or null when the list cannot be read.
- *
- * WAIT FOR THE OPTIONS, not just the select. The EnerGov adapter had exactly
- * this bug: the element attaches before it is filled, an early read returns
- * an empty list, and an empty list is indistinguishable from "no types". That
- * one nearly discarded seven cities and 675,709 people.
- */
 async function liveRecordTypes(ctx: ScraperCtx): Promise<string[] | null> {
   const ok = await ctx.page
     .waitForFunction(
@@ -196,28 +206,50 @@ async function runSearch(
   count: AccelaResultCount;
   unreadable?: number;
   rejected?: boolean;
+  shortfall?: { read: number; shown: number };
+  /** Which criterion actually went into the form. */
+  searchedBy?: 'parcel' | 'street';
 }> {
   const { page, log } = ctx;
   const empty = { shown: null, total: null, capped: false };
 
-  await page.goto(moduleUrl(t, module), { waitUntil: 'domcontentloaded', timeout: 45000 });
+  // 60s, not 45s: this portal is a heavy ASP.NET page and 45 was timing out
+  // on an otherwise healthy run. A timeout here refuses safely, so the cost
+  // of being impatient is a property reported unchecked for no reason.
+  await page.goto(moduleUrl(t, module), { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForSelector(F.submit, { state: 'attached', timeout: 30000 });
 
   // Prefer the parcel number: it is the key this product actually holds, and
   // it sidesteps every disagreement between our address string and the
   // agency's own spelling of it. Fall back to the street name.
+  // B3, Codex Accela round 1: A FAILED FILL MUST NOT CLAIM THE SEARCH RAN.
+  //
+  // The first version did `page.fill(...).catch(() => {})` and then set
+  // searchedBy regardless. So when the parcel control existed but was not
+  // editable, the fill rejected silently, searchedBy was set anyway, the
+  // address fallback was skipped, and whatever default grid the page happened
+  // to show was published as THIS property's record list - with
+  // matchedAddress overwritten by the unrelated address. Codex reproduced it
+  // publishing a case at 9999 FLORIDA AVE for a request about
+  // 1234 N FLORIDA AVE. Publishing another property's case is worse than
+  // publishing nothing, and it was the catch that made it possible.
+  //
+  // So every fill reports whether it worked, and a criterion that did not go
+  // in is not a criterion we searched on.
   const parcel = (ctx.folio ?? '').trim();
   let searchedBy = '';
   if (parcel && (await page.locator(F.parcelNo).count())) {
-    await page.fill(F.parcelNo, parcel, { timeout: 10000 }).catch(() => {});
-    searchedBy = `parcel ${parcel}`;
+    if (await fillOrFail(ctx, F.parcelNo, parcel)) {
+      searchedBy = `parcel ${parcel}`;
+    } else {
+      log('accela: the parcel field would not accept the value - falling back to the street');
+    }
   }
   if (!searchedBy) {
-    const num = streetNumberOf(ctx.address);
-    if (num) await fillFirstOf(ctx, F.streetNo, num);
     const street = streetNameOf(ctx.address);
     if (!street) {
-      log('accela: no parcel number and no usable street name - nothing to search by');
+      log('accela: no usable search criteria went in - nothing to search by');
+      await debugDump(page, 'accela-form', log);
       return { ran: false, records: [], count: empty };
     }
     if (!(await page.locator(F.streetName).count())) {
@@ -225,15 +257,38 @@ async function runSearch(
       await debugDump(page, 'accela-form', log);
       return { ran: false, records: [], count: empty };
     }
-    await page.fill(F.streetName, street, { timeout: 10000 }).catch(() => {});
+    if (!(await fillOrFail(ctx, F.streetName, street))) {
+      log('accela: the street-name field would not accept the value');
+      await debugDump(page, 'accela-form', log);
+      return { ran: false, records: [], count: empty };
+    }
     searchedBy = `street "${street}"`;
+    // The number narrows the result but is not required, so a failure here is
+    // logged and the search still runs on the street name alone.
+    const num = streetNumberOf(ctx.address);
+    if (num && !(await fillFirstOf(ctx, F.streetNo, num))) {
+      log('accela: the street-number field would not accept the value - searching the street alone');
+    }
   }
 
   // Plain WebForms posts the DOM value, so filling the field is enough here -
   // unlike Palm Beach's AngularJS shell, where a script-set value does not
   // bind and the control has to be driven as keystrokes.
   const nav = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => null);
-  await page.click(F.submit, { timeout: 15000 }).catch(() => {});
+  // A submit that did not happen cannot have produced a result, so this
+  // failure propagates too rather than being swallowed into a later
+  // "no records" reading of whatever page we are still sitting on.
+  let submitted = true;
+  try {
+    await page.click(F.submit, { timeout: 15000 });
+  } catch (e: any) {
+    submitted = false;
+    log(`accela: the search button would not click (${String(e?.message ?? e).slice(0, 60)})`);
+  }
+  if (!submitted) {
+    await debugDump(page, 'accela-submit', log);
+    return { ran: false, records: [], count: empty };
+  }
   await nav;
   await page.waitForLoadState('networkidle', { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(1200);
@@ -264,7 +319,8 @@ async function runSearch(
   if (!grid) {
     // No grid. Only the portal's own statement that it found nothing makes
     // this a zero; anything else is a read we could not complete.
-    const saysNone = /no records found|0 Record results/i.test(body);
+    // Numeric, not textual: "10 Record results" contains "0 Record results".
+    const saysNone = portalSaysNoRecords(body);
     if (saysNone) {
       log(`accela: portal reported no records for ${searchedBy}`);
       return { ran: true, records: [], count };
@@ -287,24 +343,29 @@ async function runSearch(
     await debugDump(page, 'accela-unreadable-rows', log);
     return { ran: false, records: [], count, unreadable };
   }
-  return { ran: true, records, count };
-}
 
-/** "1234 N FLORIDA AVE" -> "FLORIDA". ACA wants the name without number or type. */
-export function streetNameOf(address: string | null): string | null {
-  const a = (address ?? '').split(',')[0].trim();
-  if (!a) return null;
-  const words = a
-    .replace(/^\d+[A-Z]?\s+/i, '')
-    .replace(/\s+(apt|unit|ste|suite|#)\s*\S+$/i, '')
-    .trim()
-    .split(/\s+/);
-  const DIR = /^(n|s|e|w|ne|nw|se|sw|north|south|east|west)$/i;
-  const TYPE =
-    /^(aly|ave|avenue|blvd|boulevard|br|cir|circle|cswy|ct|court|ctr|dr|drive|expy|fwy|hill|hwy|highway|land|ln|lane|loop|mall|pkwy|parkway|pl|place|plz|pt|rd|road|rnch|sq|st|street|ter|terrace|trail|trl|vis|vly|way)$/i;
-  const core = words.filter((w) => !DIR.test(w) && !TYPE.test(w));
-  const name = (core.length ? core : words).join(' ').trim();
-  return name || null;
+  // B2: the page's own claim about THIS page, checked.
+  //
+  // A grid carrying the four header cells and no body rows used to be
+  // accepted as a successful zero-case read - even with "Showing 1-3 of 3" on
+  // the page - because `unreadable` is 0 for an empty array and the count was
+  // only ever consulted for the partial-list note. `shown` is trustworthy
+  // even when the TOTAL is capped at "100+": the cap hides how much history
+  // exists, not how many rows are in front of us.
+  const matches = extractionMatchesPage(records.length, count);
+  if (matches === false) {
+    log(`accela: page advertises ${count.shown} row(s), extracted ${records.length} - failed read`);
+    await debugDump(page, 'accela-shortfall', log);
+    return { ran: false, records: [], count, shortfall: { read: records.length, shown: count.shown! } };
+  }
+  // Header row present, nothing extracted, and the portal did not say it
+  // found nothing: that is an unreadable grid, not a clean property.
+  if (records.length === 0 && !portalSaysNoRecords(body)) {
+    log('accela: headers present but no rows extracted, and no explicit empty state - failed read');
+    await debugDump(page, 'accela-empty-grid', log);
+    return { ran: false, records: [], count };
+  }
+  return { ran: true, records, count, searchedBy: searchedBy.startsWith('parcel') ? 'parcel' : 'street' };
 }
 
 export async function runAccelaScrape(
@@ -344,7 +405,12 @@ export async function runAccelaScrape(
   }
 
   try {
-    await ctx.page.goto(searchUrl(t), { waitUntil: 'domcontentloaded', timeout: 45000 });
+    // runSearch navigates to the module it is about to search, so the page is
+    // loaded ONCE per search rather than twice. The duplicate goto that used
+    // to sit here was left behind when navigation moved into runSearch, and
+    // it doubled every scrape's page loads against a portal that is already
+    // slow enough to time out on its own.
+    await ctx.page.goto(searchUrl(t), { waitUntil: 'domcontentloaded', timeout: 60000 });
     await ctx.page.waitForSelector(F.submit, { state: 'attached', timeout: 30000 });
 
     // Trust the live page over the registry snapshot: an agency can switch a
@@ -363,7 +429,9 @@ export async function runAccelaScrape(
     const r = await runSearch(ctx, t, t.module);
     if (!r.ran) {
       result.notes.push(
-        r.unreadable
+        r.shortfall
+          ? extractionShortfallNote(r.shortfall.read, r.shortfall.shown, t.name)
+          : r.unreadable
           ? `${t.name}'s portal returned ${r.unreadable} result row${
               r.unreadable === 1 ? '' : 's'
             } that could not be read, so this list is incomplete and nothing here is a clear result. Use the portal link below.`
@@ -391,7 +459,29 @@ export async function runAccelaScrape(
         details: rec.shortNotes,
       }),
     );
-    if (r.records[0]?.address) result.matchedAddress = r.records[0].address;
+    // DO NOT ADOPT A RECORD'S ADDRESS AS THE MATCHED ADDRESS.
+    //
+    // A street search returns the whole street. The first version overwrote
+    // matchedAddress with records[0].address, so a request about
+    // 1234 N FLORIDA AVE came back reporting 9999 FLORIDA AVE - a different
+    // property - as the address this report is about. Found while
+    // reproducing Codex's B3 trigger: the fill failure was fixed and this
+    // was still sitting underneath it.
+    //
+    // Only a record that actually names the requested property may set it.
+    const match = r.records.find((rec) => addressesAgree(rec.address, ctx.address));
+    if (match?.address) result.matchedAddress = match.address;
+
+    // And if the search was by street, say so plainly. These records belong
+    // to the street, not to this parcel, and a reader scanning a case list
+    // under a property's heading will otherwise assume every row is theirs.
+    if (r.searchedBy === 'street') {
+      result.notes.push(
+        `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. Check the address on each row against ${
+          ctx.address ?? 'the subject property'
+        } before relying on it.`,
+      );
+    }
 
     const partial = partialListNote(r.records.length, r.count, t.name);
     if (partial) result.notes.push(partial);

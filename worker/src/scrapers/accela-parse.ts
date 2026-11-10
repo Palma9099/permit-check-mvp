@@ -326,3 +326,107 @@ export function gridFromRows(
   }
   return null;
 }
+
+/**
+ * Does the portal itself state that it found nothing?
+ *
+ * B1, Codex Accela round 1: the first version tested the page text against
+ * /no records found|0 Record results/i, and "10 Record results matching your
+ * search" CONTAINS "0 Record results". So 10, 20, 100 - any positive count
+ * ending in zero - read as an explicit empty state. Paired with an unreadable
+ * grid that returned a successful zero, and the email then printed "No
+ * code-enforcement cases found in the portal for this property" over a
+ * hundred records.
+ *
+ * A count is now read as a NUMBER, via parseResultCount, and a genuine zero
+ * is the only zero. The phrase match is anchored so it cannot be satisfied by
+ * a digit sitting in front of it.
+ */
+export function portalSaysNoRecords(bodyText: string): boolean {
+  const count = parseResultCount(bodyText);
+  // An explicit positive count, capped or not, is never an empty state.
+  if (count.capped) return false;
+  if (count.total !== null && count.total > 0) return false;
+  if (count.shown !== null && count.shown > 0) return false;
+  if (count.total === 0) return true;
+  // No count at all: fall back to the portal's own wording, with the digit
+  // boundary that was missing.
+  return /(^|[^\d])0\s+Record results/i.test(bodyText) || /no records found/i.test(bodyText);
+}
+
+/**
+ * Did we extract as many rows as the portal says this page is showing?
+ *
+ * B2, same review: a page carrying the four header cells and no body rows was
+ * accepted as a successful zero-case read, even with "Showing 1-3 of 3" on
+ * it. The count was only consulted for the partial-list note, never for
+ * whether the extraction had worked.
+ *
+ * `shown` is the current page's own claim and is trustworthy even when the
+ * TOTAL is capped at "100+", which is what makes it usable here: the cap hides
+ * how much history exists, not how many rows are on the page in front of us.
+ *
+ * Returns null when the portal said nothing about this page, which is not a
+ * failure - some agencies print no count for a small result.
+ */
+export function extractionMatchesPage(read: number, count: AccelaResultCount): boolean | null {
+  if (count.shown === null) return null;
+  return read >= count.shown;
+}
+
+/** What to say when the page advertised more rows than we could extract. */
+export function extractionShortfallNote(read: number, shown: number, name: string): string {
+  return `${name}'s portal says it is showing ${shown} record${
+    shown === 1 ? '' : 's'
+  } on this page but only ${read} could be read, so the extraction is incomplete and nothing here is a clear result. Open the portal link below and check the property directly.`;
+}
+
+/**
+ * Do two address strings name the same property?
+ *
+ * Deliberately conservative: the street number must match and the street name
+ * must appear in both. A street search returns the whole street, and treating
+ * a neighbour's record as this property's is a worse error than declining to
+ * confirm a match we are not sure of.
+ */
+export function addressesAgree(recordAddr: string | null, requested: string | null): boolean {
+  const a = streetNumberOf(recordAddr);
+  const b = streetNumberOf(requested);
+  if (!a || !b || a !== b) return false;
+  const an = streetNameOf(recordAddr);
+  const bn = streetNameOf(requested);
+  if (!an || !bn) return false;
+  return an.toUpperCase() === bn.toUpperCase();
+}
+
+/** "1234 N FLORIDA AVE" -> "1234". */
+export function streetNumberOf(address: string | null): string | null {
+  const m = (address ?? '').trim().match(/^(\d+)[A-Z]?\s/i);
+  return m ? m[1] : null;
+}
+
+/**
+ * The record types this agency offers, or null when the list cannot be read.
+ *
+ * WAIT FOR THE OPTIONS, not just the select. The EnerGov adapter had exactly
+ * this bug: the element attaches before it is filled, an early read returns
+ * an empty list, and an empty list is indistinguishable from "no types". That
+ * one nearly discarded seven cities and 675,709 people.
+ */
+
+/** "1234 N FLORIDA AVE" -> "FLORIDA". ACA wants the name without number or type. */
+export function streetNameOf(address: string | null): string | null {
+  const a = (address ?? '').split(',')[0].trim();
+  if (!a) return null;
+  const words = a
+    .replace(/^\d+[A-Z]?\s+/i, '')
+    .replace(/\s+(apt|unit|ste|suite|#)\s*\S+$/i, '')
+    .trim()
+    .split(/\s+/);
+  const DIR = /^(n|s|e|w|ne|nw|se|sw|north|south|east|west)$/i;
+  const TYPE =
+    /^(aly|ave|avenue|blvd|boulevard|br|cir|circle|cswy|ct|court|ctr|dr|drive|expy|fwy|hill|hwy|highway|land|ln|lane|loop|mall|pkwy|parkway|pl|place|plz|pt|rd|road|rnch|sq|st|street|ter|terrace|trail|trl|vis|vly|way)$/i;
+  const core = words.filter((w) => !DIR.test(w) && !TYPE.test(w));
+  const name = (core.length ? core : words).join(' ').trim();
+  return name || null;
+}
