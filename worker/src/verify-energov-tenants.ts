@@ -15,7 +15,7 @@
 // today each reported a failed read as a finding, and the adapter is the only
 // thing whose answer is worth recording.
 import { chromium } from 'playwright';
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { runEnergovScrape } from './scrapers/energov.js';
 import type { EnergovJurisdiction } from './scrapers/jurisdictions.js';
 import type { ScraperCtx } from './scrapers/types.js';
@@ -68,6 +68,24 @@ function tenantFrom(h: Hit): EnergovTenant {
 }
 
 async function main() {
+  // Write the transcript to disk as it is produced, not to stdout for a shell
+  // to capture. A previous run of this script overran a foreground timeout,
+  // was moved to the background, and lost its first eight tenant lines with
+  // the pipe - so six newly routed cities had no evidence behind them while
+  // the summary still read as a clean success. An incomplete capture that
+  // still looks complete is the same failure this whole product guards
+  // against, pointed at the review instead of the reader.
+  const out = process.argv[2];
+  if (!out) {
+    console.error('usage: verify-energov-tenants.ts <output-file>');
+    process.exit(2);
+  }
+  writeFileSync(out, `# EnerGov tenant verification, started ${new Date().toISOString()}\n`);
+  const say = (line: string) => {
+    appendFileSync(out, line + '\n');
+    console.log(line);
+  };
+
   const hits: Hit[] = JSON.parse(readFileSync(new URL('./energov_hits.json', import.meta.url), 'utf8'));
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -82,7 +100,11 @@ async function main() {
 
   for (const h of hits.sort((a, b) => b.pop - a.pop)) {
     const street = STREETS[h.name];
-    if (!street) { refused.push({ ...h, why: 'no probe street listed' }); continue; }
+    if (!street) {
+      refused.push({ ...h, why: 'no probe street listed' });
+      say(`SKIPPED  ${h.name.padEnd(22)} ${String(h.pop).padStart(8)}  no probe street listed`);
+      continue;
+    }
     const t = tenantFrom(h);
     const j: EnergovJurisdiction = {
       platform: 'energov', county: 'verify', name: t.name, tenant: t,
@@ -94,15 +116,16 @@ async function main() {
       r = await runEnergovScrape(ctx, j);
     } catch (e: any) {
       refused.push({ ...h, why: 'threw: ' + String(e?.message ?? e).slice(0, 50) });
+      say(`REFUSED  ${t.name.padEnd(22)} ${String(h.pop).padStart(8)}  threw: ${String(e?.message ?? e).slice(0, 50)}`);
       continue;
     }
     if (r.ok) {
       usable.push({ ...h, cases: r.violations.length, host: t.host, basePath: t.basePath! });
-      console.log(`USABLE   ${t.name.padEnd(22)} ${String(h.pop).padStart(8)}  "${street}" -> ${r.violations.length} case(s)`);
+      say(`USABLE   ${t.name.padEnd(22)} ${String(h.pop).padStart(8)}  "${street}" -> ${r.violations.length} case(s)`);
     } else {
       const why = r.notes[0]?.slice(0, 90) ?? 'refused, no note';
       refused.push({ ...h, why });
-      console.log(`REFUSED  ${t.name.padEnd(22)} ${String(h.pop).padStart(8)}  ${why}`);
+      say(`REFUSED  ${t.name.padEnd(22)} ${String(h.pop).padStart(8)}  ${why}`);
     }
   }
 
@@ -111,11 +134,19 @@ async function main() {
 
   const uPop = usable.reduce((n, u) => n + u.pop, 0);
   const rPop = refused.reduce((n, u) => n + u.pop, 0);
-  console.log(`\nUSABLE : ${usable.length} tenants, ${uPop.toLocaleString()} people`);
-  console.log(`REFUSED: ${refused.length} tenants, ${rPop.toLocaleString()} people (NOT coverage, and not clear either)`);
-  console.log('\nregistry rows for the usable ones:');
+  say('');
+  say(`USABLE : ${usable.length} tenants, ${uPop.toLocaleString()} people`);
+  say(`REFUSED: ${refused.length} tenants, ${rPop.toLocaleString()} people (NOT coverage, and not clear either)`);
+  say('');
+  say('every tenant probed, in order, so a short transcript is visibly short:');
+  say(`  tenants in energov_hits.json: ${hits.length}`);
+  say(`  lines emitted above:          ${usable.length + refused.length}`);
+  say('');
+  say('registry rows for the usable ones:');
   for (const u of usable) {
-    console.log(`  ${u.name.replace(/ (city|town|village)$/, '')} | ${u.host} | ${u.basePath}`);
+    say(`  ${u.name.replace(/ (city|town|village)$/, '')} | ${u.host} | ${u.basePath}`);
   }
+  say('');
+  say(`# complete, ${new Date().toISOString()}`);
 }
 main().catch((e) => { console.error(e); process.exit(1); });
