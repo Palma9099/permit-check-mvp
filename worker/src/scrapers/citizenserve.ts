@@ -289,6 +289,12 @@ export async function runCitizenserveScrape(
     notes: [],
     portalLinks: j.portalLinks,
     source: j.source,
+    // citizenserve's Code Administration search is code cases only: this
+    // portal does not publish permit history on the same search. So the
+    // permit axis is never read here, and saying so stops the email printing
+    // "No permits found" about a search that never ran.
+    permitsChecked: false,
+    violationsChecked: false,
   };
 
   // Refuse before searching if this tenant never published code cases.
@@ -351,6 +357,9 @@ export async function runCitizenserveScrape(
     );
     const outcome = describeOutcome(true, r.cases);
     result.ok = outcome.ok;
+    // Code cases are the only axis this portal offers, so ok and
+    // violationsChecked move together here. permitsChecked stays false.
+    result.violationsChecked = outcome.ok;
     if (outcome.note) result.notes.push(outcome.note);
     if (r.cases[0]?.address) result.matchedAddress = r.cases[0].address;
 
