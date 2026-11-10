@@ -13,6 +13,7 @@
 
 import type { PortalLink } from '../types.js';
 import type { PortalConfig } from './portal-config.js';
+import { DEFAULT_SHARD, searchUrlOn, type CitizenserveAgency } from './citizenserve-parse.js';
 import { searchUrl as energovSearchUrl, type EnergovTenant } from './energov-parse.js';
 import { COUNTY_CONFIGS } from './counties.js';
 
@@ -32,6 +33,15 @@ export interface EnergovJurisdiction {
   county: string;
   name: string;
   tenant: EnergovTenant;
+  portalLinks: PortalLink[];
+  source: string;
+}
+
+export interface CitizenserveJurisdiction {
+  platform: 'citizenserve';
+  county: string;
+  name: string;
+  agency: CitizenserveAgency;
   portalLinks: PortalLink[];
   source: string;
 }
@@ -62,6 +72,7 @@ export interface GenericJurisdiction {
 export type Jurisdiction =
   | AccelaJurisdiction
   | EnergovJurisdiction
+  | CitizenserveJurisdiction
   | BrowardJurisdiction
   | PbcJurisdiction
   | GenericJurisdiction;
@@ -114,6 +125,48 @@ export const JURISDICTIONS: Record<string, Jurisdiction> = {
     name: 'Miami-Dade County',
     config: COUNTY_CONFIGS['miami-dade'],
   },
+  alachua: {
+    platform: 'citizenserve',
+    county: 'alachua',
+    name: 'Alachua County',
+    agency: {
+      installationID: 318,
+      name: 'Alachua County',
+      kind: 'county',
+      fileTypes: ['Permit', 'License', 'Development', 'Code'],
+    },
+    portalLinks: csLinks(318, 'https://www.acpafl.org/'),
+    source: 'Alachua County citizenserve portal (code enforcement cases, unincorporated county)',
+  },
+
+  sumter: {
+    platform: 'citizenserve',
+    county: 'sumter',
+    name: 'Sumter County',
+    agency: {
+      installationID: 445,
+      name: 'Sumter County',
+      kind: 'county',
+      fileTypes: ['Permit', 'Development', 'Code'],
+    },
+    portalLinks: csLinks(445, 'https://www.sumterpa.com/'),
+    source: 'Sumter County citizenserve portal (code enforcement cases, unincorporated county)',
+  },
+
+  franklin: {
+    platform: 'citizenserve',
+    county: 'franklin',
+    name: 'Franklin County',
+    agency: {
+      installationID: 389,
+      name: 'Franklin County',
+      kind: 'county',
+      fileTypes: ['Permit', 'License', 'Development', 'Code'],
+    },
+    portalLinks: csLinks(389, 'https://www.franklincountypa.gov/'),
+    source: 'Franklin County citizenserve portal (code enforcement cases, unincorporated county)',
+  },
+
 };
 
 // --- Tyler EnerGov Citizen Self Service ------------------------------------
@@ -244,5 +297,168 @@ export function resolveJurisdiction(
   }
   return JURISDICTIONS[c];
 }
+
+// --- citizenserve -----------------------------------------------------------
+//
+// The one platform with an open registry: every tenant is the same URL with an
+// integer installationID, so Florida's whole tenant list was enumerable (39
+// tenants between id 97 and 650).
+//
+// But being on citizenserve says NOTHING about whether code cases are public.
+// The file types a tenant exposes are per-tenant configuration. Surveyed live
+// on 2026-11-09 across the 17 confirmed Florida tenants:
+//
+//   Code exposed (10)   318 Alachua Co, 445 Sumter Co, 389 Franklin Co,
+//                       403 Titusville, 221 Casselberry, 441 Seminole,
+//                       261 West Park, 401 Montverde, 237 Bradenton Beach,
+//                       326 Key Colony Beach
+//   No Code (7)         245 Walton Co (Development only), 175 Wakulla Co,
+//                       197 Gulf Co, 331 Cocoa (Permit only),
+//                       117 Southwest Ranches (Permit only), 171 Anna Maria,
+//                       391 Eatonville (search offers nothing)
+//
+// Reach of the 10, counting counties at their UNINCORPORATED population only:
+// 340,783 people - 225,353 unincorporated county plus 115,430 city.
+//
+// Only the three counties are wired below, because this registry is keyed by
+// county and the worker has no city-level routing yet. The seven city tenants
+// are listed in CITIZENSERVE_CITY_AGENCIES, ready for when it does; that is
+// 115,430 people currently left on the table.
+
+// A function declaration, not a const arrow: JURISDICTIONS is declared above
+// this block and calls it, so it has to hoist.
+function csLinks(id: number, site?: string): PortalLink[] {
+  return [
+    {
+      label: 'Code case search (citizenserve portal)',
+      // DEFAULT_SHARD, not a literal. Every link here used to be pinned to
+      // www6, which on 2026-11-10 served a 2,591-byte stub with no search
+      // form while www through www5 served the real page. That made the
+      // adapter's honest refusal useless: it tells a reader to open the
+      // portal and check the property themselves, and the link was dead.
+      // The adapter rewrites these to the shard it actually opened, so this
+      // is only the value before anything has been tried.
+      url: searchUrlOn(DEFAULT_SHARD, id),
+    },
+    ...(site ? [{ label: 'Property Appraiser', url: site }] : []),
+  ];
+}
+
+/**
+ * The citizenserve CITY tenants that publish code cases, now routed.
+ *
+ * These sat parked in this file because the worker had no city-level routing
+ * when the adapter was written. It has it now (CITY_JURISDICTIONS plus
+ * resolveJurisdiction), so each one is wired below and the 115,430 people they
+ * cover are no longer left on the table.
+ *
+ * Every county here was resolved from the Census, not assumed, because the
+ * assumption is wrong at least once in this very list: the CITY of Seminole
+ * is in PINELLAS County, not Seminole County. Resolved 2026-11-10 against
+ * TIGERweb Incorporated Places (layer 25, Census 2020) for the place and
+ * Counties (layer 55) for the county at the place's centroid.
+ *
+ * Layer 25 and not layer 26: layer 26 is Census DESIGNATED Places, which are
+ * statistical areas with no government, so they can neither run a code office
+ * nor be counted as municipalities.
+ */
+export const CITIZENSERVE_CITY_AGENCIES: CitizenserveAgency[] = [
+  { installationID: 221, name: 'Casselberry', kind: 'city', fileTypes: ['Permit', 'License', 'Development', 'Code'] },
+  { installationID: 441, name: 'City of Seminole', kind: 'city', fileTypes: ['Permit', 'License', 'Code'] },
+  { installationID: 261, name: 'West Park', kind: 'city', fileTypes: ['Permit', 'Development', 'Code'] },
+  { installationID: 401, name: 'Montverde', kind: 'city', fileTypes: ['Permit', 'Development', 'Code'] },
+  { installationID: 237, name: 'Bradenton Beach', kind: 'city', fileTypes: ['Permit', 'License', 'Development', 'Code'] },
+  { installationID: 326, name: 'Key Colony Beach', kind: 'city', fileTypes: ['Permit', 'License', 'Development', 'Code'] },
+];
+
+/**
+ * County, municipality-as-the-appraiser-spells-it, and 2020 population for
+ * each of the seven. The municipality string is the routing key, and it has to
+ * match what the property appraiser returns, never a postal city.
+ */
+const CS_CITY_ROUTES: Array<{
+  id: number;
+  county: string;
+  municipality: string;
+  /** Census 2020 population, for coverage accounting that is checkable. */
+  pop: number;
+  /** The county property appraiser, so the reader can find their parcel id. */
+  pa?: string;
+}> = [
+  // Titusville is NOT here. See CITIZENSERVE_NO_CODE: its code search refuses
+  // an address alone and asks for additional criteria, so it cannot answer the
+  // only question this product asks.
+  { id: 221, county: 'seminole', municipality: 'CASSELBERRY', pop: 28794, pa: 'https://www.scpafl.org/' },
+  // City of Seminole sits in PINELLAS County. Not Seminole County.
+  { id: 441, county: 'pinellas', municipality: 'SEMINOLE', pop: 19364, pa: 'https://www.pcpao.gov/' },
+  { id: 261, county: 'broward', municipality: 'WEST PARK', pop: 15130, pa: 'https://web.bcpa.net/' },
+  { id: 401, county: 'lake', municipality: 'MONTVERDE', pop: 1655, pa: 'https://www.lakecopropappr.com/' },
+  { id: 237, county: 'manatee', municipality: 'BRADENTON BEACH', pop: 908, pa: 'https://www.manateepao.gov/' },
+  { id: 326, county: 'monroe', municipality: 'KEY COLONY BEACH', pop: 790, pa: 'https://www.mcpafl.org/' },
+];
+
+/**
+ * Total population the routed city tenants reach: 66,641.
+ *
+ * Six cities, not seven. Titusville (48,789, the largest of the original
+ * seven and 42 percent of the batch) was dropped after a live probe, so this
+ * number is what the adapter can actually read rather than what the tenant
+ * list suggests. Crediting it would have been the single biggest overcount
+ * available here.
+ */
+export const CITIZENSERVE_CITY_POPULATION = CS_CITY_ROUTES.reduce((n, r) => n + r.pop, 0);
+
+for (const route of CS_CITY_ROUTES) {
+  const agency = CITIZENSERVE_CITY_AGENCIES.find((a) => a.installationID === route.id);
+  // A route with no agency would silently route a city to nothing, so fail
+  // loudly at module load rather than at a reader's request.
+  if (!agency) throw new Error(`citizenserve route ${route.id} has no agency entry`);
+  CITY_JURISDICTIONS[`${route.county}:${route.municipality}`] = {
+    platform: 'citizenserve',
+    county: route.county,
+    name: agency.name.startsWith('City of') ? agency.name : `City of ${agency.name}`,
+    agency,
+    portalLinks: csLinks(route.id, route.pa),
+    source: `${agency.name} citizenserve portal (code enforcement cases, citywide)`,
+  };
+}
+
+/**
+ * Florida citizenserve tenants that do NOT publish usable code cases.
+ *
+ * Two different failures live here and both end the same way. Most of these
+ * tenants simply do not expose the Code file type. Titusville and Eatonville
+ * are worse: they offer it and then give nothing to search with, which looks
+ * like coverage from the tenant list and is not.
+ */
+export const CITIZENSERVE_NO_CODE: CitizenserveAgency[] = [
+  // Verified live 2026-11-10, and the FIRST reason recorded here was wrong.
+  //
+  // It is not that no criteria fields render. They do: selecting the only file
+  // type, "Code Complaints", renders #address and #parcelNumber, both visible
+  // at 885x35, once the page's own handler has run. An earlier check missed
+  // them because a plain selectOption leaves them hidden and only the
+  // keystroke fallback brings them up, so "no fields" was a reading of a
+  // half-driven form.
+  //
+  // The real blocker is one step later. Filling #address with a real
+  // Titusville street and submitting returns:
+  //
+  //   "No records found" + "Error / Please enter additional search criteria"
+  //
+  // The tenant demands more than an address. Since an address is what this
+  // product has, no property can be looked up here. Same conclusion, correct
+  // reason. Its fileTypes are recorded as [] to keep it out of any search,
+  // and the adapter now recognises that rejection by name rather than
+  // reaching the right answer through a fallback.
+  { installationID: 403, name: 'Titusville', kind: 'city', fileTypes: [] },
+  { installationID: 245, name: 'Walton County', kind: 'county', fileTypes: ['Development'] },
+  { installationID: 175, name: 'Wakulla County', kind: 'county', fileTypes: ['Permit', 'License', 'Development'] },
+  { installationID: 197, name: 'Gulf County', kind: 'county', fileTypes: ['Permit', 'License'] },
+  { installationID: 331, name: 'City of Cocoa', kind: 'city', fileTypes: ['Permit'] },
+  { installationID: 117, name: 'Southwest Ranches', kind: 'city', fileTypes: ['Permit'] },
+  { installationID: 171, name: 'Anna Maria', kind: 'city', fileTypes: ['Permit', 'License', 'Development'] },
+  { installationID: 391, name: 'Eatonville', kind: 'city', fileTypes: [] },
+];
 
 export const SUPPORTED_JURISDICTIONS = Object.keys(JURISDICTIONS);
