@@ -498,13 +498,29 @@ export const CITIZENSERVE_NO_CODE: CitizenserveAgency[] = [
 // of two contradictory ones is exactly the habit this product exists to not
 // have. Either can be routed when runs agree.
 //
-// A DIFFERENT CASE, deliberately treated differently: Maitland read fine on
-// two runs and on a third the portal could not be read at all. That is a
-// flaky portal, not an unstable module, and the adapter refuses safely every
-// time it cannot read - so its failure mode is "unchecked", never "clear".
-// It stays routed. The distinction that matters is whether the disagreement
-// is about WHETHER THE RECORDS EXIST TO SEARCH (exclude) or about whether the
-// server answered this minute (refuse and say so).
+// MAITLAND IS OUT TOO, and the reason is worth more than the city.
+//
+// It read fine on two runs and on a third its portal could not be read at
+// all. I argued that was a flaky server rather than an unestablished module,
+// kept it routed, and wrote the distinction down: a disagreement about
+// WHETHER THE RECORDS EXIST excludes a tenant, a disagreement about whether
+// the server answered this minute does not.
+//
+// That reasoning may well be right, and it was still the wrong thing to ship,
+// because the two successful runs were not in the evidence anyone could check.
+// From the frozen transcript alone Maitland is a city routed on a refusal.
+// Codex stopped on exactly that.
+//
+// So the judgement call is replaced by a rule that needs no judgement:
+//
+//   A CITY IS ROUTED ONLY IF THE ATTACHED VERIFICATION TRANSCRIPT SHOWS THE
+//   PRODUCTION ADAPTER READING IT.
+//
+// One transcript, one question, checkable by anyone without taking my word
+// for the history. A tenant that drops out of a run drops out of the
+// registry until a run puts it back. That costs real coverage - Maitland's
+// 19,543 people are now in the "not checked" column, where the evidence says
+// they belong - and it buys a claim that cannot rot between runs.
 //
 // Each was left out rather than entered hopefully. A hostname answering says
 // nothing about whether code cases are public, and the three unreadable ones
@@ -561,7 +577,6 @@ const ENERGOV_CITY_ROUTES: EnergovCityRoute[] = [
   { pop:  43080, county: 'volusia',     municipality: 'ORMOND BEACH',       host: 'ormondbeachfl-energovweb.tylerhost.net',      basePath: '/apps/SelfService' },
   { pop:  37604, county: 'palm-beach',  municipality: 'RIVIERA BEACH',      host: 'rivierabeachfl-energovweb.tylerhost.net',     basePath: '/apps/SelfService' },
   { pop:  30142, county: 'volusia',     municipality: 'NEW SMYRNA BEACH',   host: 'newsmyrnabeachfl-energovweb.tylerhost.net',   basePath: '/apps/SelfService' },
-  { pop:  19543, county: 'orange',      municipality: 'MAITLAND',           host: 'maitlandfl-energovpub.tylerhost.net',         basePath: '/apps/selfservice' },
   { pop:  17194, county: 'pasco',       municipality: 'ZEPHYRHILLS',        host: 'zephyrhillsfl-energovweb.tylerhost.net',      basePath: '/apps/SelfService' },
   { pop:   8159, county: 'miami-dade',  municipality: 'NORTH BAY VILLAGE',  host: 'northbayvillagefl-energovpub.tylerhost.net',  basePath: '/apps/selfservice' },
   { pop:   5689, county: 'miami-dade',  municipality: 'SURFSIDE',           host: 'surfsidefl-energovpub.tylerhost.net',         basePath: '/apps/selfservice' },
@@ -569,15 +584,22 @@ const ENERGOV_CITY_ROUTES: EnergovCityRoute[] = [
 ];
 
 /**
- * People reached by the EnerGov cities added in this expansion: 1,105,177.
+ * People reached by the EnerGov cities added in this expansion: 1,085,634.
  *
- * Eighteen cities, not nineteen. Winter Springs (38,342) was removed after a
- * third verification run read its module list and reported no code module,
- * contradicting the two runs it had been routed on. This figure has now
- * shrunk twice on evidence, which is the process working rather than a
- * problem with it: 1,143,819 was arithmetic I got wrong, 1,143,519 was the
- * correct sum of nineteen, and this is the sum of the eighteen that hold up
- * across runs.
+ * SEVENTEEN cities, and this number has now shrunk three times, every time
+ * because evidence contradicted a claim rather than because anything broke:
+ *
+ *   1,143,819  arithmetic I got wrong; my own smoke test failed on it
+ *   1,143,519  the correct sum of 19
+ *   1,105,177  minus Winter Springs, whose module list read as absent on a
+ *              third run after two runs routed it
+ *   1,085,634  minus Maitland, whose successful runs were real but were not
+ *              in the evidence a reviewer could check
+ *
+ * Every one of the 17 appears as USABLE in the verification transcript
+ * attached to the review, which is the rule now, and the rule is the point:
+ * the number is checkable against one file instead of against my account of
+ * what happened.
  */
 export const ENERGOV_EXPANSION_POPULATION = ENERGOV_CITY_ROUTES.reduce((n, r) => n + r.pop, 0);
 
