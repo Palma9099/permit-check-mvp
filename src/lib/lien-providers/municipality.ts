@@ -34,3 +34,37 @@ export async function municipalityAt(lat: number, lng: number): Promise<string |
   if (!r) return null;
   return str(r.BASENAME) || str(r.NAME).replace(/\s+(city|town|village)$/i, '') || null;
 }
+
+/**
+ * Which municipality governs this parcel, given whatever the county record said.
+ *
+ * Three rules, in order:
+ *
+ * 1. **A county record that names its own municipality wins.** It is the
+ *    primary source for its own parcels, so an inference never overwrites it.
+ *    Only Miami-Dade's Property Appraiser carries the field; the statewide
+ *    cadastral roll has no municipality at all, which is why the other
+ *    adapters return null and why this function exists.
+ * 2. **A blank is filled from the parcel point**, never from the postal city in
+ *    the typed address.
+ * 3. **A failure stays null.** `municipalityAt` throws when the boundary source
+ *    does not answer and returns null for a parcel outside every city, so null
+ *    out of here still cannot be read as a finding of "unincorporated" - it
+ *    means no name was established, which is what `municipalityKnown` tests.
+ *
+ * `lookup` is injectable so the rules above can be tested without the network.
+ */
+export async function governingMunicipality(
+  fromRecord: string | null | undefined,
+  point: { lat: number; lng: number } | null,
+  lookup: (lat: number, lng: number) => Promise<string | null> = municipalityAt,
+): Promise<string | null> {
+  const named = (fromRecord ?? '').trim();
+  if (named) return named;
+  if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return null;
+  try {
+    return await lookup(point.lat, point.lng);
+  } catch {
+    return null;
+  }
+}

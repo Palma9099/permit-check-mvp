@@ -27,6 +27,7 @@ import type {
   UserUploadedThen,
 } from './types';
 import { geocode, reverseCounty, type GeocodeResult } from './geocode';
+import { governingMunicipality } from './lien-providers/municipality';
 import { parcelByFolio } from './counties/statewide-cadastral';
 import { getCountyAdapter, toCountyInfo } from './counties';
 import { bestPropertyAppraiserLink } from './counties/pa-links';
@@ -551,6 +552,34 @@ export async function runDiagnostic(input: {
     ? polygonCentroid(polygon.polygon)
     : { lat: geo.lat, lng: geo.lng };
 
+  // 3c. Which municipality governs this parcel.
+  //
+  //      Only Miami-Dade's Property Appraiser record carries one. Every other
+  //      county adapter returns null - correctly, because the statewide
+  //      cadastral roll has no municipality field - so without this the report
+  //      never learned the city. That is not a cosmetic gap: `cityGoverns` is
+  //      false without a name, so a City of Tampa address was told "we could
+  //      not establish which authority enforces code" while the deep scan can
+  //      read Tampa's own code records on request.
+  //
+  //      The same lookup is already wired into the deep-scan enqueue and into
+  //      the lien provider (`fl-records.ts`). The code axis was the one path
+  //      that still had no way to learn the city.
+  //
+  //      Resolved from Census incorporated-place boundaries at the PARCEL
+  //      point, never from the postal city in the typed address: mail addressed
+  //      to "Miami, FL" is usually not in the City of Miami. `aim` is used
+  //      rather than `geo` because it sits inside the lot when a polygon was
+  //      found; a parcel-line geocode can land on the street, and a street can
+  //      belong to a different jurisdiction than the lot behind it.
+  //
+  //      `governingMunicipality` holds the precedence and failure rules, and
+  //      is tested against them directly.
+  const municipality = await governingMunicipality(
+    adapterResult.propertyBasics.municipality,
+    aim,
+  );
+
   // 4. Google Static Maps URLs with polygon overlay.
   const closeSatUrl = buildSubjectSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
   const contextSatUrl = buildContextSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
@@ -902,7 +931,7 @@ export async function runDiagnostic(input: {
       mailingMatchesSite: adapterResult.propertyBasics.mailingMatchesSite,
       owner: adapterResult.propertyBasics.owner,
       subdivision: adapterResult.propertyBasics.subdivision,
-      municipality: adapterResult.propertyBasics.municipality,
+      municipality,
       yearBuilt: adapterResult.propertyBasics.yearBuilt,
       heatedArea: adapterResult.propertyBasics.heatedArea,
       totalArea: adapterResult.propertyBasics.totalArea,

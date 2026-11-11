@@ -82,6 +82,13 @@ export type CodeVerdict =
       searched: string | null;
       portalUrl: string | null;
       deepScanReads: boolean;
+      /**
+       * Is `authority` a real jurisdiction name, or a stand-in for one we never
+       * established? Both are unchecked, but they are different sentences: a
+       * named city can be asked, an unknown one has to be identified first.
+       * Decided from `cityLabel`, never by matching the display string.
+       */
+      authorityNamed: boolean;
     };
 
 const UNINCORPORATED = /unincorp|^none$|^n\/?a$/i;
@@ -133,13 +140,14 @@ export function codeVerdict(
   if (open > 0 || liens > 0) return { kind: 'hits', open, liens };
 
   if (authority.cityGoverns && !authority.cityChecked) {
-    const city = cityLabel(authority.municipality) ?? 'the city';
+    const named = cityLabel(authority.municipality);
     return {
       kind: 'unchecked',
-      authority: city,
+      authority: named ?? 'the city',
       searched: authority.countyChecked ? 'the county' : null,
       portalUrl: authority.cityCoverage?.portalUrl ?? null,
       deepScanReads: authority.cityCoverage?.deepScanReads === true,
+      authorityNamed: named !== null,
     };
   }
 
@@ -151,6 +159,7 @@ export function codeVerdict(
       searched: null,
       portalUrl: null,
       deepScanReads: false,
+      authorityNamed: false,
     };
   }
 
@@ -168,6 +177,7 @@ export function codeVerdict(
       // would reach the right one. An unidentified authority is not a covered
       // authority, however many cities the registry holds.
       deepScanReads: false,
+      authorityNamed: false,
     };
   }
 
@@ -196,6 +206,11 @@ export function verdictDetail(v: CodeVerdict, liensChecked: boolean): string {
         ? `Recorded in county records${v.open > 0 ? `, plus ${v.open} open case${v.open > 1 ? 's' : ''}` : ''}.`
         : 'See the code portal for details.';
     case 'unchecked':
+      if (!v.authorityNamed) {
+        return v.searched
+          ? `We did not establish which authority enforces code here, so its records were not searched. We searched ${v.searched} only.`
+          : 'We did not establish which authority enforces code here, so its records were not searched.';
+      }
       return v.searched
         ? `${v.authority} enforces code here and its records were not searched. We searched ${v.searched} only.`
         : `${v.authority} enforces code here and its records were not searched.`;
@@ -222,8 +237,16 @@ export function verdictBuyerNote(v: CodeVerdict): string {
           }`
         : v.portalUrl
           ? ` ${v.authority} publishes its cases at ${v.portalUrl} - search it before you rely on anything above.`
-          : ` Ask ${v.authority} directly, or order the full lien search.`;
-      return `${v.authority} is the code authority for this address, and we could not search its records. This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${next}`;
+          : v.authorityNamed
+            ? ` Ask ${v.authority} directly, or order the full lien search.`
+            : ' Confirm which city or county governs this address, then search that office, or order the full lien search.';
+      // An unnamed authority cannot be the subject of this sentence: it would
+      // read "the code authority is the code authority for this address", which
+      // is what every address outside Miami-Dade actually said.
+      const opener = v.authorityNamed
+        ? `${v.authority} is the code authority for this address, and we could not search its records.`
+        : 'We could not establish which authority enforces code at this address, so nothing was searched.';
+      return `${opener} This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${next}`;
     }
     case 'clear':
       return 'No open violations means no fines or liens tied to this address right now.';
@@ -236,6 +259,9 @@ export function verdictOwnerNote(v: CodeVerdict): string {
     case 'hits':
       return 'Resolve open cases before you sell. Fines add up until the authority signs off.';
     case 'unchecked':
+      if (!v.authorityNamed) {
+        return 'We did not establish which authority enforces code at this address, so treat this as unknown rather than clear.';
+      }
       return v.deepScanReads
         ? `${v.authority} enforces code at this address and the quick check does not reach it, so treat this as unknown rather than clear. A deep scan searches ${v.authority} directly.`
         : `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.`;
