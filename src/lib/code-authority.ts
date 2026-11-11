@@ -54,6 +54,14 @@ export interface CodeAuthority {
    * not been read until someone runs it.
    */
   cityCoverage?: CityCodeReach | null;
+  /**
+   * The county's display name, e.g. "Hillsborough County".
+   *
+   * Only used when the COUNTY is the authority - an explicitly unincorporated
+   * parcel. Optional because an authority object built without it still has to
+   * produce a true sentence, just a less specific one.
+   */
+  countyName?: string | null;
 }
 
 /** The part of a city's coverage that changes what the report may say. */
@@ -83,10 +91,14 @@ export type CodeVerdict =
       portalUrl: string | null;
       deepScanReads: boolean;
       /**
-       * Is `authority` a real jurisdiction name, or a stand-in for one we never
-       * established? Both are unchecked, but they are different sentences: a
-       * named city can be asked, an unknown one has to be identified first.
-       * Decided from `cityLabel`, never by matching the display string.
+       * Do we know WHO governs this parcel, or is `authority` a stand-in for a
+       * jurisdiction never established?
+       *
+       * This is jurisdiction-known, NOT has-a-city-name. Codex R1 P2-2: an
+       * explicitly unincorporated parcel has a known authority - its county -
+       * and calling that "we could not establish which authority" is false,
+       * not merely vague. A city name and a county both count as named.
+       * Decided from the authority inputs, never by matching a display string.
        */
       authorityNamed: boolean;
     };
@@ -102,6 +114,18 @@ export function cityLabel(municipality: string | null): string | null {
     .toLowerCase()
     .replace(/\b[a-z]/g, (c) => c.toUpperCase())
     .replace(/\bOf\b/g, 'of');
+}
+
+/**
+ * The county as a code authority, for an explicitly unincorporated parcel.
+ *
+ * Falls back to "the county", which is still true and still not a tautology,
+ * when the caller had no county name to hand.
+ */
+export function countyLabel(countyName: string | null | undefined): string {
+  const c = (countyName ?? '').trim();
+  if (!c) return 'the county';
+  return /county\s*$/i.test(c) ? c : `${c} County`;
 }
 
 /**
@@ -153,6 +177,21 @@ export function codeVerdict(
 
   // Nobody searched anything at all: also not clear.
   if (!authority.cityChecked && !authority.countyChecked) {
+    // But "nobody searched" does not mean "nobody is known". An explicit
+    // UNINCORPORATED from the appraiser is positive evidence that the COUNTY
+    // governs. Saying we could not establish the authority there is false.
+    if (authority.municipalityKnown && !authority.cityGoverns) {
+      return {
+        kind: 'unchecked',
+        authority: countyLabel(authority.countyName),
+        searched: null,
+        portalUrl: null,
+        // The deep scan reads CITY code records. An unincorporated parcel has
+        // no city to read, so there is nothing extra to offer here.
+        deepScanReads: false,
+        authorityNamed: true,
+      };
+    }
     return {
       kind: 'unchecked',
       authority: 'the code authority',
@@ -184,6 +223,17 @@ export function codeVerdict(
   return { kind: 'clear' };
 }
 
+/**
+ * Capitalise a sentence that may start with a generic authority stand-in.
+ *
+ * "the county enforces code here" is true but reads like a fragment. Named
+ * authorities ("Tampa", "Hillsborough County") are already capitalised, so
+ * this is a no-op for them.
+ */
+function sentence(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 /** Short tile value, e.g. "None open" or "Not checked". */
 export function verdictValue(v: CodeVerdict): string {
   switch (v.kind) {
@@ -211,9 +261,11 @@ export function verdictDetail(v: CodeVerdict, liensChecked: boolean): string {
           ? `We did not establish which authority enforces code here, so its records were not searched. We searched ${v.searched} only.`
           : 'We did not establish which authority enforces code here, so its records were not searched.';
       }
-      return v.searched
-        ? `${v.authority} enforces code here and its records were not searched. We searched ${v.searched} only.`
-        : `${v.authority} enforces code here and its records were not searched.`;
+      return sentence(
+        v.searched
+          ? `${v.authority} enforces code here and its records were not searched. We searched ${v.searched} only.`
+          : `${v.authority} enforces code here and its records were not searched.`,
+      );
     case 'clear':
       return liensChecked ? 'No open cases or recorded liens.' : 'No open cases. Liens not checked this time.';
   }
@@ -246,7 +298,9 @@ export function verdictBuyerNote(v: CodeVerdict): string {
       const opener = v.authorityNamed
         ? `${v.authority} is the code authority for this address, and we could not search its records.`
         : 'We could not establish which authority enforces code at this address, so nothing was searched.';
-      return `${opener} This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${next}`;
+      return sentence(
+        `${opener} This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${next}`,
+      );
     }
     case 'clear':
       return 'No open violations means no fines or liens tied to this address right now.';
@@ -262,9 +316,11 @@ export function verdictOwnerNote(v: CodeVerdict): string {
       if (!v.authorityNamed) {
         return 'We did not establish which authority enforces code at this address, so treat this as unknown rather than clear.';
       }
-      return v.deepScanReads
-        ? `${v.authority} enforces code at this address and the quick check does not reach it, so treat this as unknown rather than clear. A deep scan searches ${v.authority} directly.`
-        : `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.`;
+      return sentence(
+        v.deepScanReads
+          ? `${v.authority} enforces code at this address and the quick check does not reach it, so treat this as unknown rather than clear. A deep scan searches ${v.authority} directly.`
+          : `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.`,
+      );
     case 'clear':
       return 'Keep it that way. Unresolved cases grow fines every day.';
   }

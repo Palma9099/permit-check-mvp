@@ -27,6 +27,7 @@ import {
   verdictTone,
   cityGoverns,
   municipalityKnown,
+  countyLabel,
   type CodeAuthority,
 } from '@/lib/code-authority';
 import { cityCodeCoverage } from '@/lib/city-code-portals';
@@ -188,5 +189,100 @@ describe('an authority we never identified gets a sentence that reads', () => {
     expect(named.authorityNamed).toBe(true);
     expect(verdictBuyerNote(named)).toContain('Tampa is the code authority for this address');
     expect(verdictDetail(named, false)).toMatch(/^Tampa enforces code here/);
+  });
+});
+
+describe('an explicitly unincorporated parcel has a KNOWN authority', () => {
+  // Codex R1 P2-2. "UNINCORPORATED" from the appraiser is positive evidence
+  // that the county governs. My R1 copy called that "we could not establish
+  // which authority", which is not vague but false, and false in all three
+  // notes. The flag had to separate jurisdiction-known from has-a-city-name.
+  function unincorporated(countyName: string | null) {
+    return codeVerdict(
+      {
+        municipality: 'UNINCORPORATED',
+        cityGoverns: cityGoverns('UNINCORPORATED'),
+        municipalityKnown: municipalityKnown('UNINCORPORATED'),
+        cityChecked: false,
+        countyChecked: false,
+        cityCoverage: null,
+        countyName,
+      },
+      0,
+      0,
+    );
+  }
+
+  for (const [label, countyName, expected] of [
+    ['with a county name', 'Hillsborough County', 'Hillsborough County'],
+    ['without one', null, 'the county'],
+  ] as const) {
+    const v = unincorporated(countyName);
+
+    it(`${label}: names the county as the authority`, () => {
+      if (v.kind !== 'unchecked') throw new Error('expected unchecked');
+      expect(v.authority).toBe(expected);
+      // We know WHO governs. That is the whole point of the flag.
+      expect(v.authorityNamed).toBe(true);
+    });
+
+    it(`${label}: never claims the authority is unknown`, () => {
+      for (const text of [verdictBuyerNote(v), verdictDetail(v, false), verdictOwnerNote(v)]) {
+        expect(text).not.toContain('could not establish');
+        expect(text).not.toContain('did not establish');
+        expect(text).not.toContain('Confirm which city or county governs');
+      }
+    });
+
+    it(`${label}: says the governing county was not searched, and stays amber`, () => {
+      expect(verdictBuyerNote(v)).toContain('we could not search its records');
+      expect(verdictDetail(v, false)).toContain('records were not searched');
+      expect(verdictOwnerNote(v)).toContain('treat this as unknown rather than clear');
+      expect(verdictTone(v)).toBe('amber');
+      expect(v.kind).toBe('unchecked');
+    });
+
+    it(`${label}: offers no deep scan, which reads CITY records`, () => {
+      if (v.kind !== 'unchecked') throw new Error('expected unchecked');
+      expect(v.deepScanReads).toBe(false);
+      expect(v.portalUrl).toBeNull();
+      expect(verdictBuyerNote(v)).not.toContain('deep scan');
+    });
+
+    it(`${label}: starts its sentences with a capital`, () => {
+      for (const text of [verdictBuyerNote(v), verdictDetail(v, false), verdictOwnerNote(v)]) {
+        expect(text.charAt(0)).toBe(text.charAt(0).toUpperCase());
+      }
+    });
+  }
+
+  it('an unincorporated parcel whose county WAS searched is clear', () => {
+    // Nothing above should have disturbed this: the authority was asked.
+    const v = codeVerdict(
+      {
+        municipality: 'UNINCORPORATED',
+        cityGoverns: false,
+        municipalityKnown: true,
+        cityChecked: false,
+        countyChecked: true,
+        cityCoverage: null,
+        countyName: 'Hillsborough County',
+      },
+      0,
+      0,
+    );
+    expect(v.kind).toBe('clear');
+  });
+});
+
+describe('countyLabel', () => {
+  it('does not double the word County', () => {
+    expect(countyLabel('Hillsborough County')).toBe('Hillsborough County');
+    expect(countyLabel('Hillsborough')).toBe('Hillsborough County');
+  });
+
+  it('falls back to a true phrase when no name is known', () => {
+    expect(countyLabel(null)).toBe('the county');
+    expect(countyLabel('   ')).toBe('the county');
   });
 });

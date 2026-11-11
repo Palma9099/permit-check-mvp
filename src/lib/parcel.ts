@@ -218,12 +218,24 @@ export function polygonCentroid(ring: ParcelRing): { lat: number; lng: number } 
   if (n === 0) return { lat: 0, lng: 0 };
   if (n === 1) return { lat: pts[0][0], lng: pts[0][1] };
 
+  // Shift to a local origin FIRST. The shoelace cross products use raw
+  // coordinates, and a Florida parcel sits at lng -80, lat 26 while enclosing
+  // about 1e-8 of coordinate area: the cross terms are ~2080 and the signal is
+  // the difference between them, which float64 cannot hold. Measured on a
+  // plain rectangular lot at 26.1N 80.1W, the untranslated formula returned a
+  // "centroid" 31 m away and OUTSIDE the lot, while the identical shape at the
+  // origin came out exact. Subtracting the first vertex keeps the magnitudes
+  // near zero, where the cancellation has nothing left to destroy.
+  const [lat0, lng0] = pts[0];
+
   let area = 0;
   let cLat = 0;
   let cLng = 0;
   for (let i = 0; i < n; i++) {
-    const [lat1, lng1] = pts[i];
-    const [lat2, lng2] = pts[(i + 1) % n];
+    const lat1 = pts[i][0] - lat0;
+    const lng1 = pts[i][1] - lng0;
+    const lat2 = pts[(i + 1) % n][0] - lat0;
+    const lng2 = pts[(i + 1) % n][1] - lng0;
     const cross = lng1 * lat2 - lng2 * lat1;
     area += cross;
     cLat += (lat1 + lat2) * cross;
@@ -236,5 +248,103 @@ export function polygonCentroid(ring: ParcelRing): { lat: number; lng: number } 
     const sumLng = pts.reduce((s, p) => s + p[1], 0);
     return { lat: sumLat / n, lng: sumLng / n };
   }
-  return { lat: cLat / (6 * area), lng: cLng / (6 * area) };
+  // Back to absolute coordinates.
+  return { lat: cLat / (6 * area) + lat0, lng: cLng / (6 * area) + lng0 };
+}
+
+// ---------------------------------------------------------------------------
+// A point that is actually INSIDE the parcel.
+//
+// `polygonCentroid` above is a camera aim point and nothing more. For a
+// concave lot - a U, an L, a flag lot, anything with a notch - the area
+// centroid can sit outside the ring entirely, in land the owner does not own.
+// That is fine for pointing a camera and wrong for deciding who governs the
+// parcel, because the notch can belong to the next jurisdiction. Codex
+// reproduced it against this exact function: a U-shaped ring whose centroid
+// lands in the notch returns the NEIGHBOUR's city.
+//
+// So jurisdiction questions use `interiorPoint`, which returns a point proven
+// inside the ring or null, and a caller that gets null must stay unresolved
+// rather than fall back to a point it cannot vouch for.
+// ---------------------------------------------------------------------------
+
+/**
+ * Even-odd ray cast. True when the point lies inside the ring.
+ *
+ * Points exactly on an edge are not guaranteed either way, which is why
+ * `interiorPoint` aims for the middle of a span rather than near a boundary.
+ */
+export function pointInRing(point: { lat: number; lng: number }, ring: ParcelRing): boolean {
+  if (!ring || ring.length < 3) return false;
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return false;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [latI, lngI] = ring[i];
+    const [latJ, lngJ] = ring[j];
+    if (latI > point.lat !== latJ > point.lat) {
+      const x = ((lngJ - lngI) * (point.lat - latI)) / (latJ - latI) + lngI;
+      if (point.lng < x) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Every longitude where the horizontal line at `lat` crosses the ring. */
+function crossingsAt(lat: number, ring: ParcelRing): number[] {
+  const xs: number[] = [];
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [latI, lngI] = ring[i];
+    const [latJ, lngJ] = ring[j];
+    if (latI > lat !== latJ > lat) {
+      xs.push(((lngJ - lngI) * (lat - latI)) / (latJ - latI) + lngI);
+    }
+  }
+  return xs.sort((a, b) => a - b);
+}
+
+/**
+ * A point proven to lie inside `ring`, or null when none could be found.
+ *
+ * The centroid is tried first, because for the ordinary rectangular Florida
+ * lot it is both inside and nicely central. When it is not inside - the
+ * concave case - this walks the horizontal line through the centroid, pairs
+ * the crossings (even-odd), and takes the middle of the WIDEST interior span,
+ * so the result sits as far from a boundary as that line allows. A second
+ * attempt at the bounding box's mid-latitude covers rings whose centroid line
+ * misses the shape.
+ *
+ * Returns null rather than a guess for a degenerate ring (fewer than three
+ * points, a non-finite coordinate, or zero enclosed width).
+ */
+export function interiorPoint(ring: ParcelRing): { lat: number; lng: number } | null {
+  if (!ring || ring.length < 3) return null;
+  if (ring.some(([la, ln]) => !Number.isFinite(la) || !Number.isFinite(ln))) return null;
+
+  const centroid = polygonCentroid(ring);
+  if (Number.isFinite(centroid.lat) && Number.isFinite(centroid.lng)
+      && pointInRing(centroid, ring)) {
+    return centroid;
+  }
+
+  const lats = ring.map(([la]) => la);
+  const candidateLats = [centroid.lat, (Math.min(...lats) + Math.max(...lats)) / 2];
+
+  for (const lat of candidateLats) {
+    if (!Number.isFinite(lat)) continue;
+    const xs = crossingsAt(lat, ring);
+    let best: { lng: number; width: number } | null = null;
+    // Even-odd: the span between crossing 0-1, 2-3, ... is inside the ring.
+    for (let k = 0; k + 1 < xs.length; k += 2) {
+      const width = xs[k + 1] - xs[k];
+      if (width > 0 && (!best || width > best.width)) {
+        best = { lng: (xs[k] + xs[k + 1]) / 2, width };
+      }
+    }
+    if (best) {
+      const p = { lat, lng: best.lng };
+      if (pointInRing(p, ring)) return p;
+    }
+  }
+
+  return null;
 }

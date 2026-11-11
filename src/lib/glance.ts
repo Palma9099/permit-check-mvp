@@ -151,6 +151,9 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
     // Whether this product can reach this city's code office at all. It
     // changes what we tell the reader to do next, never the verdict.
     cityCoverage: cityCodeCoverage(municipality, countyKey),
+    // Used only when the parcel is explicitly unincorporated, so the
+    // report names the county that governs instead of "the county".
+    countyName: r.county?.name ?? null,
   };
   const verdict = codeVerdict(authority, open, liens);
   const code: GlanceItem = {
