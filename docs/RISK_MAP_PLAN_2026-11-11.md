@@ -662,3 +662,13 @@ a demolition permit for them.
 Pair 2: 448 labeled, 188 USD, 0.42 USD a parcel; 22 v6 audits, four second-run disagreements, none
 at the report line. 31 leads on the panel before this batch (4 in-ground pools, 20 roofs, 1 solar,
 1 addition, 5 above-ground pools), none walked yet.
+
+**2026-11-12, iteration 18 (14:25).** Thirteen flags read on the outlined frames, thirteen
+confirmed: another in-ground pool demolished and paved over for parking at 3661 E 6 Ave, a mid-lot
+roof structure gone at 915 E 19 St, solar arrays at 4460 E 4 Ave and 4984 E 8 Ct, a front yard
+turned parking pad at 668 E 19 St, and eight roof changes. **199 of 201 reported flags have matched
+the photos.** The demolition rule is doing its job: the five demolished in-ground pools now sit in
+the leads panel as in-ground pool leads, two of them with open code cases on the parcel
+(713 E 22 St, a Building Without A Permit case; 41 E 52 Pl). 41 leads on the panel: 10 in-ground
+pool, 24 roof, 1 solar, 1 addition, 5 above-ground pool. Pair 2: 507 labeled, 214 USD, 0.42 USD a
+parcel, no errors. Lookups for the thirteen are running.
