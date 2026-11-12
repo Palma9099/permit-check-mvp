@@ -38,6 +38,8 @@ import type { AccelaJurisdiction } from './jurisdictions.js';
 import { readTables, debugDump } from './util.js';
 import {
   GRID_HEADERS,
+  gridHasAddressColumn,
+  addressColumnMissingNote,
   streetNameOf,
   streetNumberOf,
   extractionMatchesPage,
@@ -64,6 +66,8 @@ import {
 
 export {
   GRID_HEADERS,
+  gridHasAddressColumn,
+  addressColumnMissingNote,
   streetNameOf,
   streetNumberOf,
   extractionMatchesPage,
@@ -207,6 +211,12 @@ async function runSearch(
   shortfall?: { read: number; shown: number };
   /** Which criterion actually went into the form. */
   searchedBy?: 'parcel' | 'street';
+  /**
+   * True when the grid was read but publishes no address column, so its rows
+   * cannot be narrowed to the subject property. Hillsborough County is the
+   * case this exists for.
+   */
+  noAddressColumn?: boolean;
 }> {
   const { page, log } = ctx;
   const empty = { shown: null, total: null, capped: false };
@@ -329,6 +339,7 @@ async function runSearch(
   }
 
   const { records, unreadable } = parseRecords(grid.headers, grid.rows);
+  const noAddressColumn = !gridHasAddressColumn(grid.headers);
   log(
     `accela: ${records.length} record(s) for ${searchedBy}` +
       (unreadable ? `, ${unreadable} populated row(s) unreadable` : '') +
@@ -363,7 +374,13 @@ async function runSearch(
     await debugDump(page, 'accela-empty-grid', log);
     return { ran: false, records: [], count };
   }
-  return { ran: true, records, count, searchedBy: searchedBy.startsWith('parcel') ? 'parcel' : 'street' };
+  return {
+    ran: true,
+    records,
+    count,
+    searchedBy: searchedBy.startsWith('parcel') ? 'parcel' : 'street',
+    noAddressColumn,
+  };
 }
 
 export async function runAccelaScrape(
@@ -504,6 +521,13 @@ export async function runAccelaScrape(
           ctx.address ?? 'the subject property'
         } before relying on that row.`,
       );
+    }
+
+    // Said BEFORE the coverage and cap notes, because it changes what every
+    // row below it means: without an address column there is no way to tell
+    // which rows are this property's.
+    if (r.noAddressColumn && r.records.length) {
+      result.notes.push(addressColumnMissingNote(t.name));
     }
 
     const partial = partialListNote(r.records.length, r.count, t.name);
