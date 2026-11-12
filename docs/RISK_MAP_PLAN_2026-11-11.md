@@ -314,3 +314,19 @@ Pipeline now: haiku screens every parcel once; a parcel it calls clean is stored
 workers run at once through an atomic claim, in a stratified order over the score distribution so
 the labeled sample spans it. Frames: 500 done, 5,976 more queued and fetching (about 1.5 hours).
 Spend to date: zero dollars; CLI estimates total 5.44 USD across the first ten parcels.
+
+**2026-11-12, iteration 3.** Two workers labeled 30 stratified parcels in 26 minutes. The haiku
+screen cleared 21 of 30 at 0.04 USD and about 23 seconds each; sonnet ran on nine and confirmed four
+(1 flagged, 3 low), called four clear, and one failed to parse (re-queued). Average cost estimate is
+now about 0.14 USD a parcel, down from 0.66. Score against verdict on the sample: nothing found below
+0.25 (n=7), four findings at or above (n=22); too thin to gate on, and the gate stays off.
+
+The chained frames run died on "database is locked": the schema DDL ran on every connect, the app
+opened a connection per request, and three processes were writing. Fixed (schema only on a new
+file, 60 s busy timeout, patient commits, read-only reads in the app) and relaunched; it resumes
+whatever frames are missing. Frames on disk 3,907 of about 13,000.
+
+Decision held at two workers, not three: the subscription is shared with the Airavata QC swarm and
+with Adrian's own sessions, and a usage-window limit would stall all of them. At the measured rate
+the zip code takes about four days of background screening. Spend to date: zero dollars; CLI
+estimates 9.41 USD across 38 parcels.
