@@ -25,7 +25,12 @@ import type { ScrapeResult, ScrapedViolation } from '../types.js';
 import type { GenericJurisdiction } from './jurisdictions.js';
 
 const ARCGIS = 'https://services.arcgis.com/8Pc9XBTAsYuxx9Ny/ArcGIS/rest/services';
-const PARCELS = `${ARCGIS}/MDC_Parcels/FeatureServer/0/query`;
+// ParcelsView_gdb, NOT MDC_Parcels. The latter answers "Invalid URL", so the
+// point-only path could never have worked, and my proof never exercised it.
+// src/lib/parcel.ts already carried a comment recording exactly this: the old
+// MDC_Parcel URL returned 400 "Invalid URL", which is why it moved here. I
+// reintroduced a dead endpoint this codebase had already learned about.
+const PARCELS = `${ARCGIS}/ParcelsView_gdb/FeatureServer/0/query`;
 
 /** Folio as the layers store it: digits only. */
 const compactFolio = (f: string | null | undefined): string | null => {
@@ -46,31 +51,81 @@ const asDate = (v: unknown): string | null => {
   return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 };
 
-async function arcgis(url: string, params: Record<string, string>): Promise<any[]> {
+/**
+ * One ArcGIS page. Rejects anything that is not a recognisable feature
+ * response, and reports whether the server truncated the page.
+ *
+ * Codex R8 P1-1: the first version guarded the `{error}` body and then
+ * returned `[]` for ANY other unexpected shape, so an unreadable response
+ * became a searched axis with zero cases. That is the false zero this file's
+ * own comments warn about. A body without a `features` array is not an empty
+ * result, it is a response we do not understand, and the difference is the
+ * whole product.
+ */
+async function arcgisPage(
+  url: string,
+  params: Record<string, string>,
+): Promise<{ rows: any[]; truncated: boolean }> {
   const u = new URL(url);
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   const res = await fetch(u.toString(), { headers: { accept: 'application/json' } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data: any = await res.json();
+
+  let data: any;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('response was not JSON');
+  }
   // ArcGIS answers 200 with an {error} body when a layer needs a token or is
-  // gone. That must never read as "no rows": it once turned a locked permit
-  // layer into "zero permits" in every report.
+  // gone. That must never read as "no rows".
   if (data?.error) throw new Error(`arcgis-error ${data.error?.message ?? ''}`.trim());
-  return Array.isArray(data?.features) ? data.features : [];
+  if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
+    throw new Error('response carried no features array');
+  }
+  return { rows: data.features, truncated: data.exceededTransferLimit === true };
+}
+
+/** How many rows one request asks for. Pages are joined by resultOffset. */
+const PAGE = 200;
+/** A parcel with more pages than this is not published as a complete list. */
+const MAX_PAGES = 25;
+
+/**
+ * Every row for a folio, across as many pages as the server needs.
+ *
+ * Codex R8 P1-2: the first version asked for 200 rows, discarded the response
+ * metadata and never looked at `exceededTransferLimit`, so a parcel with more
+ * than 200 rows reported 200 and claimed completeness. A later open case or a
+ * recorded lien was simply invisible, which is the direction a report must
+ * never fail in. Now it pages, and if it still cannot reach the end it THROWS
+ * rather than return a prefix, because a truncated list published as whole is
+ * worse than an honest failure.
+ */
+async function allRows(url: string, where: string): Promise<any[]> {
+  const out: any[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { rows, truncated } = await arcgisPage(url, {
+      where,
+      outFields: '*',
+      returnGeometry: 'false',
+      resultRecordCount: String(PAGE),
+      resultOffset: String(page * PAGE),
+      f: 'json',
+    });
+    out.push(...rows);
+    // Trust the server's own flag first; a short page also ends it.
+    if (!truncated || rows.length === 0) return out;
+  }
+  throw new Error(`more than ${MAX_PAGES * PAGE} rows; completeness not established`);
 }
 
 const byFolio = (service: string, field: string, folio: string) =>
-  arcgis(`${ARCGIS}/${encodeURIComponent(service)}/FeatureServer/0/query`, {
-    where: `${field}='${folio}'`,
-    outFields: '*',
-    returnGeometry: 'false',
-    resultRecordCount: '200',
-    f: 'json',
-  });
+  allRows(`${ARCGIS}/${encodeURIComponent(service)}/FeatureServer/0/query`, `${field}='${folio}'`);
 
 /** The folio containing a point, so an address-only job can still be searched. */
 async function folioAtPoint(lat: number, lng: number): Promise<string | null> {
-  const rows = await arcgis(PARCELS, {
+  const { rows } = await arcgisPage(PARCELS, {
     geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
     geometryType: 'esriGeometryPoint',
     spatialRel: 'esriSpatialRelIntersects',
@@ -156,6 +211,46 @@ export function mapEnergovCase(a: any): ScrapedViolation | null {
   };
 }
 
+/**
+ * Merge rows that are demonstrably the same record, keeping every field.
+ *
+ * Identity is SOURCE LAYER plus case number. Two layers using the same case
+ * number are not shown to be the same record, so they stay separate. Within a
+ * layer, a repeat is merged field by field: a value present on one and absent
+ * on the other is kept, and two different non-empty values are BOTH kept,
+ * joined, rather than one being silently discarded.
+ */
+export function mergeByIdentity(
+  rows: Array<{ source: string; v: ScrapedViolation }>,
+): ScrapedViolation[] {
+  const byKey = new Map<string, ScrapedViolation>();
+  const order: string[] = [];
+
+  for (const { source, v } of rows) {
+    const key = `${source}|${v.caseNumber ?? ''}`;
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, { ...v });
+      order.push(key);
+      continue;
+    }
+    for (const field of [
+      'status', 'openedDate', 'closedDate', 'description', 'lastAction',
+      'recordAddress', 'details',
+    ] as const) {
+      const a = (prev as any)[field] as string | null | undefined;
+      const b = (v as any)[field] as string | null | undefined;
+      if (!b) continue;
+      if (!a) { (prev as any)[field] = b; continue; }
+      // Keeping both is noisier than choosing. It is also the only option
+      // that cannot lose a recorded lien or a second problem description.
+      if (a !== b && !a.includes(b)) (prev as any)[field] = `${a}; ${b}`;
+    }
+  }
+
+  return order.map((k) => byKey.get(k)!);
+}
+
 export async function runMiamiDadeScrape(
   ctx: ScraperCtx,
   jur: GenericJurisdiction,
@@ -231,7 +326,7 @@ export async function runMiamiDadeScrape(
       map: mapEnergovCase,
     },
   ];
-  const violations: ScrapedViolation[] = [];
+  const collected: Array<{ source: string; v: ScrapedViolation }> = [];
   const failed: string[] = [];
 
   for (const l of layers) {
@@ -240,7 +335,7 @@ export async function runMiamiDadeScrape(
       log(`miami-dade: ${rows.length} row(s) from ${l.label}`);
       for (const r of rows) {
         const v = l.map(r.attributes ?? {});
-        if (v) violations.push(v);
+        if (v) collected.push({ source: l.service, v });
       }
     } catch (e: any) {
       failed.push(`${l.label} (${String(e?.message ?? e).slice(0, 60)})`);
@@ -256,15 +351,20 @@ export async function runMiamiDadeScrape(
     return base;
   }
 
-  // Dedupe: a case can appear in more than one layer.
-  const seen = new Set<string>();
-  base.violations = violations.filter((v) => {
-    const k = `${v.caseNumber ?? ''}|${v.status ?? ''}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
+  // Codex R8 P2: the first version keyed on case number plus status and kept
+  // the first row seen. Two valid rows with the same case and status but
+  // different problem descriptions, and book and page on only the second,
+  // collapsed to one record carrying NEITHER the second description nor its
+  // lien. Case number plus status is not an identity.
+  //
+  // A row is now identified by its SOURCE layer plus its case number, so rows
+  // from different layers never collide, and rows that genuinely repeat
+  // within a layer are MERGED rather than dropped: a field present on one and
+  // absent on the other is kept, and a disagreement keeps both values rather
+  // than silently preferring the earlier one.
+  base.violations = mergeByIdentity(collected);
 
+  base.ok = true;
   base.ok = true;
   base.violationsChecked = true;
   // Permits are a separate question and this adapter does not answer it. Saying

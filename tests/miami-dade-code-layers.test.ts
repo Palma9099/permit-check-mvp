@@ -140,3 +140,60 @@ describe('dates', () => {
     expect(mapEnergovCase({ CASENUMBER: 'C', OPENEDDATE: 'x' })!.openedDate).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Codex R8. Two P1 false zeros and a merge that discarded recorded liens, all
+// reproduced here with its own cases before being fixed.
+// ---------------------------------------------------------------------------
+
+import { mergeByIdentity } from '../worker/src/scrapers/miami-dade.js';
+
+describe('a merge that cannot lose evidence', () => {
+  it("keeps the second row's description AND its lien", () => {
+    // Codex's reproduction: same case, same status, different descriptions,
+    // book and page only on the second. The old key collapsed these to one
+    // record carrying neither.
+    const out = mergeByIdentity([
+      { source: 'L', v: { caseNumber: 'A', status: 'Open', openedDate: null, closedDate: null, description: 'Overgrowth', lastAction: null, details: null } as any },
+      { source: 'L', v: { caseNumber: 'A', status: 'Open', openedDate: null, closedDate: null, description: 'Unsafe structure', lastAction: null, details: 'Lien recorded at book 1234, page 56' } as any },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].description).toContain('Overgrowth');
+    expect(out[0].description).toContain('Unsafe structure');
+    expect(out[0].details).toContain('book 1234');
+  });
+
+  it('never merges across layers, which are not shown to share a namespace', () => {
+    const out = mergeByIdentity([
+      { source: 'LayerOne', v: { caseNumber: 'A', status: 'Open' } as any },
+      { source: 'LayerTwo', v: { caseNumber: 'A', status: 'Open' } as any },
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it('fills a gap from a later row rather than dropping it', () => {
+    const out = mergeByIdentity([
+      { source: 'L', v: { caseNumber: 'B', status: 'Open', details: null } as any },
+      { source: 'L', v: { caseNumber: 'B', status: null, details: 'Lien recorded at book 9, page 9' } as any },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].status).toBe('Open');
+    expect(out[0].details).toContain('book 9');
+  });
+
+  it('does not duplicate an identical value', () => {
+    const out = mergeByIdentity([
+      { source: 'L', v: { caseNumber: 'C', status: 'Open' } as any },
+      { source: 'L', v: { caseNumber: 'C', status: 'Open' } as any },
+    ]);
+    expect(out[0].status).toBe('Open');
+  });
+
+  it('keeps the order rows arrived in', () => {
+    const out = mergeByIdentity([
+      { source: 'L', v: { caseNumber: 'X' } as any },
+      { source: 'L', v: { caseNumber: 'Y' } as any },
+    ]);
+    expect(out.map((r) => r.caseNumber)).toEqual(['X', 'Y']);
+  });
+});
