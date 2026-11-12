@@ -330,3 +330,20 @@ Decision held at two workers, not three: the subscription is shared with the Air
 with Adrian's own sessions, and a usage-window limit would stall all of them. At the measured rate
 the zip code takes about four days of background screening. Spend to date: zero dollars; CLI
 estimates 9.41 USD across 38 parcels.
+
+**2026-11-12, iteration 4, the first eyes-on QC.** The held-transaction fix held: zero lock errors
+across a full cycle, 73 parcels screened and 13 confirmed by two workers, frames at 7,072. Cost
+estimates this cycle: screens 1.47 USD, confirms 6.36 USD.
+
+All eight flagged parcels were rendered as 2019/2023 pairs with the lot outline and read by eye.
+**Eight of eight are real changes**: an in-ground pool with new pavers at 271 E 55 St (0.93), an
+above-ground pool at 180 E 53 Ter (0.90, the model called it in-ground), a pool removed at 331 E 56
+St, reroofs at 350 E 61, 360 E 55, 4990 E 2 Ave and 91 E 53 Ter, and solar plus a reroof at 371 E
+60 St. Marked verified through the app's own review endpoint with the reviewer named, so the
+provenance says who looked. Precision on reported flags is 8/8 on this sample; it is a small
+sample and it stays in the log as such.
+
+The four parcels where sonnet overruled haiku were also read: sonnet was right each time. Haiku took
+a neighbour's new roof for the subject's at 121 E 56 St (0.70) and reported solar at 0.90 on 241 E
+57 St where there is none. The confirm step is necessary. The unmeasured side is the parcels haiku
+cleared that sonnet never saw; a random sample of eight is rendered for the next read.
