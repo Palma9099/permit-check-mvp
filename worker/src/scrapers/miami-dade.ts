@@ -114,8 +114,20 @@ async function allRows(url: string, where: string): Promise<any[]> {
       f: 'json',
     });
     out.push(...rows);
-    // Trust the server's own flag first; a short page also ends it.
-    if (!truncated || rows.length === 0) return out;
+    // The server's own flag is the only thing that ends this loop.
+    if (!truncated) return out;
+    // Codex R9-01: the old condition also ended on an empty page, EVEN with
+    // the flag still set. That is the server saying "there is more" while
+    // handing back nothing, so it has not established where the end is, and
+    // asking again at the same offset cannot tell us anything new. The old
+    // code read it as the terminal page and published whatever it already
+    // had as a complete list. A list we cannot prove whole is unreadable,
+    // not short.
+    if (rows.length === 0) {
+      throw new Error(
+        'server reported more rows but returned an empty page; completeness not established',
+      );
+    }
   }
   throw new Error(`more than ${MAX_PAGES * PAGE} rows; completeness not established`);
 }
@@ -334,8 +346,25 @@ export async function runMiamiDadeScrape(
       const rows = await byFolio(l.service, l.field, folio);
       log(`miami-dade: ${rows.length} row(s) from ${l.label}`);
       for (const r of rows) {
-        const v = l.map(r.attributes ?? {});
-        if (v) collected.push({ source: l.service, v });
+        // Codex R9-02: the old line substituted an empty object for a missing
+        // `attributes` and silently dropped any row the mapper could not
+        // read, so four layers each returning one unrecognisable row reported
+        // the property as successfully searched with zero cases. Checking
+        // that `features` is an array says nothing about whether its contents
+        // are records. Every one of the 14 rows captured in the fixture
+        // carries its layer's identity field, so a row without one is schema
+        // drift, not a row these services mean us to skip. It fails the read.
+        const a = r?.attributes;
+        if (!a || typeof a !== 'object') {
+          throw new Error('a returned feature carried no attributes object');
+        }
+        const v = l.map(a);
+        if (!v) {
+          throw new Error(
+            'a returned row carried no case number; this layer\'s schema has changed',
+          );
+        }
+        collected.push({ source: l.service, v });
       }
     } catch (e: any) {
       failed.push(`${l.label} (${String(e?.message ?? e).slice(0, 60)})`);
@@ -364,7 +393,6 @@ export async function runMiamiDadeScrape(
   // than silently preferring the earlier one.
   base.violations = mergeByIdentity(collected);
 
-  base.ok = true;
   base.ok = true;
   base.violationsChecked = true;
   // Permits are a separate question and this adapter does not answer it. Saying

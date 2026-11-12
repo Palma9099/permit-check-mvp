@@ -136,3 +136,89 @@ describe('the parcel endpoint, which had never been exercised', () => {
     expect(r.notes.join(' ')).toMatch(/filed by folio/i);
   });
 });
+
+// Codex R9's two findings. Both are the SAME false zero my R9 fixes were
+// supposed to close, reached through boundaries my own tests did not cover:
+// R9-01 an empty page that still carries the truncation flag, R9-02 a
+// features array whose rows cannot be read. Each reproduction below is
+// Codex's, written from its verdict rather than invented here.
+describe('Codex R9-01: a truncated empty page is not the end of the list', () => {
+  it('refuses when the server flags more rows and returns none', async () => {
+    // Codex's exact case: offset 0 gives one row with the flag set, offset
+    // 200 gives an EMPTY page with the flag STILL set. The old code read
+    // that empty page as the terminal page and published the one row as a
+    // complete list, ok=true.
+    const offsets: string[] = [];
+    globalThis.fetch = (async (u: any) => {
+      const url = new URL(String(u));
+      if (!url.pathname.includes('CodeComplianceViolation_Open_View')) {
+        return json({ features: [] });
+      }
+      const off = url.searchParams.get('resultOffset') ?? '0';
+      offsets.push(off);
+      return off === '0'
+        ? json({ features: [{ attributes: { CASE_NUM: 'A' } }], exceededTransferLimit: true })
+        : json({ features: [], exceededTransferLimit: true });
+    }) as any;
+    const r = await run();
+    expect(r.ok).toBe(false);
+    expect(r.violationsChecked).toBe(false);
+    expect(r.violations).toHaveLength(0);
+    expect(offsets.slice(0, 2)).toEqual(['0', '200']);
+    expect(r.notes.join(' ')).toMatch(/incomplete|could not be read/i);
+  });
+
+  it('refuses when the FIRST page is empty and still flagged', async () => {
+    globalThis.fetch = (async () =>
+      json({ features: [], exceededTransferLimit: true })) as any;
+    const r = await run();
+    expect(r.ok).toBe(false);
+    expect(r.violationsChecked).toBe(false);
+  });
+
+  it('still succeeds on a genuine empty result, flag absent', async () => {
+    // The honest zero must keep working, or the fix above is useless.
+    globalThis.fetch = (async () => json({ features: [] })) as any;
+    const r = await run();
+    expect(r.ok).toBe(true);
+    expect(r.violationsChecked).toBe(true);
+    expect(r.violations).toHaveLength(0);
+  });
+});
+
+describe('Codex R9-02: rows that cannot be read are not zero rows', () => {
+  it('refuses when every layer returns an unrecognisable row', async () => {
+    // Codex's exact case: all four layers answer 200 with one row whose
+    // attributes have no identity field. Every source returned something,
+    // none of it could be read, and the old code reported the property as
+    // successfully searched and clean.
+    globalThis.fetch = (async () =>
+      json({ features: [{ attributes: { unexpected: 'shape' } }] })) as any;
+    const r = await run();
+    expect(r.ok).toBe(false);
+    expect(r.violationsChecked).toBe(false);
+    expect(r.violations).toHaveLength(0);
+    expect(r.notes.join(' ')).toMatch(/incomplete|could not be read/i);
+  });
+
+  it('refuses a feature with no attributes object at all', async () => {
+    globalThis.fetch = (async () => json({ features: [{ geometry: null }] })) as any;
+    const r = await run();
+    expect(r.ok).toBe(false);
+    expect(r.violationsChecked).toBe(false);
+  });
+
+  it('refuses when ONE layer drifts while the others read fine', async () => {
+    // The dangerous shape: three layers genuinely clean, one renamed. The
+    // report must not say "searched" on the strength of the three.
+    globalThis.fetch = (async (u: any) => {
+      const url = new URL(String(u));
+      return url.pathname.includes('Open_Building_Violations')
+        ? json({ features: [{ attributes: { SOMETHING_ELSE: 'x' } }] })
+        : json({ features: [] });
+    }) as any;
+    const r = await run();
+    expect(r.ok).toBe(false);
+    expect(r.violationsChecked).toBe(false);
+  });
+});
