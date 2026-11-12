@@ -612,3 +612,17 @@ and a pergola, aluminum terrace, screen or carport roof permit no longer covers 
 (451 E 19 St's Denied "Aluminum Roof/Pergola" permit is for a terrace; its tile-to-shingle reroof has
 no permit at all, and a Building Without A Permit notice for "Fence and Aluminum Roof" is already on
 file). The drawer applies the same three rules.
+
+**2026-11-12, iteration 15 (11:25).** Sixteen flags read on the outlined frames, fifteen confirmed:
+two in-ground pools with decks (633 E 22 St, 571 E 35 St), a structure built over a former pool and
+deck at 636 E 28 St, a rebuild at 1825 E 7 Ave, a blue metal panel roof at 769 E 53 St, and ten
+more roof changes. The sixteenth, 891 E 20 St, is the second false flag: the 2023 roof is already
+the same dark shingle hip the 2026 photo shows, so the model's "tile to charcoal" reading is wrong
+(a rear gabled structure it also saw sits below the report line). Dismissed with the reason.
+**151 of 153 reported flags have matched the photos.** Pair 2: 322 labeled, 129 USD, 0.40 USD a
+parcel, ten v6 audits with two second-run disagreements. Lookups for the new flags are running.
+
+Earlier today (11:05) the lead sheet shipped, and the map app gained a ranked leads panel
+(`/api/leads`, the LEADS button): value order in-ground pool, roof, solar, addition; lead parcels
+glow gold on the map; a click flies to the parcel and opens its drawer. The panel refreshes itself
+as lookups land. Both apps restarted (Homestead Finder d767db8).
