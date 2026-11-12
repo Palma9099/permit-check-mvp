@@ -1,0 +1,74 @@
+{
+  "captured": "2026-11-12",
+  "source": "https://aca-prod.accela.com/LEECO/Cap/CapHome.aspx?module=CodeEnforcement",
+  "search": {
+    "streetName": "PALM"
+  },
+  "note": "Lee County grid. Headers carry Address but NO Record Type, the mirror of Hillsborough.",
+  "rows": [
+    [
+      "Showing 1-4 of 4 | Download results",
+      "Showing 1-4 of 4",
+      "|",
+      "Download results"
+    ],
+    [
+      "Showing 1-4 of 4",
+      "|",
+      "Download results"
+    ],
+    [
+      "",
+      "Record Number",
+      "Address",
+      "Description",
+      "Status",
+      "Action",
+      "Related Records",
+      ""
+    ],
+    [
+      "",
+      "HEX2026-02218",
+      "12041 PALM BEACH BLVD, FORT MYERS FL 33905",
+      "Hearing Examiner Case - VIO2026-00296",
+      "In Process",
+      "",
+      "1",
+      "12041 PALM BEACH BLVD, FORT MYERS FL 33905"
+    ],
+    [
+      "",
+      "VIO2026-07703",
+      "4843 PALM BEACH BLVD, FORT MYERS FL 33905",
+      "Zoning Violation \u2013 Food Truck \u2013Mobile food vehicles, equipment, and other accessory items being stored on site when vending is not taking place.",
+      "Certified Notice Sent",
+      "",
+      "1",
+      "4843 PALM BEACH BLVD, FORT MYERS FL 33905"
+    ],
+    [
+      "",
+      "CPL2026-04615",
+      "4843 PALM BEACH BLVD, FORT MYERS FL 33905",
+      "FOOD TRUCK WITH OUTDOOR VENDING AND SEATING OPERATING OFF HOURS",
+      "Closed-Violation Created",
+      "",
+      "1",
+      "4843 PALM BEACH BLVD, FORT MYERS FL 33905"
+    ],
+    [
+      "",
+      "VIO2026-07411",
+      "0 PALM BEACH BLVD, ALVA FL 33920",
+      "Permitted Uses - Storing vehicles, trailers, commercial equipment, large piles of horticulture or any other property on vacant AG-2 zoning is prohibited.",
+      "Certified Notice Sent",
+      "",
+      "0",
+      "0 PALM BEACH BLVD, ALVA FL 33920"
+    ],
+    [
+      ""
+    ]
+  ]
+}

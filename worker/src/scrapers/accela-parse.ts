@@ -116,7 +116,29 @@ export const GRID_HEADERS = ['record number', 'record type', 'address', 'status'
  * one is readable but unnarrowable, and the caller must say so rather than
  * imply the rows are about the subject parcel. See `addressColumnMissingNote`.
  */
-export const GRID_IDENTIFYING_HEADERS = ['record number', 'record type', 'status'];
+export const GRID_IDENTIFYING_HEADERS = ['record number', 'status'];
+
+/**
+ * Why only two.
+ *
+ * Every relaxation here has come from a real tenant, never from a guess:
+ *
+ *   Hillsborough  Date | Record Number | Record Type | Description |
+ *                 Project Name | Related Records | Status | Short Notes
+ *   Pasco         Date | Record Number | Record Type | Module |
+ *                 Project Name | Address | Status
+ *   Lee           Record Number | Address | Description | Status | Action |
+ *                 Related Records
+ *
+ * Hillsborough has no Address, which R4 handled. Lee has no RECORD TYPE, the
+ * mirror image, and the two headers common to all three are the two left.
+ *
+ * Identification is still not loose, and `gridFromRows` carries the rest of
+ * the guard: each must be its OWN cell matched exactly, so the search form's
+ * "Record Number:" and "Status:" do not match; a row wider than 24 cells is
+ * rejected as furniture; and body rows must match the header row's width.
+ * Those cases are tested rather than asserted.
+ */
 
 /** True when a grid was identified but carries no usable address column. */
 export function gridHasAddressColumn(headers: string[]): boolean {
@@ -377,6 +399,12 @@ export function gridFromRows(
       }
       if (r.some((x) => x)) body.push(r);
     }
+    // A header row with no body rows at its width is not a grid. Returning one
+    // lets the caller skip the explicit-empty-state check and report "searched,
+    // found nothing" when the portal never said so, which is the one thing this
+    // product must never get wrong. `pickGrid` already refuses this; this
+    // function did not. Keep scanning: a later row may be the real header.
+    if (!body.length) continue;
     return { headers: cells, rows: body };
   }
   return null;
@@ -406,7 +434,22 @@ export function portalSaysNoRecords(bodyText: string): boolean {
   if (count.total === 0) return true;
   // No count at all: fall back to the portal's own wording, with the digit
   // boundary that was missing.
-  return /(^|[^\d])0\s+Record results/i.test(bodyText) || /no records found/i.test(bodyText);
+  //
+  // Nassau County says "Notice: Your search returned no results. Please modify
+  // your search criteria and try again." That is the portal stating plainly
+  // that it found nothing, and neither pattern below matched it, so a working
+  // portal with a genuine zero was reported as unreadable. Captured in
+  // tests/fixtures/nassau-enforcement-empty.json.
+  //
+  // Each phrase stays specific. "no results" alone would match prose about
+  // results elsewhere on a page; "returned no results" is the portal's own
+  // sentence about the search just run.
+  return (
+    /(^|[^\d])0\s+Record results/i.test(bodyText) ||
+    /no records found/i.test(bodyText) ||
+    /your search returned no results/i.test(bodyText) ||
+    /search returned no results/i.test(bodyText)
+  );
 }
 
 /**

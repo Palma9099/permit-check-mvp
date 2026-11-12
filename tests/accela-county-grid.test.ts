@@ -68,9 +68,13 @@ describe('the real Hillsborough Enforcement grid', () => {
 });
 
 describe('identification stays strict without the address word', () => {
-  it('still requires record number, record type and status', () => {
-    expect(GRID_IDENTIFYING_HEADERS).toEqual(['record number', 'record type', 'status']);
-    // Address is still wanted, just not used to identify the grid.
+  it('still requires record number and status', () => {
+    // Relaxed again when Lee County turned up with Address and Status but NO
+    // Record Type, the mirror of Hillsborough. Those two are what all three
+    // known-good grids share. See tests/accela-tenant-shapes.test.ts for the
+    // rejection cases that keep this from being loose.
+    expect(GRID_IDENTIFYING_HEADERS).toEqual(['record number', 'status']);
+    // Address is still wanted for narrowing, just not for identification.
     expect(GRID_HEADERS).toContain('address');
   });
 

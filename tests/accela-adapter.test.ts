@@ -105,14 +105,19 @@ describe('B2: the page\'s own row claim is checked, not just reported', () => {
     expect(extractionMatchesPage(2, parseResultCount('Search for Records'))).toBeNull();
   });
 
-  it('a header-only grid really does come back with no rows', () => {
+  it('a header-only grid is not a grid at all', () => {
     const rows = [
       ['Date', 'Record Number', 'Record Type', 'Address', 'Status'],
     ];
-    const g = gridFromRows(rows);
-    expect(g).not.toBeNull();
-    expect(g!.rows).toEqual([]);
-    // Which is exactly why the caller may not treat it as a confirmed zero.
+    // B2's rule is unchanged and now enforced one step earlier. This used to
+    // return { headers, rows: [] } and rely on the CALLER not treating it as a
+    // confirmed zero. That left a hole: a header-only grid on a page printing
+    // no count at all reached the caller with zero records and nothing to
+    // contradict it. Returning null instead routes the caller to the explicit
+    // empty-state check, so only the portal's own statement that it found
+    // nothing can produce a zero. Same intent, no longer dependent on the
+    // caller getting it right.
+    expect(gridFromRows(rows)).toBeNull();
   });
 
   it('names the shortfall for the reader', () => {

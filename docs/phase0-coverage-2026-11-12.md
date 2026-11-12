@@ -120,6 +120,48 @@ Lee and Nassau did not recover, so they have a different cause and stay
 unexplained rather than being folded into this one. With Miami-Dade that is
 1,637,625 residents still failing.
 
+## Lee and Nassau: two more causes, neither the first one proposed
+
+Captured from the live portals rather than reasoned about.
+
+**Nassau was never broken.** Its portal says "Notice: Your search returned no
+results." The adapter matched only "0 Record results" and "no records found",
+so a working portal reporting a genuine zero read as unreadable.
+
+**Lee is the mirror of Hillsborough**: `Record Number | Address | Description
+| Status | Action | Related Records`, with no Record Type, where Hillsborough
+had Record Type and no Address. The identifying set is now the two headers all
+three known-good grids share, record number and status.
+
+A hypothesis that fitted and was wrong: Lee's MAIN search redirects to
+CapDetail.aspx because exactly one record matches. Real, confirmed, and NOT
+the cause, because the adapter also failed on PALM where four records sit on a
+normal grid.
+
+### All six Accela counties after the fixes
+
+| tenant | before | after | unincorporated |
+|---|---|---|---|
+| Hillsborough | failed | RETURNS, 10 | 1,008,349 |
+| Pasco | RETURNS | RETURNS, 7 | 513,983 |
+| Lee | failed | **RETURNS, 4 of 4** | 377,864 |
+| Seminole | failed | RETURNS, 11 | 224,494 |
+| Leon | failed | RETURNS, 5 | 96,029 |
+| Nassau | failed | READABLE_EMPTY, portal says so | 72,807 |
+
+No tenant is unreadable any more.
+
+### Coverage, counting only what returned cases
+
+**Eight county tenants proven to return: 3,088,028 residents.** With the 36
+city tenants' 2,049,410 that is **5,137,438**.
+
+Nassau and Franklin (80,311) are readable with the portal confirming nothing
+on the probed streets, and are NOT in that total: readable is not the same as
+returning, which is the error that put Franklin in a working total in the
+first place. Broward (16,888) is parcel-keyed and unprobed. Miami-Dade
+(1,186,954) still fails and is untouched.
+
 ## How the Hillsborough failure was found
 
 Driven directly - navigate to the module page, fill
