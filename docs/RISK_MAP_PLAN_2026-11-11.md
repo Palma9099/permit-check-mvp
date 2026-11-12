@@ -626,3 +626,14 @@ Earlier today (11:05) the lead sheet shipped, and the map app gained a ranked le
 (`/api/leads`, the LEADS button): value order in-ground pool, roof, solar, addition; lead parcels
 glow gold on the map; a click flies to the parcel and opens its drawer. The panel refreshes itself
 as lookups land. Both apps restarted (Homestead Finder d767db8).
+
+**2026-11-12, walk order (12:00).** The leads panel now orders leads for a field walk. Inside each
+kind (in-ground pool, roof, solar, addition, then the rest) three signals each add two points: a
+denied, void or revoked permit on the parcel since the earlier flight year, an open code case (any
+status not complied, closed, resolved, void, dismissed or rescinded), and a reroof caught in progress
+(felt, underlayment, materials or workers in the later photo). Confidence breaks ties. Each lead
+has a "Mark as walked" button that records the date, the walker's name (asked once, remembered on
+that browser) and a one-line note as a `walked` layer row and a review event; walked leads sink to
+the end of the list and show the note. Status is untouched by a walk. 22 leads at the time of
+writing; 451 E 19 St tops the roofs with both a denied permit and an open Building Without A Permit
+case (Homestead Finder, app commit after d767db8).
