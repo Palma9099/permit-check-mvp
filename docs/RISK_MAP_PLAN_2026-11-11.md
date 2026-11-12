@@ -498,3 +498,33 @@ frames (Homestead Finder 2e2e30c). Vision and fetching can overlap from here on.
 
 Pair 1 cumulative CLI cost estimate 175.32 USD after 514 labeled parcels, 0.34 USD a parcel.
 Pair 2 starts at zero; its flags are the first that the EnerGov lookup can close.
+
+**2026-11-12, iteration 11 (07:25).** The loop closes end to end for the first time. Pair 2
+(2023 versus 2026) in its first hour: 69 parcels labeled, 14 flagged, 17 flagged low, 38 clear, six
+audits with no disagreement, 0.41 USD a parcel (more parcels show something across this window).
+All fourteen flags read by eye, fourteen confirmed: new solar arrays at 393 E 51 St and 633 E 45 St,
+a new pool with paved surround at 420 E 61 St, the round pool at 725 E 21 St gone again, a tarp at
+226 E 44 St, a paver courtyard at 4795 E 9 Ct, and eight roof changes. **Ninety-seven of
+ninety-seven reported flags have matched the photos.**
+
+Their EnerGov lookups are running, and the drawer now carries a permit-match row per finding: the
+matching permit with its number, type, apply date and status, or "no matching permit on this portal
+since 2023" in red. The row says whether the pair's window lies inside the portal's records, so a
+gap on pair 1 reads as not determinable while a gap on pair 2 reads as a lead. First four results:
+
+- 393 E 51 St: re-roof RFR-005130-2023 (applied 2023-10-04, Complete) and solar
+  ELER-012132-2024 (applied 2024-05-13, Complete). Both findings permitted. Not a lead.
+- 4795 E 9 Ct: pavers BLDR-002641-2025 (applied 2025-03-20, Complete). Permitted.
+- 581 E 54 St: the only re-roof permit, RFR-004884-2023, is Void, and the roof is plainly replaced
+  by 2026. A void permit no longer closes a finding in the drawer (amber, counted as open).
+- 633 E 45 St: re-roof RFR-000566-2026 applied 2026-01-22, Complete; the solar array has no permit
+  on the portal since 2023. Lead.
+
+Two things the apply dates make urgent. First, the flight date: a roof permitted 2026-01-22 that
+already shows new in the 2026 flight is either an after-the-fact permit or a flight flown later in
+January; the county flies late December to January but the 2026 dates are not published in the
+service metadata and the SFWMD mosaic metadata that lists dates needs a token. Second, a permit
+match is by type and date, not by proof that the permitted work is the work seen; a re-roof permit
+in 2023 and a different roof in 2026 could be two jobs. Both are stated in the drawer wording.
+
+Pair 1 closed at 175 USD for 514 labeled; pair 2 at 28 USD for 69.
