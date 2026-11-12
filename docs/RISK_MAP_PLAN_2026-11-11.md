@@ -426,3 +426,26 @@ that show something, about 0.34 USD, against 0.29 USD measured on the haiku path
 seconds a parcel against 120. Workers restarted on v5.
 
 Cumulative CLI cost estimate 83.49 USD after 292 labeled parcels. Queue: 6,186 candidates.
+
+**2026-11-12, iteration 8 (04:10).** Vision v5 after its first hour: 73 parcels screened by sonnet,
+43 showed something at 0.5 or more, 13 flagged, 21 flagged low, 30 clear. Audit disagreement fell to
+1 of 8 (from 4 of 7 under haiku); that one, a roof at 0.55, lost the two-of-three vote and ended
+clear. Measured: a clear parcel 0.21 USD and 54 seconds, a confirmed one 0.43 USD and 116 seconds,
+blended about 0.34 USD; 80 parcels an hour on two workers. One parcel went to error because the
+screen run had no parse retry (the reply was prose, not JSON); fixed, re-queued, workers restarted.
+Fifteen new flags read by eye, fifteen confirmed (five new pools, a tarp replaced by a new roof at
+5420 E 6 Ave, the rebuild at 897 E 20 St next to 891, and eight roof changes). **Fifty-six of
+fifty-six reported flags have matched the photos.**
+
+The permit module is now read. The riskmap lookup script runs the code-case search as before and
+then a second search on the same page in EnerGov's Permit module (2), reading the portal's own XHR
+answer and the parcel number it carries. permitsChecked is true only when the answer parsed and
+carried a PermitsFound count. Verified live: 891 E 20 St returns four permits (a 2025 pool, 2024 and
+2025 pavers, 2025 pool electrical, parcel 0431080024815); 40 E 53 Ter (a confirmed reroof) and
+135 W 60 St (the lien case) return PermitsFound 0. **Every permit returned so far was applied for in
+2024 or later**, so the drawer says plainly that earlier work may be permitted in the city's prior
+system, which this lookup does not read; an empty list is never shown as "no permit". A batch
+lookup is running for the 57 verified and flagged parcels, one at a time with a pause. Next tick
+reads the flag-versus-permit matches.
+
+Cumulative CLI cost estimate 112.84 USD after 367 labeled parcels. Queue: 6,106 candidates.
