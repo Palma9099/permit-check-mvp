@@ -1,0 +1,287 @@
+{
+  "captured": "2026-11-12",
+  "source": "https://services.arcgis.com/JMAJrTsHNLrSsWf5/arcgis/rest/services/MunicipalCodeAppPts/FeatureServer/0/query",
+  "note": "Distinct municipality/website/phone from Broward MunicipalCodeAppPts. The drift test rebuilds the generated table from these features, so the generator and its output cannot disagree silently.",
+  "features": [
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": null,
+        "PTS_CITYNAME_BOUNDARY": null,
+        "CODE_WEBSITE": null,
+        "CODE_PHONE": null
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": null,
+        "PTS_CITYNAME_BOUNDARY": "BMSD",
+        "CODE_WEBSITE": null,
+        "CODE_PHONE": null
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": null,
+        "PTS_CITYNAME_BOUNDARY": "TRIBAL LAND",
+        "CODE_WEBSITE": null,
+        "CODE_PHONE": null
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "Broward Municipal Services District",
+        "PTS_CITYNAME_BOUNDARY": "COUNTY REGIONAL FACILITY",
+        "CODE_WEBSITE": "https://www.broward.org/Planning/CodeEnforcement/Pages/Default.aspx",
+        "CODE_PHONE": "954-357-9793"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Coconut Creek",
+        "PTS_CITYNAME_BOUNDARY": "COCONUT CREEK",
+        "CODE_WEBSITE": "https://www.coconutcreek.net/sd/code-compliance",
+        "CODE_PHONE": "954-956-1478"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Cooper City",
+        "PTS_CITYNAME_BOUNDARY": "COOPER CITY",
+        "CODE_WEBSITE": "https://www.coopercityfl.org/index.asp?SEC=B5D4B744-C4A5-4E4F-AF7D-4CD0444A7527&DE=A830EADD-969A-48B9-9918-10BD473AB95F",
+        "CODE_PHONE": "954-436-7335"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Coral Springs",
+        "PTS_CITYNAME_BOUNDARY": "CORAL SPRINGS",
+        "CODE_WEBSITE": "https://www.coralsprings.org/government/other-departments-and-services/code-compliance",
+        "CODE_PHONE": "954-334-5694"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Dania Beach",
+        "PTS_CITYNAME_BOUNDARY": "DANIA BEACH",
+        "CODE_WEBSITE": "https://www.daniabeachfl.gov/index.aspx?nid=97",
+        "CODE_PHONE": "954-924-6810"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Deerfield Beach",
+        "PTS_CITYNAME_BOUNDARY": "DEERFIELD BEACH",
+        "CODE_WEBSITE": "https://www.deerfield-beach.com/index.aspx?nid=358",
+        "CODE_PHONE": "954-480-4241"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Fort Lauderdale",
+        "PTS_CITYNAME_BOUNDARY": "FORT LAUDERDALE",
+        "CODE_WEBSITE": "https://www.fortlauderdale.gov/departments/sustainable-development/community-enhancement-and-compliance/division-contacts",
+        "CODE_PHONE": "954-828-5207"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Hallandale Beach",
+        "PTS_CITYNAME_BOUNDARY": "HALLANDALE BEACH",
+        "CODE_WEBSITE": "https://www.hallandalebeachfl.gov/index.aspx?nid=1038",
+        "CODE_PHONE": "954-457-1390"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Hollywood",
+        "PTS_CITYNAME_BOUNDARY": "HOLLYWOOD",
+        "CODE_WEBSITE": "https://www.hollywoodfl.org/index.aspx?nid=383",
+        "CODE_PHONE": "954-921-3061"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Lauderdale Lakes",
+        "PTS_CITYNAME_BOUNDARY": "LAUDERDALE LAKES",
+        "CODE_WEBSITE": "https://www.lauderdalelakes.org/index.aspx?nid=431",
+        "CODE_PHONE": "954-535-2760"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Lauderhill",
+        "PTS_CITYNAME_BOUNDARY": "LAUDERHILL",
+        "CODE_WEBSITE": "https://www.lauderhill-fl.gov/departments/code-enforecement",
+        "CODE_PHONE": "954-730-3070"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Lighthouse Point",
+        "PTS_CITYNAME_BOUNDARY": "LIGHTHOUSE POINT",
+        "CODE_WEBSITE": "https://city.lighthousepoint.com/code-enforcement/",
+        "CODE_PHONE": "954-784-3409"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Margate",
+        "PTS_CITYNAME_BOUNDARY": "MARGATE",
+        "CODE_WEBSITE": "https://eservices.margatefl.com/Click2GovCE/index.html",
+        "CODE_PHONE": "954-972-1232"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Miramar",
+        "PTS_CITYNAME_BOUNDARY": "MIRAMAR",
+        "CODE_WEBSITE": "https://www.miramarfl.gov/index.aspx?nid=1192",
+        "CODE_PHONE": "954-602-3264"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of North Lauderdale",
+        "PTS_CITYNAME_BOUNDARY": "NORTH LAUDERDALE",
+        "CODE_WEBSITE": "https://www.nlauderdale.org/departments/code_enforcement_division/index.php",
+        "CODE_PHONE": "954-724-0878"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Oakland Park",
+        "PTS_CITYNAME_BOUNDARY": "OAKLAND PARK",
+        "CODE_WEBSITE": "https://oaklandparkfl.gov/index.aspx?nid=189",
+        "CODE_PHONE": "954-630-4400"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Parkland",
+        "PTS_CITYNAME_BOUNDARY": "PARKLAND",
+        "CODE_WEBSITE": "https://www.cityofparkland.org/index.aspx?NID=450",
+        "CODE_PHONE": "954-753-5050"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Pembroke Pines",
+        "PTS_CITYNAME_BOUNDARY": "PEMBROKE PINES",
+        "CODE_WEBSITE": "https://www.ppines.com/Index.aspx?nid=176",
+        "CODE_PHONE": "954-431-4466"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Plantation",
+        "PTS_CITYNAME_BOUNDARY": "PLANTATION",
+        "CODE_WEBSITE": "https://www.plantation.org/psd/code-enforcement.html",
+        "CODE_PHONE": "954-797-2267"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Pompano Beach",
+        "PTS_CITYNAME_BOUNDARY": "POMPANO BEACH",
+        "CODE_WEBSITE": "https://pompanobeachfl.gov/index.php/pages/code_compliance/code_compliance",
+        "CODE_PHONE": "954-786-4361"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Sunrise",
+        "PTS_CITYNAME_BOUNDARY": "SUNRISE",
+        "CODE_WEBSITE": "https://www.sunrisefl.gov/index.aspx?page=192",
+        "CODE_PHONE": "954-572-2344"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Tamarac",
+        "PTS_CITYNAME_BOUNDARY": "TAMARAC",
+        "CODE_WEBSITE": "https://www.tamarac.org/index.aspx?nid=168",
+        "CODE_PHONE": "954-597-3425"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of West Park ",
+        "PTS_CITYNAME_BOUNDARY": "WEST PARK",
+        "CODE_WEBSITE": "https://www.cityofwestpark.net/cwp2014/index.php?option=com_content&view=article&id=31&Itemid=159",
+        "CODE_PHONE": "954-989-2688"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Weston",
+        "PTS_CITYNAME_BOUNDARY": "WESTON",
+        "CODE_WEBSITE": "https://www.westonfl.org/government/code-enforcement",
+        "CODE_PHONE": "954-385-0500"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "City of Wilton Manors",
+        "PTS_CITYNAME_BOUNDARY": "WILTON MANORS",
+        "CODE_WEBSITE": "https://www.wiltonmanors.com/index.aspx?nid=349",
+        "CODE_PHONE": "954-390-2151"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "Town of Davie",
+        "PTS_CITYNAME_BOUNDARY": "DAVIE",
+        "CODE_WEBSITE": "https://www.davie-fl.gov/index.aspx?nid=197",
+        "CODE_PHONE": "954-693-8237"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "Town of Hillsboro Beach",
+        "PTS_CITYNAME_BOUNDARY": "HILLSBORO BEACH",
+        "CODE_WEBSITE": "https://www.townofhillsborobeach.com/index.aspx?nid=231",
+        "CODE_PHONE": "954-740-3384"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "Town of Lauderdale-by-the-Sea",
+        "PTS_CITYNAME_BOUNDARY": "LAUDERDALE BY THE SEA",
+        "CODE_WEBSITE": "https://www.lauderdalebythesea-fl.gov/dev/code-comp.htm",
+        "CODE_PHONE": "954-640-4220"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "Town of Pembroke Park",
+        "PTS_CITYNAME_BOUNDARY": "PEMBROKE PARK",
+        "CODE_WEBSITE": "https://www.townofpembrokepark.com/departments/code-enforcement/",
+        "CODE_PHONE": "954-966-4600"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "Town of Southwest Ranches",
+        "PTS_CITYNAME_BOUNDARY": "SOUTHWEST RANCHES",
+        "CODE_WEBSITE": "https://www.southwestranches.org/departments/code-compliance/",
+        "CODE_PHONE": "954-434-0008"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "Village of Lazy Lakes",
+        "PTS_CITYNAME_BOUNDARY": "LAZY LAKE",
+        "CODE_WEBSITE": "https://www.floridaleagueofcities.com/Directory.aspx?nid=259",
+        "CODE_PHONE": "954-614-9058"
+      }
+    },
+    {
+      "attributes": {
+        "CODE_MUNICIPALITY": "Village of Sea Ranch Lakes",
+        "PTS_CITYNAME_BOUNDARY": "SEA RANCH LAKES",
+        "CODE_WEBSITE": "https://www.floridaleagueofcities.com/Directory.aspx?niD=442",
+        "CODE_PHONE": "954-640-4216"
+      }
+    }
+  ]
+}

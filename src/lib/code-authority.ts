@@ -70,6 +70,22 @@ export interface CityCodeReach {
   portalUrl: string | null;
   /** True when a deep scan of this address searches THIS city, not its county. */
   deepScanReads: boolean;
+  /**
+   * The office that enforces code here, when the county publishes one.
+   *
+   * Contact detail, NOT coverage: it never moves the verdict off amber,
+   * because naming who decides is not the same as asking them. It exists
+   * because "ask the city directly", with no name and no number, is a true
+   * sentence that leaves the reader where they started.
+   */
+  office?: CodeOfficeContact;
+}
+
+/** A code office a reader can contact. `url` is a department page, not a search. */
+export interface CodeOfficeContact {
+  name: string;
+  url: string | null;
+  phone: string | null;
 }
 
 export type CodeVerdict =
@@ -101,6 +117,14 @@ export type CodeVerdict =
        * Decided from the authority inputs, never by matching a display string.
        */
       authorityNamed: boolean;
+      /**
+       * Who to contact, when we know. Null is the normal case outside Broward.
+       *
+       * Deliberately separate from `portalUrl`. That field is a case SEARCH a
+       * reader can run; this is the office's own page and phone. Telling
+       * someone to "search" a contact page misrepresents what they will find.
+       */
+      office: CodeOfficeContact | null;
     };
 
 const UNINCORPORATED = /unincorp|^none$|^n\/?a$/i;
@@ -172,6 +196,7 @@ export function codeVerdict(
       portalUrl: authority.cityCoverage?.portalUrl ?? null,
       deepScanReads: authority.cityCoverage?.deepScanReads === true,
       authorityNamed: named !== null,
+      office: authority.cityCoverage?.office ?? null,
     };
   }
 
@@ -190,6 +215,9 @@ export function codeVerdict(
         // no city to read, so there is nothing extra to offer here.
         deepScanReads: false,
         authorityNamed: true,
+        // The county governs an unincorporated parcel, and Broward publishes
+        // its own district office under that key, so this can be named too.
+        office: authority.cityCoverage?.office ?? null,
       };
     }
     return {
@@ -199,6 +227,7 @@ export function codeVerdict(
       portalUrl: null,
       deepScanReads: false,
       authorityNamed: false,
+      office: null,
     };
   }
 
@@ -217,6 +246,9 @@ export function codeVerdict(
       // authority, however many cities the registry holds.
       deepScanReads: false,
       authorityNamed: false,
+      // We do not know which jurisdiction this is, so we cannot name its
+      // office either. A plausible-looking wrong office is worse than none.
+      office: null,
     };
   }
 
@@ -275,6 +307,21 @@ export function verdictDetail(v: CodeVerdict, liensChecked: boolean): string {
  * The buyer-facing explanation. The unchecked wording is the whole reason this
  * module exists, so it says plainly that this is not a clean result.
  */
+/**
+ * How to reach the office that decides, in one sentence.
+ *
+ * Says "contact", never "search": the url is a code-compliance department
+ * page, and a reader sent to "search" one finds a phone number and a form.
+ * Broward's own directory carries an email for all 32 offices and it is not
+ * used here - about 18 are an individual staffer's mailbox, and one points at
+ * a domain the Sheriff's Office does not control, so mail would reach a
+ * stranger. The page and the phone are the institution; the mailbox is not.
+ */
+function officeContact(o: CodeOfficeContact): string {
+  const bits = [o.url, o.phone].filter(Boolean).join(' or ');
+  return bits ? ` Contact ${o.name} code compliance: ${bits}.` : ` The office that decides is ${o.name}.`;
+}
+
 export function verdictBuyerNote(v: CodeVerdict): string {
   switch (v.kind) {
     case 'hits':
@@ -289,9 +336,15 @@ export function verdictBuyerNote(v: CodeVerdict): string {
           }`
         : v.portalUrl
           ? ` ${v.authority} publishes its cases at ${v.portalUrl} - search it before you rely on anything above.`
-          : v.authorityNamed
-            ? ` Ask ${v.authority} directly, or order the full lien search.`
-            : ' Confirm which city or county governs this address, then search that office, or order the full lien search.';
+          : v.office
+            ? // Previously this said "Ask the city directly" and stopped. True,
+              // and it left the reader with nothing to act on. 24 of Broward's
+              // 31 municipalities have no adapter, so that was most of the
+              // county getting a sentence it could not use.
+              `${officeContact(v.office)} Or order the full lien search.`
+            : v.authorityNamed
+              ? ` Ask ${v.authority} directly, or order the full lien search.`
+              : ' Confirm which city or county governs this address, then search that office, or order the full lien search.';
       // An unnamed authority cannot be the subject of this sentence: it would
       // read "the code authority is the code authority for this address", which
       // is what every address outside Miami-Dade actually said.
@@ -319,7 +372,9 @@ export function verdictOwnerNote(v: CodeVerdict): string {
       return sentence(
         v.deepScanReads
           ? `${v.authority} enforces code at this address and the quick check does not reach it, so treat this as unknown rather than clear. A deep scan searches ${v.authority} directly.`
-          : `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.`,
+          : `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.${
+              v.office ? officeContact(v.office) : ''
+            }`,
       );
     case 'clear':
       return 'Keep it that way. Unresolved cases grow fines every day.';
