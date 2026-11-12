@@ -17,10 +17,31 @@
  *             "which city is this parcel in", a different question)
  *
  * Method and its error bound: each place is assigned to the county containing
- * its centroid, so a place straddling a county line lands wholly in one. The
- * known Florida case is Longboat Key (Manatee/Sarasota). Straddlers are
- * reported so the error is visible rather than silent.
+ * its CENTROID, so a place straddling a county line lands wholly in one. Its
+ * residents in the other county are then missing from that county's municipal
+ * subtraction, which OVERSTATES that county's unincorporated figure, and the
+ * assigned county is understated by the same people.
+ *
+ * Codex R2 caught an earlier version of this comment claiming straddlers were
+ * reported when the code only reported places assigned to no county at all.
+ * Codex R3-01 then caught the replacement: it sampled the box's four CORNERS,
+ * which is not an intersection test, because a county can cross the box
+ * interior without containing a corner. It reported zero straddlers on a notch
+ * counterexample that genuinely overlapped.
+ *
+ * It now runs a complete box/polygon intersection (`scripts/geo.ts`): vertex
+ * in box, edge crossing edge, or box corner in polygon. Against the place's
+ * BOUNDING BOX rather than its outline, so it over-reports rather than
+ * under-reports, which is the right direction for an error bound.
+ *
+ * What this still does NOT give you is the SIZE of the error, because that
+ * needs each place's population split by county part, which this source does
+ * not carry. So the candidate list bounds WHICH counties could move, not by
+ * how much. Ordering inside a near-tie (Alachua 108,824 / Indian River
+ * 108,789 / Sumter 108,709, 35 and 115 apart) is not safe on this data alone.
  */
+
+import { boxIntersectsPolygon, pointInPolygon, ringsBox, type Ring } from './geo.js';
 
 const TIGER = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb';
 const COUNTIES = `${TIGER}/State_County/MapServer/55/query`;
@@ -37,23 +58,6 @@ async function query(url: string, params: Record<string, string>) {
   return data;
 }
 
-/** Even-odd ray cast over one ring of [x, y] pairs. */
-function inRing(x: number, y: number, ring: number[][]): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-/** Esri polygons are many rings; odd crossings count decides containment. */
-function inPolygon(x: number, y: number, rings: number[][][]): boolean {
-  let inside = false;
-  for (const r of rings) if (inRing(x, y, r)) inside = !inside;
-  return inside;
-}
 
 async function main() {
   const counties = await query(COUNTIES, {
@@ -67,7 +71,12 @@ async function main() {
   const places = await query(PLACES, {
     where: `STATE='${FL}'`,
     outFields: 'BASENAME,POP100,CENTLAT,CENTLON,PLACE',
-    returnGeometry: 'false',
+    // Geometry IS needed now, to detect straddlers. Heavily generalised,
+    // because only the bounding box is used and a simplified ring gives the
+    // same box to well under a parcel's width.
+    returnGeometry: 'true',
+    maxAllowableOffset: '0.002',
+    outSR: '4326',
     f: 'json',
   });
 
@@ -81,6 +90,7 @@ async function main() {
 
   let unassigned = 0;
   let municipalTotal = 0;
+  const straddlers: Array<{ name: string; pop: number; counties: string[] }> = [];
 
   for (const p of places.features) {
     const a = p.attributes;
@@ -89,10 +99,25 @@ async function main() {
     // TIGERweb ships these as strings with a leading + on latitude.
     const lat = Number(String(a.CENTLAT).replace('+', ''));
     const lng = Number(String(a.CENTLON).replace('+', ''));
-    const hit = cs.find((c: any) => inPolygon(lng, lat, c.rings));
+    const hit = cs.find((c: any) => pointInPolygon(lng, lat, c.rings));
     if (!hit) { unassigned += pop; continue; }
     hit.municipal += pop;
     hit.places.push(String(a.BASENAME));
+
+    // Candidate straddler: does this place's bounding box intersect any county
+    // other than the one holding its centroid? Every county is tested, not a
+    // few sample points, because a county can cross the box without touching
+    // a corner (Codex R3-01).
+    const box = ringsBox((p.geometry?.rings ?? []) as Ring[]);
+    if (!box) continue;
+    const touched = new Set<string>([hit.name]);
+    for (const c of cs) {
+      if (c.name === hit.name) continue;
+      if (boxIntersectsPolygon(box, c.rings)) touched.add(c.name);
+    }
+    if (touched.size > 1) {
+      straddlers.push({ name: String(a.BASENAME), pop, counties: [...touched] });
+    }
   }
 
   cs.sort((a: any, b: any) => (b.pop - b.municipal) - (a.pop - a.municipal));
@@ -112,6 +137,20 @@ async function main() {
   console.log('municipal (412 places) ', n(municipalTotal));
   console.log('unincorporated         ', n(totalPop - municipalTotal));
   if (unassigned) console.log('UNASSIGNED place pop   ', n(unassigned), '(centroid fell in no county)');
+
+  console.log('');
+  console.log(`CANDIDATE STRADDLERS: ${straddlers.length} place(s) whose bounding box reaches more than one county.`);
+  console.log('Each is counted wholly in its centroid county, so the OTHER counties listed are');
+  console.log('overstated by that place\'s residents on their side of the line. The test is a');
+  console.log('complete box/polygon intersection against the place BOUNDING BOX, so it');
+  console.log('over-reports rather than under-reports. It bounds WHICH counties can move, not');
+  console.log('by how much: a per-county population split is not in this source.');
+  for (const s2 of straddlers.sort((a, b) => b.pop - a.pop)) {
+    console.log(`  ${s2.name.padEnd(24)} ${n(s2.pop).padStart(9)}   ${s2.counties.join(' / ')}`);
+  }
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+// Never run on import: a test imports the geometry from ./geo.js, but anything
+// that pulls this module must not fire a network pass as a side effect.
+const invokedDirectly = /phase0-reach\.(ts|js)$/.test(process.argv[1] ?? '');
+if (invokedDirectly) main().catch((e) => { console.error(e); process.exit(1); });

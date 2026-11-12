@@ -1,0 +1,186 @@
+{
+  "captured": "2026-11-12T14:41:14.059Z",
+  "source": "https://aca-prod.accela.com/HCFL/Cap/CapHome.aspx?module=Enforcement&TabName=Enforcement",
+  "search": {
+    "streetName": "MAIN"
+  },
+  "note": "Table 32 as readTables would see it. First <tr> is the \"Showing 1-10 of 100+\" banner, so the COLUMN NAME row lands in rows[0], not headers.",
+  "headers": [
+    "Showing 1-10 of 100+ | Download results",
+    "Showing 1-10 of 100+",
+    "|",
+    "Download results"
+  ],
+  "rows": [
+    [
+      "Showing 1-10 of 100+",
+      "|",
+      "Download results"
+    ],
+    [
+      "",
+      "Date",
+      "Record Number",
+      "Record Type",
+      "Description",
+      "Project Name",
+      "Related Records",
+      "Status",
+      "Short Notes",
+      ""
+    ],
+    [
+      "",
+      "10/27/2026",
+      "HC-GEN-26-000865",
+      "Enforcement Generalized Housing Inspections",
+      "Facility",
+      "Thonotosassa Football Complex",
+      "0",
+      "Open",
+      "",
+      "10115 Main St, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "10/01/2026",
+      "HC-WE-26-004855",
+      "Water Enforcement Proactive",
+      "Wasteful inefficient usage of water",
+      "NOV - Wasteful inefficient usage of water",
+      "0",
+      "COMPLIED",
+      "CTSY 10.01.2026",
+      "10801 Main St, Lot A1, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "09/16/2026",
+      "HC-CE-26-013314",
+      "Enforcement Complaint",
+      "Tenant reports a busted pipe within the Parkview mobile home park off of MAIN ST & SUSAN HALASZ LN that has gallons of water rushing out and it has been for a month. Tenant also reports that there's overgrown vegetation that is blocking the water from flooding. Tenant provided the phone number for the Parkview Mobile home park 813-544-2471 as they do not have a forward facing office.",
+      "",
+      "0",
+      "In Compliance",
+      "",
+      "10801 Main St, Lot A1, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "09/15/2026",
+      "HC-WE-26-004576",
+      "Water Enforcement Proactive",
+      "Wasteful inefficient usage of water",
+      "Wasteful inefficient usage of water",
+      "0",
+      "Warning",
+      "",
+      "10801 Main St, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "09/02/2026",
+      "HC-WE-26-004504",
+      "Water Enforcement Complaint",
+      "Customer reports that within the Park View Mobile Home Park at 10801 MAIN ST, the first house on the right is using a soaker hose daily that is causing stagnant water on the nearby library property. Customer reports that it's occurring throughout the day.",
+      "Customer reports that within the Park View Mobile Home Park at 10801 MAIN ST, the first house on the right is using a soaker hose daily that is causing stagnant water on the nearby library property. Customer reports that it's occurring throughout the day.",
+      "0",
+      "No Violation",
+      "",
+      "10801 Main St, Lot B12, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "09/01/2026",
+      "HC-CE-26-012427",
+      "Enforcement Proactive",
+      "Overgrowth, nuisance coindition",
+      "Overgrowth, nuisance coindition",
+      "0",
+      "In Compliance",
+      "",
+      "10607 Main St, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "09/01/2026",
+      "HC-CE-26-012432",
+      "Enforcement Proactive",
+      "Overgrowth",
+      "Overgrowth",
+      "0",
+      "In Compliance",
+      "",
+      "10609 Main St, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "06/26/2026",
+      "HC-GEN-26-000754",
+      "Enforcement Generalized Housing Inspections",
+      "Facility",
+      "Library Thonotosassa",
+      "0",
+      "Open",
+      "",
+      "10715 Main St, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "06/24/2026",
+      "HC-CB-26-001315",
+      "Citizen Board Support Code",
+      "",
+      "Creating Case from HC-CE-25-013014",
+      "1",
+      "Complied",
+      "",
+      "10418 Main St, Thonotosassa FL 33592"
+    ],
+    [
+      "",
+      "05/05/2026",
+      "HC-WE-26-002136",
+      "Water Enforcement Proactive",
+      "Watering on a restricted day during restricted hours",
+      "Watering on a restricted day during restricted hours",
+      "0",
+      "Warning",
+      "",
+      "10115 Main St, Thonotosassa FL 33592"
+    ],
+    [
+      "< Prev 1 2 3 4 5 6 7 8 9 10 ... Next >",
+      "",
+      "< Prev",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "...",
+      "Next >"
+    ],
+    [
+      "",
+      "< Prev",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "...",
+      "Next >"
+    ]
+  ]
+}

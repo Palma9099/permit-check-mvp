@@ -9,7 +9,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "gen:coverage": "tsx scripts/gen-city-code-coverage.ts"
+    "gen:coverage": "tsx scripts/gen-city-code-coverage.ts",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

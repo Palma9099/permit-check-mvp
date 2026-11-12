@@ -97,6 +97,61 @@ const cell = (row: string[], i: number): string | null => {
 export const GRID_HEADERS = ['record number', 'record type', 'address', 'status'];
 
 /**
+ * The columns that IDENTIFY a results grid, as opposed to the ones we want.
+ *
+ * `address` is not one of them. Hillsborough County's Enforcement grid labels
+ * Date, Record Number, Record Type, Description, Project Name, Related
+ * Records, Status and Short Notes, and carries the address in a TRAILING
+ * COLUMN WHOSE HEADER CELL IS BLANK. Requiring the literal word rejected a
+ * grid holding "100+ Record results matching your search", so the adapter
+ * reported no readable result for a county of 1,008,349 unincorporated
+ * residents while the portal was answering normally.
+ *
+ * Identification stays strict without it: these three must each be their own
+ * cell, exactly. The search form's "Record Number:" carries a colon and does
+ * not match, so form furniture is still rejected, and `gridFromRows` keeps its
+ * own width guard against document-sized rows.
+ *
+ * Address remains REQUIRED for narrowing records to a property. A grid without
+ * one is readable but unnarrowable, and the caller must say so rather than
+ * imply the rows are about the subject parcel. See `addressColumnMissingNote`.
+ */
+export const GRID_IDENTIFYING_HEADERS = ['record number', 'record type', 'status'];
+
+/** True when a grid was identified but carries no usable address column. */
+export function gridHasAddressColumn(headers: string[]): boolean {
+  return headers.some((h) => h.toLowerCase().replace(/\s+/g, ' ').trim() === 'address');
+}
+
+/**
+ * Disclosure for a grid with no address column.
+ *
+ * Without an address there is no way to tell which rows belong to the subject
+ * parcel, so the list is street-wide at best. Saying nothing would let a
+ * reader treat a neighbour's case as this property's, which is the same class
+ * of error as reporting an unsearched authority as clear.
+ */
+export function rowsMissingAddressNote(
+  tenantName: string,
+  missing: number,
+  total: number,
+): string {
+  return `${missing} of the ${total} ${tenantName} records above carry no address, so those rows cannot be checked against this property. Confirm each one on the portal before relying on it.`;
+}
+
+/**
+ * Disclosure for a grid with no address column.
+ *
+ * Codex R4-01: a LABELLED address column can still have blank cells, and a
+ * mixed grid is its own shape. `some(address)` promised every row an address
+ * while one was null. The column-level note below covers a tenant that
+ * publishes no column at all; `rowsMissingAddressNote` covers the rows.
+ */
+export function addressColumnMissingNote(tenantName: string): string {
+  return `${tenantName}'s record list does not publish an address column, so these records cannot be narrowed to this property. Treat them as records for the searched street, not for this address, and confirm each one on the portal before relying on it.`;
+}
+
+/**
  * Pick the real results grid out of an ACA page.
  *
  * THIS IS THE BROWARD PICKGRID BUG, RECURRING IN NEW CODE. ACA nests the
@@ -125,7 +180,7 @@ export function pickGrid(
       const h = t.headers.map(norm);
       // Exact cell equality, so "record number" matches the column and not a
       // page that merely mentions it.
-      if (!GRID_HEADERS.every((k) => h.includes(k))) return null;
+      if (!GRID_IDENTIFYING_HEADERS.every((k) => h.includes(k))) return null;
       const rows = t.rows.filter((r) => r.length === t.headers.length);
       if (rows.length === 0) return null;
       const idRows = rows.filter((r) => r.some((c) => RECORD_ID.test((c ?? '').trim()))).length;
@@ -305,7 +360,7 @@ export function gridFromRows(
   for (let i = 0; i < rows.length; i++) {
     const cells = rows[i];
     const low = cells.map((c) => c.toLowerCase());
-    if (!GRID_HEADERS.every((w) => low.includes(w))) continue;
+    if (!GRID_IDENTIFYING_HEADERS.every((w) => low.includes(w))) continue;
     // Furniture rows are enormous because they contain the whole document; a
     // real header row is a handful of short cells.
     if (cells.length > 24) continue;

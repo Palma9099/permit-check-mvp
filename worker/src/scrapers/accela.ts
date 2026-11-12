@@ -38,6 +38,9 @@ import type { AccelaJurisdiction } from './jurisdictions.js';
 import { readTables, debugDump } from './util.js';
 import {
   GRID_HEADERS,
+  gridHasAddressColumn,
+  addressColumnMissingNote,
+  rowsMissingAddressNote,
   streetNameOf,
   streetNumberOf,
   extractionMatchesPage,
@@ -64,6 +67,9 @@ import {
 
 export {
   GRID_HEADERS,
+  gridHasAddressColumn,
+  addressColumnMissingNote,
+  rowsMissingAddressNote,
   streetNameOf,
   streetNumberOf,
   extractionMatchesPage,
@@ -207,6 +213,12 @@ async function runSearch(
   shortfall?: { read: number; shown: number };
   /** Which criterion actually went into the form. */
   searchedBy?: 'parcel' | 'street';
+  /**
+   * True when the grid was read but publishes no address column, so its rows
+   * cannot be narrowed to the subject property. Hillsborough County is the
+   * case this exists for.
+   */
+  noAddressColumn?: boolean;
 }> {
   const { page, log } = ctx;
   const empty = { shown: null, total: null, capped: false };
@@ -329,6 +341,7 @@ async function runSearch(
   }
 
   const { records, unreadable } = parseRecords(grid.headers, grid.rows);
+  const noAddressColumn = !gridHasAddressColumn(grid.headers);
   log(
     `accela: ${records.length} record(s) for ${searchedBy}` +
       (unreadable ? `, ${unreadable} populated row(s) unreadable` : '') +
@@ -363,7 +376,13 @@ async function runSearch(
     await debugDump(page, 'accela-empty-grid', log);
     return { ran: false, records: [], count };
   }
-  return { ran: true, records, count, searchedBy: searchedBy.startsWith('parcel') ? 'parcel' : 'street' };
+  return {
+    ran: true,
+    records,
+    count,
+    searchedBy: searchedBy.startsWith('parcel') ? 'parcel' : 'street',
+    noAddressColumn,
+  };
 }
 
 export async function runAccelaScrape(
@@ -495,14 +514,47 @@ export async function runAccelaScrape(
     // heading. addressesAgree and addressParts are deleted rather than left
     // unused, so nothing can quietly wire them back into this decision.
 
+    // Codex R3-02: these two notes contradicted each other on a tenant whose
+    // grid has no address column. The street note told the reader each row is
+    // prefixed with its filed address and to compare it; the missing-column
+    // note then said the records cannot be narrowed at all. On Hillsborough
+    // every recordAddress is null, so no prefix is ever emitted and the
+    // comparison the first note promises cannot be made.
+    //
+    // The limitation comes FIRST on that path, because it decides whether the
+    // reader has anything to compare, and the street note no longer promises
+    // row addresses that are not there.
+    // Codex R4-01: `some` was wrong. A labelled address column can still have
+    // blank cells, so there are THREE shapes here, not two, and the middle one
+    // is the one a quantifier hides: every row addressed, none addressed, or
+    // some. Promising "each row is prefixed" on a mixed grid tells a reader to
+    // perform a comparison that is impossible for the blank rows, and those
+    // are exactly the rows that could belong to anyone.
+    const total = r.records.length;
+    const addressed = r.records.filter((v) => v.address).length;
+    const missingRows = total - addressed;
+
+    if (r.noAddressColumn && total) {
+      // The tenant publishes no address column at all.
+      result.notes.push(addressColumnMissingNote(t.name));
+    } else if (missingRows && total) {
+      // The column exists but some cells are blank.
+      result.notes.push(rowsMissingAddressNote(t.name, missingRows, total));
+    }
+
     // And if the search was by street, say so plainly. These records belong
     // to the street, not to this parcel, and a reader scanning a case list
     // under a property's heading will otherwise assume every row is theirs.
     if (r.searchedBy === 'street') {
+      const subject = ctx.address ?? 'the subject property';
+      const scope =
+        'This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties.';
       result.notes.push(
-        `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. Each row is prefixed with the address it is filed against - compare it to ${
-          ctx.address ?? 'the subject property'
-        } before relying on that row.`,
+        addressed === total && total
+          ? `${scope} Each row is prefixed with the address it is filed against - compare it to ${subject} before relying on that row.`
+          : addressed === 0
+            ? `${scope} ${t.name} does not publish an address for these rows, so there is no way to tell which of them belong to ${subject}. Confirm each one on the portal.`
+            : `${scope} ${addressed} of the ${total} rows are prefixed with the address they are filed against - compare those to ${subject}. The other ${missingRows} carry no address and cannot be checked against it; confirm them on the portal.`,
       );
     }
 

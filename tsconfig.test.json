@@ -1,0 +1,20 @@
+{
+  // Tests and measurement scripts are type-checked HERE, not in the Next
+  // build's program.
+  //
+  // The build must not require worker dependencies. The *-parse.ts split
+  // exists for exactly that: those files carry no playwright import, so a root
+  // test may pull them in safely. tests/accela-addressless-notes.test.ts has
+  // to drive the real `runAccelaScrape`, which lives in accela.ts and does
+  // import playwright, and importing it dragged that file into the Next
+  // program. An imported file is checked whether or not it is excluded, so
+  // `exclude: ["worker"]` did not save it: `npm run build` failed on Vercel
+  // with implicit-any in accela.ts because playwright's types are not
+  // installed there.
+  //
+  // Checked by `npm run typecheck:tests`, which runs where worker deps exist.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["tests/**/*.ts", "scripts/**/*.ts", "src/**/*.ts", "worker/src/**/*.ts"],
+  "exclude": ["node_modules"]
+}
