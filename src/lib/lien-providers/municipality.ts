@@ -31,8 +31,22 @@ export async function municipalityAt(lat: number, lng: number): Promise<string |
   });
   const inFlorida = rows.filter((r) => str(r.STATE) === FLORIDA);
   const r = inFlorida[0];
+  // No Florida place contains the point. The query completed, so this is a
+  // positive finding: the parcel is in no incorporated place.
   if (!r) return null;
-  return str(r.BASENAME) || str(r.NAME).replace(/\s+(city|town|village)$/i, '') || null;
+  const name = str(r.BASENAME) || str(r.NAME).replace(/\s+(city|town|village)$/i, '');
+  // Codex R2-01: a matched Florida feature carrying neither BASENAME nor NAME
+  // used to return null here, which a caller reads as "inside no incorporated
+  // place". It is the opposite: the layer says the point IS inside a place and
+  // will not tell us which. Returning null made a municipal parcel look
+  // unincorporated and could send its owner to the county office. Throwing is
+  // the documented contract of this function - a caller must never read a
+  // failed lookup as unincorporated - and it is what the three callers already
+  // handle correctly.
+  if (!name) {
+    throw new Error('census-places matched a Florida place with no name; jurisdiction not established');
+  }
+  return name;
 }
 
 /**

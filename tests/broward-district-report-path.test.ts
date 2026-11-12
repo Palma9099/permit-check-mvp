@@ -19,7 +19,14 @@ import { buildGlance } from '@/lib/glance';
 const ADDRESS = '4700 NW 15 Ct, Fort Lauderdale, FL';
 const POINT = { lat: 26.1455, lng: -80.1746 };
 
-type PlacesMode = 'none' | 'named' | 'fail';
+type PlacesMode =
+  | 'none'
+  | 'named'
+  | 'fail'
+  /** HTTP 200, JSON, but no features array at all. Codex R2-01. */
+  | 'no-features'
+  /** A matched Florida feature carrying neither BASENAME nor NAME. Codex R2-01. */
+  | 'unnamed-match';
 
 /**
  * Answer every host the report touches for a Broward address.
@@ -56,6 +63,17 @@ function installStub(mode: PlacesMode, placeName = 'Lauderdale-by-the-Sea') {
 
     if (url.includes('Places_CouSub_ConCity_SubMCD')) {
       if (mode === 'fail') return new Response('upstream down', { status: 503 });
+      // Codex R2-01's two bodies, verbatim. Both are HTTP 200 and valid JSON,
+      // and both used to certify district jurisdiction.
+      if (mode === 'no-features') {
+        return new Response(JSON.stringify({ status: 'unavailable' }), { status: 200 });
+      }
+      if (mode === 'unnamed-match') {
+        return new Response(
+          JSON.stringify({ features: [{ attributes: { STATE: '12' } }] }),
+          { status: 200 },
+        );
+      }
       if (mode === 'named') {
         return new Response(
           JSON.stringify({ features: [{ attributes: { BASENAME: placeName, NAME: `${placeName} town`, STATE: '12' } }] }),
@@ -156,5 +174,54 @@ describe('the city-to-office join uses the spelling the REPORT produces', () => 
     restore = installStub('named', 'Opa-locka');
     const item = codeItem(await runDiagnostic({ address: ADDRESS }));
     expect(item.info.buyer).not.toMatch(/Contact .* code compliance/);
+  });
+});
+
+// Codex R2-01. My R2 tri-state distinguished "the lookup threw" from "the
+// lookup returned nothing", which is not the same as distinguishing a VALID
+// empty result from an unreadable one. Two HTTP-200 JSON bodies still
+// certified district jurisdiction and named Broward Municipal Services
+// District at a parcel whose jurisdiction was never established.
+//
+// This is the same class I had just fixed in the Miami-Dade adapter hours
+// earlier - checking that `features` is an array says nothing about whether
+// its contents are records, and not checking that it exists at all says even
+// less - and I did not carry it across to this module.
+describe('an unreadable boundary answer never certifies a jurisdiction', () => {
+  it('refuses a 200 body with no features array', async () => {
+    restore = installStub('no-features');
+    const report = await runDiagnostic({ address: ADDRESS });
+    expect(report.property.unincorporatedConfirmed).toBe(false);
+    expect(report.property.municipality).toBeNull();
+
+    const item = codeItem(report);
+    expect(item.tone).toBe('amber');
+    expect(item.info.buyer).not.toContain('Broward Municipal Services District');
+    expect(item.info.buyer).not.toContain('954-357-9793');
+    expect(item.info.buyer).toContain('could not establish which authority');
+  });
+
+  it('refuses a matched Florida place that carries no name', async () => {
+    // The layer is saying the point IS inside a place and will not say which.
+    // Reading that as "inside no place" inverts the finding and could send a
+    // city parcel's owner to the county office.
+    restore = installStub('unnamed-match');
+    const report = await runDiagnostic({ address: ADDRESS });
+    expect(report.property.unincorporatedConfirmed).toBe(false);
+    expect(report.property.municipality).toBeNull();
+
+    const item = codeItem(report);
+    expect(item.tone).toBe('amber');
+    expect(item.info.buyer).not.toContain('Broward Municipal Services District');
+    expect(item.info.buyer).toContain('could not establish which authority');
+  });
+
+  it('keeps the valid-empty control working, which is the whole point', async () => {
+    // If this regressed, the fix above would just be a way of never naming
+    // the district at all.
+    restore = installStub('none');
+    const report = await runDiagnostic({ address: ADDRESS });
+    expect(report.property.unincorporatedConfirmed).toBe(true);
+    expect(codeItem(report).info.buyer).toContain('Broward Municipal Services District');
   });
 });

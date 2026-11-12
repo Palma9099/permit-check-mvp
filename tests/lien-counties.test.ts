@@ -176,6 +176,35 @@ describe('a Broward search', () => {
     expect(city?.how).toMatch(/could not be determined/i);
   });
 
+  it('asks for a city letter when a boundary matches but carries no CITYNAME', async () => {
+    // Codex R2-01 was raised against the Census place layer, but this is the
+    // same inversion in Broward's own boundary layer. A matched boundary with
+    // a blank name says the point IS inside a city and will not say which.
+    // Reading it as unincorporated drops the city lien letter, which in
+    // Broward is most of the search and the step most likely to hold up a
+    // closing.
+    stub = installArcgisStub([
+      { match: BCPA, rows: [bcpaRow()], centroid: { lat: 26.1, lng: -80.16 } },
+      { match: BROWARD_CITIES, rows: [{ CITYNAME: '   ' }] },
+    ]);
+    const r = await runLienSearch('504217080010', 'broward');
+    expect(r.unincorporated).toBe(false);
+    const city = r.staffSteps.find((s) => s.key === 'city');
+    expect(city).toBeTruthy();
+    expect(city?.how).toMatch(/could not be determined/i);
+  });
+
+  it('still treats a boundary layer with NO match as genuinely unincorporated', async () => {
+    // The control. Without it the fix above would just be a way of never
+    // finding unincorporated Broward at all.
+    stub = installArcgisStub([
+      { match: BCPA, rows: [bcpaRow()], centroid: { lat: 26.1, lng: -80.16 } },
+      { match: BROWARD_CITIES, rows: [] },
+    ]);
+    const r = await runLienSearch('504217080010', 'broward');
+    expect(r.unincorporated).toBe(true);
+  });
+
   it('reports no parcel rather than an empty clear search when the tax roll fails', async () => {
     stub = installArcgisStub([{ match: BCPA, errorBody: { code: 499, message: 'Token Required' } }]);
     const r = await runLienSearch('504217080010', 'broward');

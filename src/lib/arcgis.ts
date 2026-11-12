@@ -66,10 +66,25 @@ async function raw(layerUrl: string, q: LayerQuery): Promise<any> {
   return data;
 }
 
-/** Attribute rows. Throws when the source did not answer properly. */
+/**
+ * Attribute rows. Throws when the source did not answer properly.
+ *
+ * Codex R2-01: that docstring was already the contract and the code did not
+ * keep it. A 200 response whose JSON has no `features` array returned `[]`,
+ * indistinguishable from a layer that genuinely matched nothing. Every one of
+ * this function's callers is a lien, code-case, permit or boundary source
+ * where an empty answer is read as "nothing on this property", so an
+ * unreadable body became a clean result - the one failure this product exists
+ * to prevent. `raw` already throws on HTTP failure, non-JSON and an {error}
+ * body; this closes the last shape that slipped through.
+ */
 export async function queryLayer(layerUrl: string, q: LayerQuery = {}): Promise<any[]> {
   const data = await raw(layerUrl, q);
-  if (!data || !Array.isArray(data.features)) return [];
+  // A count query legitimately answers {count: N} with no features.
+  if (q.returnCountOnly) return Array.isArray(data?.features) ? data.features : [];
+  if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
+    throw new Error(`layer query returned no features array (${q.label ?? 'arcgis'})`);
+  }
   return data.features.map((f: any) => f.attributes ?? {});
 }
 
