@@ -3,6 +3,24 @@
 Build plan, 2026-11-11. The question it answers: how to turn four data joins into one map with
 layers you can switch on and off, built on code that already exists.
 
+## Decisions, 2026-11-11 (Adrian)
+
+1. **Scope is all of Florida.** Scan the state and store the results. Nothing is sold.
+2. **Only confident flags are reported.** Everything is computed and stored with its
+   confidence; only rows above a measured threshold surface as findings. QC tightens the
+   threshold over time.
+3. **Internal use only, for now.** No carrier, city, or third party sees the output until
+   that decision is revisited.
+4. Pillar C baseline runs on Miami-Dade before June. Agreed.
+5. The carrier conversation starts now anyway, in parallel. Agreed.
+6. Miami-Dade is the first map; other counties follow the aerial survey. Agreed.
+
+What those decisions change below: Pillar A goes statewide from day one, because the DOR
+roll covers all 67 counties and needs no imagery. Imagery pillars stay Miami-Dade until the
+county aerial survey (section 4.2) says where else there is a yearly series to read. The
+counsel item in 4.4 is deferred while use is internal, with the trigger that revives it
+written down.
+
 The one architectural change underneath all four: **today everything runs per address, on demand,
 when someone types one in. The map needs every parcel, precomputed, refreshed on a schedule.**
 Most of the per-address code becomes the batch worker's inner loop. The parcel universe, the layer
@@ -76,7 +94,8 @@ No imagery, no AI, the cheapest and the first to light up the map.
 | `open_violation` | code case open or fined | PBC and Broward and Dade adapters return cases | buyers, the ATF pipeline |
 | `homestead_conflict` | the existing finder's signals | `hf/signals.py` | the PA tips program, already running |
 
-**Build:** load Dade NAL into Postgres (one script, `hf/rolls.py` already parses it), pull the DBPR
+**Build:** load the NAL for all 67 counties into Postgres (one script, `hf/rolls.py` already parses
+Dade and the per-county name-order rule it carries is the only thing that varies), pull the DBPR
 contractor extract, write six layer jobs. **Two to three weeks.** The milestone layer needs the
 statute thresholds read first; `docs/network-rates-2026-11.md` cites F.S. 553.899 but nobody has
 re-read it for this purpose.
@@ -175,8 +194,10 @@ auth. It can go up after Pillar A alone and grow a toggle each time a pillar lan
 
 **4.1 Imagery rights, the biggest one.** Google's Street View and the undocumented pano endpoint
 are fine for a per-address report a person asked for. **They are not fine for a precomputed
-statewide layer stored in a database and sold.** The batch path has to run on sources you are
-allowed to store: county aerials (public records, already wired for Dade), the state's aerial
+statewide layer, and the problem is the storing and the bulk querying, not the selling.** Google's
+terms bar caching its imagery beyond a short window and bar bulk retrieval, whether or not
+anything is resold, so "internal and not for sale" does not clear it. The batch path has to run
+on sources you are allowed to store: county aerials (public records, already wired for Dade), the state's aerial
 programs, NOAA and FEMA post-event imagery, and Mapillary for street level (documented API, open
 license, already in `mapillary.ts`, token needed). Nearmap or EagleView for a commercial
 multi-year statewide feed is a contract and a real cost; get a quote in month one. Keep Google
@@ -188,18 +209,22 @@ publish at all. A survey of county aerial services is the first research task fo
 Dade. Until then the map is a Miami-Dade map, and that is the right first map: best imagery in
 the state, the parcel roll already parsed, and the PA's own JSON for live checks.
 
-**4.3 Precision before anyone sees a flag.** A wrong "unpermitted" flag sent to a carrier or a city
-is a liability and ends the relationship. Every vision layer ships with a measured precision and
-recall on a labeled sample, and the labels come from the one source that can produce them: a
+**4.3 Precision before anyone sees a flag.** Decision 2 says only confident flags are reported.
+"Confident" has to be a number, not a feeling: each vision layer gets a confidence threshold set
+from its labeled sample so that rows above it hit a stated precision, and that threshold is what
+separates a stored row from a reported finding. Internally the map shows every row with its
+confidence; the reported list is the filtered view. Every vision layer ships with a measured
+precision and recall on a labeled sample, and the labels come from the one source that can produce them: a
 person standing at the property. **Every site visit Anthony makes should label the parcel he is
 standing on**, whether or not the job asked for it. That is ten minutes per visit and it is the
 training signal nothing else can supply.
 
-**4.4 Who owns the record and who may see it.** Parcel data is public. A compiled file of
-owners, flags and risk scores is a data product with its own exposure. Two specific ones:
-Florida's public records law does not cover you as a private party, and **if a carrier uses
-your output to decide whether to insure someone, federal consumer reporting rules can attach**.
-Counsel before the first carrier contract, not after.
+**4.4 Who owns the record and who may see it.** Decision 3 makes this internal only, which
+defers the exposure rather than removing it. Written down so it is not forgotten: parcel data is
+public, but a compiled file of owners, flags and risk scores is a data product. **The trigger
+that revives the counsel item is the first time any output leaves the firm**, and specifically,
+if a carrier ever uses it to decide whether to insure someone, federal consumer reporting rules
+can attach. Until then: owner names never render on the map by default, and exports strip them.
 
 **4.5 Cost.** Vision calls dominate. Rough shape for Dade: 938k parcels, two years compared, maybe
 one in ten changed at all after the pixel pre-filter, Batch API pricing. Measure it on 1,000
@@ -213,8 +238,8 @@ Supabase queue. Playwright and the vision calls both run fine there.
 
 | Phase | Weeks | Delivers |
 |---|---|---|
-| 0 | 1 | Commit Homestead Finder. Load Dade NAL into Supabase with PostGIS. Enable PostGIS. Build the first PMTiles. Map shows every Dade parcel, no layers. |
-| 1 | 2 to 4 | Pillar A, all six layers. Map gets its first toggles. Expired open permits is the first list anyone can act on. |
+| 0 | 1 | Commit Homestead Finder (done, `1ab0994`). Enable PostGIS. Load the NAL for all 67 counties into Supabase. Build PMTiles per county. Map shows every Florida parcel, no layers. |
+| 1 | 2 to 4 | Pillar A, all six layers, statewide where the adapters reach and county-level elsewhere. Map gets its first toggles. Expired open permits is the first list anyone can act on. |
 | 2 | 5 to 8 | Pillar C on Dade: pixel pre-filter, vision on candidates, 300-parcel labeled sample, measured precision. Roof age and unpermitted structure toggles. |
 | 3 | 9 to 11 | Pillar B: the wind mitigation spec, Mapillary batch, LiDAR for equipment height. Opening protection and roof shape toggles. |
 | 4 | 12 to 14 | Parcel drawer with Verify, evidence filing to Drive, CSV and PDF export. |
