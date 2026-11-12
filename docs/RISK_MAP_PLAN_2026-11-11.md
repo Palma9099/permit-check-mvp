@@ -347,3 +347,17 @@ The four parcels where sonnet overruled haiku were also read: sonnet was right e
 a neighbour's new roof for the subject's at 121 E 56 St (0.70) and reported solar at 0.90 on 241 E
 57 St where there is none. The confirm step is necessary. The unmeasured side is the parcels haiku
 cleared that sonnet never saw; a random sample of eight is rendered for the next read.
+
+**2026-11-12, iteration 4 continued.** Eight haiku-cleared parcels read by eye: six unchanged, one
+plain miss (321 E 58 St, an above-ground pool gone between the flights), one borderline reroof
+(341 E 59 St). The screen hands off to sonnet at 0.35 now instead of 0.5, and one in ten parcels
+haiku clears gets a sonnet look regardless, stored as an `audit` row; that row is where the screen's
+miss rate is measured from now on.
+
+First Pillar A integration: the drawer can fetch a parcel's city code cases on demand through the
+permit-check worker's EnerGov adapter (`worker/src/riskmap-cases.ts`, branch `claude/riskmap-cases`,
+checked out in the working tree so the app can call it; not merged to main). Proven live: 135 W 60
+St returns BWOP-001873-2025 at status Lien in 18 seconds; 271 E 55 St, the new in-ground pool,
+returns no case. The adapter searches the Code Case module only, so the drawer says so and does
+not pretend an empty permit list means no permits. Reading the permit module is the next Pillar A
+build.
