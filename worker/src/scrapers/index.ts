@@ -9,6 +9,7 @@ import { runPortalScrape } from './generic.js';
 import { runAccelaScrape } from './accela.js';
 import { runPbcScrape } from './pbc.js';
 import { runBrowardScrape } from './broward.js';
+import { runMiamiDadeScrape } from './miami-dade.js';
 import { runCitizenserveScrape } from './citizenserve.js';
 import { runEnergovScrape } from './energov.js';
 import { resolveJurisdiction } from './jurisdictions.js';
@@ -76,7 +77,11 @@ export async function runScrapeForJob(browser: Browser, job: ScanJob): Promise<S
               ? runEnergovScrape(ctx, jur)
               : jur.platform === 'citizenserve'
                 ? runCitizenserveScrape(ctx, jur)
-                : runPortalScrape(ctx, jur.config);
+                // Miami-Dade's code cases are open data, not a portal. The
+                // generic browser scrape had no code search at all.
+                : jur.county === 'miami-dade'
+                  ? runMiamiDadeScrape(ctx, jur as any)
+                  : runPortalScrape(ctx, jur.config);
     const result = await Promise.race([
       scrape,
       new Promise<ScrapeResult>((_, reject) =>
