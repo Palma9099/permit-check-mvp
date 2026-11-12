@@ -531,3 +531,28 @@ match is by type and date, not by proof that the permitted work is the work seen
 in 2023 and a different roof in 2026 could be two jobs. Both are stated in the drawer wording.
 
 Pair 1 closed at 175 USD for 514 labeled; pair 2 at 28 USD for 69.
+
+**2026-11-12, iteration 12 (08:25).** The full permit readout for the first fourteen pair-2 flags:
+17 findings at the report line, 11 matched by a completed permit (every one a re-roof, plus the
+solar at 393 E 51 St and the pavers at 4795 E 9 Ct), 6 without. Of the six, three are leads: a new
+pool with paved surround at 420 E 61 St (one code case on file), a roof at 476 E 62 St (one code
+case), and the solar array at 633 E 45 St. The other three are not permit work: a tarp at 226 E 44 St
+(damage cover), and the above-ground pool gone at 725 E 21 St. The drawer now says so: a tarp reads
+as "a damage cover, not permit work", a removal as "an above-ground pool or shed can go without a
+permit, a demolition of a built structure cannot". Eleven permitted re-roofs is also an independent
+check on the detector: the city issued permits for the roofs the model said had changed.
+
+Ten more flags read by eye. Nine confirmed (two tarps replaced by finished roofs at 854 E 33 St and
+485 E 39 St, a tile roof now under a solar grid at 6120 E 4 Ave, six roof changes). The tenth,
+972 E 18 St, was flagged for a new in-ground pool; the parcel line drawn over the 2026 frame puts
+that pool on the lot behind. **First false flag: 106 of 107 reported flags have matched the photos.**
+The parcel is marked dismissed with the reason.
+
+The miss is structural, not random: the prompt tells the model to judge only inside the lot, but
+the frames never showed the lot line. Vision v6 draws the parcel outline on a copy of each frame
+(magenta, 3 px) and the model reads those; the prompt names the line and says a pool, shed, roof or
+deck outside it belongs to a neighbour. The drawer shows the same outlined frames, so a reviewer
+sees the boundary the model saw. Workers and both apps restarted on v6 (Homestead Finder).
+
+Pair 2: 122 labeled, 0.40 USD a parcel, 14 audits with 3 second-run disagreements (none reached the
+report line). Pair 1 stays at 514 labeled. Permit lookups for the new flags are running.
