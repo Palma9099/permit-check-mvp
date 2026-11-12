@@ -61,7 +61,11 @@ async function probeAccela(browser: Browser, key: string, j: any) {
     for (const street of STREETS) {
       const ctx: ScraperCtx = {
         page, address: `${street} ST`, folio: null, lat: null, lng: null,
-        municipality: null, log: () => {},
+        municipality: null,
+        // Pass the adapter's own log through when diagnosing. Swallowing it
+        // once already cost a run: the probe reported "unreadable" while the
+        // adapter was saying exactly where it stopped.
+        log: process.env.CALIBRATE === '1' ? (m: string) => say('      ' + m) : () => {},
       };
       const r = await runAccelaScrape(ctx, j).catch((e) => ({ ok: false, violations: [], notes: [String(e).slice(0, 120)] } as any));
       const n = r.violations?.length ?? 0;
