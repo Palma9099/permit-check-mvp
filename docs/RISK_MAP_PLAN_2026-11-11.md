@@ -481,3 +481,20 @@ with the consolidation. The app reads `RISKMAP_DB` and `RISKMAP_PORT`; pair 1 on
 8791, header shows the flights.
 
 Cumulative CLI cost estimate 149 USD after 446 labeled parcels, 0.33 USD a parcel.
+
+**2026-11-12, iteration 10 (06:10).** The 2026 frames landed for all 6,476 parcels (0 errors) and the
+prefilter queued every one of them in the second database. Both workers moved from the 2019 to 2023
+pair to 2023 versus 2026 at 06:05; the first pair stops at 514 labeled parcels. Four random 2026
+frames read by eye: same georeferencing as 2023, a little hazier, nothing missing. Thirteen more
+pair-1 flags read by eye, thirteen confirmed (two tarped roofs, a solar array over a former paved
+court at 468 E 50 St, a round pool replaced by a rectangular one at 651 E 50 St, nine roof changes).
+**Eighty-three of eighty-three reported flags have matched the photos.** Their permit lookups are
+running.
+
+A race was closed before it could bite: a frame pass sets each parcel back to "frames" when it
+reaches it, from a row list read at the start of the pass, so a worker that had already carried the
+parcel to a verdict would have been undone. The pass now only resets a parcel still waiting for
+frames (Homestead Finder 2e2e30c). Vision and fetching can overlap from here on.
+
+Pair 1 cumulative CLI cost estimate 175.32 USD after 514 labeled parcels, 0.34 USD a parcel.
+Pair 2 starts at zero; its flags are the first that the EnerGov lookup can close.
