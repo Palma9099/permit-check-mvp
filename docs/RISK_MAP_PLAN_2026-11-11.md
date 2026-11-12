@@ -596,3 +596,19 @@ apply.
 
 Since above-ground and in-ground pools are different leads, the model is now asked to say which
 in its pool note (vision v6.1). Lookups for the fifteen new flags are running.
+
+**2026-11-12, lead sheet (11:05).** First deliverable from the scan: a Palma-branded lead sheet,
+one page per lead parcel, built by `riskmap/lead_sheet.py` (Homestead Finder) from the pair-2
+database and saved outside both repos at
+`~/Documents/Claude/Projects/PALMA, LLC ONBOARDING/Risk Map/CURRENT_v01_HIALEAH_33013_RISKMAP_LEAD_SHEET_2023v2026.pdf`
+(18 pages, 5.3 MB). Each page: the outlined 2023 and 2026 frames, every finding at 0.5 or more with
+its confidence and permit outcome, the permits the portal returned with status (void or denied in
+bold), the code cases, a one-paragraph "why this is a lead", the flight-month and prior-system
+caveats, and the Property Appraiser link. No owner is named. Eighteen leads, not thirteen: the set
+grew as the last fifteen lookups finished, and two rules tightened while building it. A drained pool
+is a condition, not permit work (485 E 39 St keeps only its roof lead); a tarp is read inside its
+own clause, so "now covered by a tarp-like surface" at 230 E 53 St is a damage cover and drops out;
+and a pergola, aluminum terrace, screen or carport roof permit no longer covers a house-roof finding
+(451 E 19 St's Denied "Aluminum Roof/Pergola" permit is for a terrace; its tile-to-shingle reroof has
+no permit at all, and a Building Without A Permit notice for "Fence and Aluminum Roof" is already on
+file). The drawer applies the same three rules.
