@@ -672,3 +672,11 @@ the leads panel as in-ground pool leads, two of them with open code cases on the
 (713 E 22 St, a Building Without A Permit case; 41 E 52 Pl). 41 leads on the panel: 10 in-ground
 pool, 24 roof, 1 solar, 1 addition, 5 above-ground pool. Pair 2: 507 labeled, 214 USD, 0.42 USD a
 parcel, no errors. Lookups for the thirteen are running.
+
+**2026-11-12, iteration 19 (15:25).** Twelve flags read on the outlined frames, twelve confirmed: a
+new in-ground pool with coping at 571 E 46 St, a dirt drive paved into a circular driveway at
+651 E 53 St, two above-ground pools gone, and eight roof changes (three to metal). **211 of 213
+reported flags have matched the photos.** 46 leads on the panel (11 in-ground pool, 27 roof,
+1 solar, 1 addition, 5 above-ground pool, 1 other), none walked. Pair 2: 564 labeled, 237 USD,
+0.42 USD a parcel; 27 v6 audits, five second-run disagreements, none at the report line. Lookups
+for the twelve are running.
