@@ -680,3 +680,16 @@ reported flags have matched the photos.** 46 leads on the panel (11 in-ground po
 1 solar, 1 addition, 5 above-ground pool, 1 other), none walked. Pair 2: 564 labeled, 237 USD,
 0.42 USD a parcel; 27 v6 audits, five second-run disagreements, none at the report line. Lookups
 for the twelve are running.
+
+**2026-11-12, iteration 20 (16:25).** Nineteen flags read on the outlined frames, eighteen
+confirmed: two solar arrays (442 E 45 St, 556 E 41 St), an in-ground oval pool and deck demolished
+at 961 E 45 St, a roof wrapped in white shrink-tarp in 2023 and finished by 2026 at 790 E 31 St,
+three above-ground pools gone, and eleven roof changes. The nineteenth, 962 E 28 St, is the third
+false flag: the roof went from clean white to stained and streaky, which is weathering, and the
+model called it CHANGED against its own shade rule. Dismissed with the reason. **229 of 232
+reported flags have matched the photos.** So that a roof that merely got dirtier can never read as
+a permit gap, a Roof CHANGED whose note says it went to a mottled, streaked, stained, dirty,
+weathered, faded, discoloured, moldy or rusty surface is now a condition in both the sheet and the
+drawer (tested against four real notes; the three genuine reroofs still match). 52 leads on the
+panel before this batch. Pair 2: 630 labeled, 269 USD, 0.43 USD a parcel, no errors. Lookups for the
+eighteen are running.
