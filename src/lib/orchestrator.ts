@@ -27,12 +27,13 @@ import type {
   UserUploadedThen,
 } from './types';
 import { geocode, reverseCounty, type GeocodeResult } from './geocode';
+import { governingMunicipality } from './lien-providers/municipality';
 import { parcelByFolio } from './counties/statewide-cadastral';
 import { getCountyAdapter, toCountyInfo } from './counties';
 import { bestPropertyAppraiserLink } from './counties/pa-links';
 import { fetchMunicipalPermits } from './counties/municipal-permits';
 import { FL_COUNTY_DIRECTORY } from './counties/portals';
-import { fetchParcelPolygon, polygonCentroid } from './parcel';
+import { fetchParcelPolygon, polygonCentroid, interiorPoint } from './parcel';
 import { compactFolio, folioAtPoint, lotCenterByFolio } from './miami-dade-raw';
 import {
   buildSubjectSatelliteUrl,
@@ -551,6 +552,50 @@ export async function runDiagnostic(input: {
     ? polygonCentroid(polygon.polygon)
     : { lat: geo.lat, lng: geo.lng };
 
+  // 3c. Which municipality governs this parcel.
+  //
+  //      Only Miami-Dade's Property Appraiser record carries one. Every other
+  //      county adapter returns null - correctly, because the statewide
+  //      cadastral roll has no municipality field - so without this the report
+  //      never learned the city. That is not a cosmetic gap: `cityGoverns` is
+  //      false without a name, so a City of Tampa address was told "we could
+  //      not establish which authority enforces code" while the deep scan can
+  //      read Tampa's own code records on request.
+  //
+  //      The same lookup is already wired into the deep-scan enqueue and into
+  //      the lien provider (`fl-records.ts`). The code axis was the one path
+  //      that still had no way to learn the city.
+  //
+  //      Resolved from Census incorporated-place boundaries at a PARCEL point,
+  //      never from the postal city in the typed address: mail addressed to
+  //      "Miami, FL" is usually not in the City of Miami.
+  //
+  //      NOT `aim`. Codex R1 P2-1: `aim` is a camera point, and the area
+  //      centroid of a concave lot - a U, an L, a flag lot - can sit outside
+  //      the ring entirely, in the notch, which may belong to the NEXT
+  //      jurisdiction. Reproduced against the real `polygonCentroid`: a
+  //      U-shaped ring returns the neighbour's city. Staying amber does not
+  //      make a wrong authority attribution acceptable.
+  //
+  //      So: with a real parcel polygon, use a point PROVEN inside it, and
+  //      when no such point can be found, resolve nothing rather than fall
+  //      back to a point we cannot vouch for. With no parcel polygon at all
+  //      (`isFallback`, e.g. every Hillsborough address - the synthetic box is
+  //      not parcel evidence) the geocoded address point is the only thing
+  //      available; that is an inference and cannot guarantee the lot's
+  //      jurisdiction, which is why it is never dressed up as parcel-verified.
+  //
+  //      `governingMunicipality` holds the precedence and failure rules, and
+  //      is tested against them directly.
+  const jurisdictionPoint = polygon.polygon && !polygon.isFallback
+    ? interiorPoint(polygon.polygon)
+    : { lat: geo.lat, lng: geo.lng };
+
+  const municipality = await governingMunicipality(
+    adapterResult.propertyBasics.municipality,
+    jurisdictionPoint,
+  );
+
   // 4. Google Static Maps URLs with polygon overlay.
   const closeSatUrl = buildSubjectSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
   const contextSatUrl = buildContextSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
@@ -902,7 +947,7 @@ export async function runDiagnostic(input: {
       mailingMatchesSite: adapterResult.propertyBasics.mailingMatchesSite,
       owner: adapterResult.propertyBasics.owner,
       subdivision: adapterResult.propertyBasics.subdivision,
-      municipality: adapterResult.propertyBasics.municipality,
+      municipality,
       yearBuilt: adapterResult.propertyBasics.yearBuilt,
       heatedArea: adapterResult.propertyBasics.heatedArea,
       totalArea: adapterResult.propertyBasics.totalArea,

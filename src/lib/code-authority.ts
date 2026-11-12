@@ -54,6 +54,14 @@ export interface CodeAuthority {
    * not been read until someone runs it.
    */
   cityCoverage?: CityCodeReach | null;
+  /**
+   * The county's display name, e.g. "Hillsborough County".
+   *
+   * Only used when the COUNTY is the authority - an explicitly unincorporated
+   * parcel. Optional because an authority object built without it still has to
+   * produce a true sentence, just a less specific one.
+   */
+  countyName?: string | null;
 }
 
 /** The part of a city's coverage that changes what the report may say. */
@@ -82,6 +90,17 @@ export type CodeVerdict =
       searched: string | null;
       portalUrl: string | null;
       deepScanReads: boolean;
+      /**
+       * Do we know WHO governs this parcel, or is `authority` a stand-in for a
+       * jurisdiction never established?
+       *
+       * This is jurisdiction-known, NOT has-a-city-name. Codex R1 P2-2: an
+       * explicitly unincorporated parcel has a known authority - its county -
+       * and calling that "we could not establish which authority" is false,
+       * not merely vague. A city name and a county both count as named.
+       * Decided from the authority inputs, never by matching a display string.
+       */
+      authorityNamed: boolean;
     };
 
 const UNINCORPORATED = /unincorp|^none$|^n\/?a$/i;
@@ -95,6 +114,18 @@ export function cityLabel(municipality: string | null): string | null {
     .toLowerCase()
     .replace(/\b[a-z]/g, (c) => c.toUpperCase())
     .replace(/\bOf\b/g, 'of');
+}
+
+/**
+ * The county as a code authority, for an explicitly unincorporated parcel.
+ *
+ * Falls back to "the county", which is still true and still not a tautology,
+ * when the caller had no county name to hand.
+ */
+export function countyLabel(countyName: string | null | undefined): string {
+  const c = (countyName ?? '').trim();
+  if (!c) return 'the county';
+  return /county\s*$/i.test(c) ? c : `${c} County`;
 }
 
 /**
@@ -133,24 +164,41 @@ export function codeVerdict(
   if (open > 0 || liens > 0) return { kind: 'hits', open, liens };
 
   if (authority.cityGoverns && !authority.cityChecked) {
-    const city = cityLabel(authority.municipality) ?? 'the city';
+    const named = cityLabel(authority.municipality);
     return {
       kind: 'unchecked',
-      authority: city,
+      authority: named ?? 'the city',
       searched: authority.countyChecked ? 'the county' : null,
       portalUrl: authority.cityCoverage?.portalUrl ?? null,
       deepScanReads: authority.cityCoverage?.deepScanReads === true,
+      authorityNamed: named !== null,
     };
   }
 
   // Nobody searched anything at all: also not clear.
   if (!authority.cityChecked && !authority.countyChecked) {
+    // But "nobody searched" does not mean "nobody is known". An explicit
+    // UNINCORPORATED from the appraiser is positive evidence that the COUNTY
+    // governs. Saying we could not establish the authority there is false.
+    if (authority.municipalityKnown && !authority.cityGoverns) {
+      return {
+        kind: 'unchecked',
+        authority: countyLabel(authority.countyName),
+        searched: null,
+        portalUrl: null,
+        // The deep scan reads CITY code records. An unincorporated parcel has
+        // no city to read, so there is nothing extra to offer here.
+        deepScanReads: false,
+        authorityNamed: true,
+      };
+    }
     return {
       kind: 'unchecked',
       authority: 'the code authority',
       searched: null,
       portalUrl: null,
       deepScanReads: false,
+      authorityNamed: false,
     };
   }
 
@@ -168,10 +216,22 @@ export function codeVerdict(
       // would reach the right one. An unidentified authority is not a covered
       // authority, however many cities the registry holds.
       deepScanReads: false,
+      authorityNamed: false,
     };
   }
 
   return { kind: 'clear' };
+}
+
+/**
+ * Capitalise a sentence that may start with a generic authority stand-in.
+ *
+ * "the county enforces code here" is true but reads like a fragment. Named
+ * authorities ("Tampa", "Hillsborough County") are already capitalised, so
+ * this is a no-op for them.
+ */
+function sentence(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** Short tile value, e.g. "None open" or "Not checked". */
@@ -196,9 +256,16 @@ export function verdictDetail(v: CodeVerdict, liensChecked: boolean): string {
         ? `Recorded in county records${v.open > 0 ? `, plus ${v.open} open case${v.open > 1 ? 's' : ''}` : ''}.`
         : 'See the code portal for details.';
     case 'unchecked':
-      return v.searched
-        ? `${v.authority} enforces code here and its records were not searched. We searched ${v.searched} only.`
-        : `${v.authority} enforces code here and its records were not searched.`;
+      if (!v.authorityNamed) {
+        return v.searched
+          ? `We did not establish which authority enforces code here, so its records were not searched. We searched ${v.searched} only.`
+          : 'We did not establish which authority enforces code here, so its records were not searched.';
+      }
+      return sentence(
+        v.searched
+          ? `${v.authority} enforces code here and its records were not searched. We searched ${v.searched} only.`
+          : `${v.authority} enforces code here and its records were not searched.`,
+      );
     case 'clear':
       return liensChecked ? 'No open cases or recorded liens.' : 'No open cases. Liens not checked this time.';
   }
@@ -222,8 +289,18 @@ export function verdictBuyerNote(v: CodeVerdict): string {
           }`
         : v.portalUrl
           ? ` ${v.authority} publishes its cases at ${v.portalUrl} - search it before you rely on anything above.`
-          : ` Ask ${v.authority} directly, or order the full lien search.`;
-      return `${v.authority} is the code authority for this address, and we could not search its records. This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${next}`;
+          : v.authorityNamed
+            ? ` Ask ${v.authority} directly, or order the full lien search.`
+            : ' Confirm which city or county governs this address, then search that office, or order the full lien search.';
+      // An unnamed authority cannot be the subject of this sentence: it would
+      // read "the code authority is the code authority for this address", which
+      // is what every address outside Miami-Dade actually said.
+      const opener = v.authorityNamed
+        ? `${v.authority} is the code authority for this address, and we could not search its records.`
+        : 'We could not establish which authority enforces code at this address, so nothing was searched.';
+      return sentence(
+        `${opener} This is NOT a clean result - it means nobody has looked. A violation here would not show up above.${next}`,
+      );
     }
     case 'clear':
       return 'No open violations means no fines or liens tied to this address right now.';
@@ -236,9 +313,14 @@ export function verdictOwnerNote(v: CodeVerdict): string {
     case 'hits':
       return 'Resolve open cases before you sell. Fines add up until the authority signs off.';
     case 'unchecked':
-      return v.deepScanReads
-        ? `${v.authority} enforces code at this address and the quick check does not reach it, so treat this as unknown rather than clear. A deep scan searches ${v.authority} directly.`
-        : `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.`;
+      if (!v.authorityNamed) {
+        return 'We did not establish which authority enforces code at this address, so treat this as unknown rather than clear.';
+      }
+      return sentence(
+        v.deepScanReads
+          ? `${v.authority} enforces code at this address and the quick check does not reach it, so treat this as unknown rather than clear. A deep scan searches ${v.authority} directly.`
+          : `${v.authority} enforces code at this address and we could not search it, so treat this as unknown rather than clear.`,
+      );
     case 'clear':
       return 'Keep it that way. Unresolved cases grow fines every day.';
   }
