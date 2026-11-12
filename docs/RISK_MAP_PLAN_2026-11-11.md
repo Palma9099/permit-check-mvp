@@ -645,3 +645,20 @@ that was entirely under a blue tarp in 2023 and is re-roofed by 2026 at 4250 E 8
 more roof changes. **171 of 173 reported flags have matched the photos.** Pair 2: 392 labeled,
 157 USD, 0.40 USD a parcel, 17 v6 audits with three second-run disagreements. Lookups for the
 twenty are running; the leads panel will pick them up on its own.
+
+**2026-11-12, iteration 17 (13:25).** Fifteen flags read on the outlined frames, fifteen confirmed:
+four in-ground pools demolished since 2023 (41 E 52 Pl with its shed, down to a rubble pile;
+925 E 30 St; 940 E 20 St; 713 E 22 St), the north half of 671 E 62 St built out under a new roof
+with the house reroofed in metal, a solar array at 4569 E 9 Ln, a fire-damaged roof under a cover
+at 727 E 26 St, and eight roof changes. **186 of 188 reported flags have matched the photos.**
+
+The removal rule was too kind. It excused every REMOVED finding as "an above-ground pool or shed
+can go without a permit", which is true of a ring on the grass and false of a built pool. A
+removal whose note says in-ground, demolition, rubble, debris, coping or concrete deck is now
+permit work, matched against a demolition permit or one of its own type, in the sheet and the
+drawer. The four demolished pools will show as leads once their lookups land unless the city has
+a demolition permit for them.
+
+Pair 2: 448 labeled, 188 USD, 0.42 USD a parcel; 22 v6 audits, four second-run disagreements, none
+at the report line. 31 leads on the panel before this batch (4 in-ground pools, 20 roofs, 1 solar,
+1 addition, 5 above-ground pools), none walked yet.
