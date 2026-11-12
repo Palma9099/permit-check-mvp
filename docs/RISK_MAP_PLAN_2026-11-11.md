@@ -637,3 +637,11 @@ that browser) and a one-line note as a `walked` layer row and a review event; wa
 the end of the list and show the note. Status is untouched by a walk. 22 leads at the time of
 writing; 451 E 19 St tops the roofs with both a denied permit and an open Building Without A Permit
 case (Homestead Finder, app commit after d767db8).
+
+**2026-11-12, iteration 16 (12:25).** Twenty flags read on the outlined frames, twenty confirmed:
+an in-ground pool with a raised spa and paver deck plus a reroof at 30 E 62 St, four above-ground
+pools (268 E 62 St, 630 E 64 St, 581 E 44 St, 436 E 19 St), a solar array at 35 E 45 St, a roof
+that was entirely under a blue tarp in 2023 and is re-roofed by 2026 at 4250 E 8 Ln, and thirteen
+more roof changes. **171 of 173 reported flags have matched the photos.** Pair 2: 392 labeled,
+157 USD, 0.40 USD a parcel, 17 v6 audits with three second-run disagreements. Lookups for the
+twenty are running; the leads panel will pick them up on its own.
