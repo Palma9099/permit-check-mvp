@@ -515,8 +515,11 @@ gap on pair 1 reads as not determinable while a gap on pair 2 reads as a lead. F
 - 393 E 51 St: re-roof RFR-005130-2023 (applied 2023-10-04, Complete) and solar
   ELER-012132-2024 (applied 2024-05-13, Complete). Both findings permitted. Not a lead.
 - 4795 E 9 Ct: pavers BLDR-002641-2025 (applied 2025-03-20, Complete). Permitted.
-- 581 E 54 St: the only re-roof permit, RFR-004884-2023, is Void, and the roof is plainly replaced
-  by 2026. A void permit no longer closes a finding in the drawer (amber, counted as open).
+- 581 E 54 St: five permit records. The first re-roof permit RFR-004884-2023 is Void (description
+  "Legalization"), but RFR-005350-2023 (applied 2023-10-11, finaled 2023-12-18) is Complete, so the
+  roof is permitted. The first draft of this entry called the parcel open on the void permit alone
+  because the summary script read only the first match; the drawer reads all of them. A void,
+  denied, withdrawn, expired or revoked permit no longer closes a finding on its own.
 - 633 E 45 St: re-roof RFR-000566-2026 applied 2026-01-22, Complete; the solar array has no permit
   on the portal since 2023. Lead.
 
