@@ -575,3 +575,24 @@ it is in the later photo; a tarp in 2023 followed by a new roof in 2026 is permi
 matched like any reroof (854 E 33 St was being excused by the first rule).
 
 Pair 2: 199 labeled, 77 USD, 0.39 USD a parcel. Lookups for the fifteen new flags are running.
+
+**2026-11-12, iteration 14 (10:20).** Fifteen flags read on the outlined frames, fifteen confirmed
+(a solar array at 991 E 32 St, a reroof in progress with felt and materials on the roof at
+64 E 48 St, a round pool gone and the area paved at 547 E 30 St, twelve roof changes). **136 of 137
+reported flags have matched the photos.** Pair 2: 261 labeled, 104 USD, 0.40 USD a parcel, six v6
+audits with one second-run disagreement.
+
+Permit tally across the 38 verified pair-2 parcels with lookups: 41 permit-type findings, 16
+without a live permit, on 13 parcels. By kind: roofs 8 of 29 open, solar 1 of 4, pools 5 of 5,
+rear addition 1 of 1, patio 1 of 1, driveway 0 of 1. Every new pool found so far has no pool permit
+on the portal, including two in-ground pools with decks (729 E 23 St, also reroofed without a
+permit, and 751 E 56 St). The roof figure says the opposite: the city has permits for 21 of the 29
+roofs the model said had changed, which is the same independent check as before, now on a larger
+set. The parcels with a lead: 1012 E 20 St, 322 E 43 St, 371 E 58 St, 420 E 61 St, 4635 E 4 Ave,
+476 E 62 St, 485 E 39 St, 580 E 29 St, 6120 E 4 Ave, 633 E 45 St, 698 E 32 St, 729 E 23 St,
+751 E 56 St. The permit match is by type and date, and a lead here means "no live permit of that
+type on this portal since 2023", nothing more; the flight month and the prior-system caveat still
+apply.
+
+Since above-ground and in-ground pools are different leads, the model is now asked to say which
+in its pool note (vision v6.1). Lookups for the fifteen new flags are running.
