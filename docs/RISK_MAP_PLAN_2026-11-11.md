@@ -702,3 +702,10 @@ flags have matched the photos.** 57 leads on the panel before this batch (12 in-
 roof, 2 solar, 1 addition, 5 above-ground pool, 2 other), none walked. Pair 2: 697 labeled, 293 USD,
 0.42 USD a parcel, no errors; 36 v6 audits, five second-run disagreements, none at the report line.
 Lookups for the fourteen are running.
+
+**2026-11-12, iteration 22 (18:25).** Thirteen flags read on the outlined frames, thirteen
+confirmed: a new in-ground pool with deck at 80 E 60 St, a tarped roof from pair 1 now finished at
+3421 E 8 Ave, and eleven more roof changes (one to white corrugated metal, one to terracotta tile).
+**256 of 259 reported flags have matched the photos.** 65 leads on the panel before this batch
+(12 in-ground pool, 40 roof, 2 solar, 1 addition, 7 above-ground pool, 3 other), none walked.
+Pair 2: 773 labeled, 316 USD, 0.41 USD a parcel, no errors. Lookups for the thirteen are running.
