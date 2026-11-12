@@ -693,3 +693,12 @@ weathered, faded, discoloured, moldy or rusty surface is now a condition in both
 drawer (tested against four real notes; the three genuine reroofs still match). 52 leads on the
 panel before this batch. Pair 2: 630 labeled, 269 USD, 0.43 USD a parcel, no errors. Lookups for the
 eighteen are running.
+
+**2026-11-12, iteration 21 (17:25).** Fourteen flags read on the outlined frames, fourteen
+confirmed: a solar array on a rear flat roof at 642 E 24 St, two tarped or shrink-wrapped roofs
+finished by 2026 (279 E 49 St, 1801 E 6 Ave, the latter a pair-1 flag whose tarp has now become a
+roof), two new driveways, two above-ground pools, and seven more roof changes. **243 of 246 reported
+flags have matched the photos.** 57 leads on the panel before this batch (12 in-ground pool, 35
+roof, 2 solar, 1 addition, 5 above-ground pool, 2 other), none walked. Pair 2: 697 labeled, 293 USD,
+0.42 USD a parcel, no errors; 36 v6 audits, five second-run disagreements, none at the report line.
+Lookups for the fourteen are running.
