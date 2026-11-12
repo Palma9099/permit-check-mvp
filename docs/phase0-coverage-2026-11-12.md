@@ -77,7 +77,36 @@ point: a single confirming case is not a cause.
    failure."** Killed by the same run: PASCO, which works, lands on the
    identical page shape.
 
-## Where the Hillsborough failure actually is
+## The Hillsborough fix, and what it unlocked
+
+Fixed and verified live. The grid's column-name row is not the table's first
+row, and the address sits in a trailing column whose header cell is blank, so
+requiring the literal word "address" to IDENTIFY a grid rejected a page
+reading "100+ Record results matching your search".
+
+Re-probed after the fix, the same five tenants:
+
+| tenant | before | after | unincorporated |
+|---|---|---|---|
+| Hillsborough | RAN_UNPARSED | **RETURNS, 10 cases** | 1,008,349 |
+| Seminole | RAN_UNPARSED | **RETURNS, 11 cases** | 224,494 |
+| Leon | RAN_UNPARSED | **RETURNS, 5 cases** | 96,029 |
+| Lee | RAN_UNPARSED | RAN_UNPARSED | 377,864 |
+| Nassau | RAN_UNPARSED | RAN_UNPARSED | 72,807 |
+
+**One parser change unlocked 1,328,872 residents**, taking the working-adapter
+total from 1,381,292 to **2,710,164**.
+
+Leon is worth recording against my own earlier reasoning. It was the outlier
+with no `ddlSearchType`, which I had treated as a meaningful difference
+between the failing tenants. It recovered with everything else, so that
+difference was noise.
+
+Lee and Nassau did not recover, so they have a different cause and stay
+unexplained rather than being folded into this one. With Miami-Dade that is
+1,637,625 residents still failing.
+
+## How the Hillsborough failure was found
 
 Driven directly - navigate to the module page, fill
 `input[id*="txtGSStreetName"]` with MAIN, click
