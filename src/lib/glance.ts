@@ -13,7 +13,7 @@ import {
   verdictOwnerNote,
   type CodeAuthority,
 } from './code-authority';
-import { cityCodeCoverage } from './city-code-portals';
+import { cityCodeCoverage, unincorporatedCodeOffice } from './city-code-portals';
 import { normalizeCountyKey } from './counties/portals';
 import type { DiagnosticReport } from './types';
 import type { Persona } from './persona';
@@ -135,6 +135,7 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
   const open = r.codeEnforcement.openCount;
   const liens = r.liens?.lines.length ?? 0;
   const municipality = r.property.municipality ?? null;
+  const confirmedUnincorporated = r.property.unincorporatedConfirmed === true;
   // The county key the adapter registry is keyed on. The report's slug is
   // "fl-hillsborough"; the registry says "hillsborough". Prefer normalizing the
   // display name, fall back to stripping the slug prefix.
@@ -145,12 +146,30 @@ export function buildGlance(r: DiagnosticReport): GlanceItem[] {
     cityGoverns: cityGoverns(municipality),
     cityChecked: r.codeEnforcement.cityCodeChecked === true,
     countyChecked: r.codeEnforcement.countyCodeChecked !== false,
-    // A blank municipality is the appraiser telling us nothing, not telling us
-    // the parcel is unincorporated. Only a non-empty answer counts as known.
-    municipalityKnown: municipalityKnown(municipality),
+    // A blank municipality is usually the appraiser telling us nothing, not
+    // telling us the parcel is unincorporated - EXCEPT when the boundary
+    // source answered and placed the point inside no incorporated place.
+    // That is a positive finding that the county governs, carried explicitly
+    // so it cannot be confused with a failed lookup.
+    municipalityKnown: municipalityKnown(municipality) || confirmedUnincorporated,
     // Whether this product can reach this city's code office at all. It
     // changes what we tell the reader to do next, never the verdict.
-    cityCoverage: cityCodeCoverage(municipality, countyKey),
+    //
+    // Codex R1: the district office was unreachable here. A confirmed
+    // unincorporated parcel has no municipality, so the city lookup returned
+    // null and the reader got generic advice even though the county office
+    // that governs them is known. Only the confirmed flag opens this door; a
+    // null municipality on its own still gets nothing.
+    cityCoverage:
+      cityCodeCoverage(municipality, countyKey) ??
+      (confirmedUnincorporated
+        ? (() => {
+            const office = unincorporatedCodeOffice(countyKey);
+            return office
+              ? { name: office.name, platform: 'none', portalUrl: null, deepScanReads: false, office }
+              : null;
+          })()
+        : null),
     // Used only when the parcel is explicitly unincorporated, so the
     // report names the county that governs instead of "the county".
     countyName: r.county?.name ?? null,

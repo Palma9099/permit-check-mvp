@@ -80,7 +80,32 @@ const keyFor = (countyKey: string, municipality: string) =>
   `${countyKey.trim().toLowerCase()}:${municipality.trim().toUpperCase()}`;
 
 const BY_KEY = new Map(CITY_CODE_COVERAGE.map((r) => [r.key, r]));
-const OFFICE_BY_KEY = new Map(BROWARD_CODE_OFFICES.map((r) => [r.key, r]));
+
+/**
+ * Offices are matched on a punctuation-free form of the place name.
+ *
+ * Codex R1: the office table is keyed on Broward's own boundary spellings,
+ * while the report's municipality comes from the CENSUS place layer, and the
+ * two disagree on exactly one of the county's 31 towns - Census says
+ * "Lauderdale-by-the-Sea", Broward's boundary field says
+ * "LAUDERDALE BY THE SEA". Uppercasing does not close that gap, so the town
+ * silently had no office on the real report path. Checked against all 411
+ * Florida Census places: 30 of the 31 match exactly and only this one needs
+ * the hyphens removed.
+ *
+ * Collapsing punctuation is safe here because the comparison still requires
+ * the same words in the same order within the same county, which is what
+ * keeps one place from answering for another.
+ */
+const canonical = (place: string) =>
+  place.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+
+const OFFICE_BY_KEY = new Map(
+  BROWARD_CODE_OFFICES.map((r) => {
+    const [county, place] = r.key.split(':');
+    return [`${county}:${canonical(place)}`, r];
+  }),
+);
 
 /**
  * The office that enforces code at this municipality, when we know it.
@@ -98,7 +123,7 @@ export function codeOfficeFor(
   const m = (municipality ?? '').trim();
   const c = (countyKey ?? '').trim();
   if (!m || !c) return null;
-  const row = OFFICE_BY_KEY.get(keyFor(c, m));
+  const row = OFFICE_BY_KEY.get(`${c.toLowerCase()}:${canonical(m)}`);
   if (!row) return null;
   return { name: row.office, url: row.url, phone: row.phone };
 }
@@ -156,4 +181,26 @@ export function cityCodeCoverage(
 /** Every city the deep scan can read, for the coverage page and for tests. */
 export function citiesWithCodeCoverage(): string[] {
   return CITY_CODE_COVERAGE.map((r) => r.key).sort();
+}
+
+/**
+ * The county-level code office for a parcel confirmed to be in NO
+ * incorporated place.
+ *
+ * Deliberately a separate function from `codeOfficeFor`, and deliberately
+ * NOT reachable from a null municipality. Codex R1's required correction was
+ * to wire a positively identified district jurisdiction through "without
+ * defaulting every null municipality to the district", and those are two
+ * different facts: a parcel the boundary source placed outside every city has
+ * a known authority, while a parcel nobody could place has none. Only the
+ * caller holding `unincorporatedConfirmed` may ask this.
+ */
+export function unincorporatedCodeOffice(
+  countyKey: string | null | undefined,
+): CodeOffice | null {
+  const c = (countyKey ?? '').trim();
+  if (!c) return null;
+  const row = OFFICE_BY_KEY.get(`${c.toLowerCase()}:UNINCORPORATED`);
+  if (!row) return null;
+  return { name: row.office, url: row.url, phone: row.phone };
 }

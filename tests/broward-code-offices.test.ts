@@ -107,15 +107,34 @@ describe('the join keys, which fail silently when wrong', () => {
   // key missed and the city would have had no office forever, with nothing
   // erroring to say so.
   it('matches Lazy Lake, which the county calls "Lazy Lakes"', () => {
+    // Census and the boundary field agree on LAZY LAKE; only the county's
+    // LEGAL name says "Lazy Lakes". Unlike the hyphen case this is a
+    // different word, not punctuation, so canonical matching does not and
+    // should not bridge it - the key comes from the boundary field instead.
     expect(codeOfficeFor('LAZY LAKE', 'broward')?.name).toBe('Village of Lazy Lakes');
     expect(codeOfficeFor('LAZY LAKES', 'broward')).toBeNull();
   });
 
-  it('matches Lauderdale By The Sea, whose legal name is hyphenated', () => {
+  it('matches Lauderdale-by-the-Sea in BOTH spellings, because two sources disagree', () => {
+    // This assertion used to require the hyphenated form to return null, and
+    // that encoded the exact defect Codex R1 found: the office table is keyed
+    // on Broward's boundary spelling while the report consumes the CENSUS
+    // name, which IS hyphenated. Demanding a null here was demanding the bug.
+    // Both spellings must resolve, because both are real inputs.
     expect(codeOfficeFor('LAUDERDALE BY THE SEA', 'broward')?.name).toBe(
       'Town of Lauderdale-by-the-Sea',
     );
-    expect(codeOfficeFor('LAUDERDALE-BY-THE-SEA', 'broward')).toBeNull();
+    expect(codeOfficeFor('Lauderdale-by-the-Sea', 'broward')?.name).toBe(
+      'Town of Lauderdale-by-the-Sea',
+    );
+  });
+
+  it('still refuses a different place in the same county', () => {
+    // Collapsing punctuation must not collapse distinct places: the match
+    // still requires the same words in the same order.
+    expect(codeOfficeFor('LAUDERDALE', 'broward')).toBeNull();
+    expect(codeOfficeFor('LAUDERDALE LAKES', 'broward')?.name).toBe('City of Lauderdale Lakes');
+    expect(codeOfficeFor('NORTH LAUDERDALE', 'broward')?.name).toBe('City of North Lauderdale');
   });
 
   it('keys the unincorporated district on its own key, not a city name', () => {
