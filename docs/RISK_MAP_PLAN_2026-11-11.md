@@ -381,3 +381,27 @@ one so far (sonnet disagreed), too few to quote a miss rate.
 
 This log is being committed on branch `claude/riskmap-cases` while the worker tree stays on it for
 the drawer's code-case lookup; main's copy is behind until that branch merges.
+
+**2026-11-12, iteration 6 (01:45).** The frame run for the rest of 33013 finished: 5,975 parcels
+fetched, one left behind and re-fetched by hand, 12,951 frames on disk, 6,268 parcels queued as
+candidates. Nine new flags read by eye, nine confirmed: above-ground pools at 291 E 55 St and
+725 E 21 St, a full rebuild at 891 E 20 St (flat patched roof to a new peaked shingle roof and
+paver drive), reroofs or roof changes at 40 E 53 Ter, 1801 E 6 Ave (white seamed surface, tarp or
+membrane), 520 E 49 St, 520 E 61 St and 401 E 52 St, and a new solar array at 370 E 58 St.
+**Twenty-three of twenty-three reported flags have matched the photos.** All marked verified with
+the reviewer named.
+
+The audit rows now say something. Three haiku "clean" screens were re-read by sonnet: two hid a
+reroof sonnet saw (0421310160270 at 0.75, 0431060650310 at 0.55) and one agreed. Both misses had
+haiku saying Roof SAME at 0.80; the agreed clear said 0.95. Lowering the hand-off threshold would
+not have caught them, because haiku called the roof unchanged, so vision v4 adds a roof rule: a
+haiku Roof SAME under 0.85 hands the parcel to sonnet anyway. On the 180 roofs screened so far that
+is about 19 percent more hand-off. The audit rate is raised from 10 to 20 percent so the miss rate
+gets measured faster. The 15 screened-clear parcels the rule would have caught were re-queued, with a
+`requeue` layer row saying why. Workers restarted on v4 (Homestead Finder commit 83c69b7).
+
+Measured per model from the evidence rows: haiku screen 0.036 USD and 22 seconds a parcel; sonnet
+two-run confirm 0.50 USD and 153 seconds. Cumulative CLI cost estimate 60.13 USD after 217 labeled
+parcels, about 0.28 USD a parcel. A single sonnet run as the screen would cost about the same per
+parcel (0.25 USD plus a second run on the third that see something) and read roofs better; that is
+the fallback if the v4 audit rows still show misses after a few hundred more parcels.
