@@ -512,22 +512,35 @@ export async function runAccelaScrape(
     // heading. addressesAgree and addressParts are deleted rather than left
     // unused, so nothing can quietly wire them back into this decision.
 
+    // Codex R3-02: these two notes contradicted each other on a tenant whose
+    // grid has no address column. The street note told the reader each row is
+    // prefixed with its filed address and to compare it; the missing-column
+    // note then said the records cannot be narrowed at all. On Hillsborough
+    // every recordAddress is null, so no prefix is ever emitted and the
+    // comparison the first note promises cannot be made.
+    //
+    // The limitation comes FIRST on that path, because it decides whether the
+    // reader has anything to compare, and the street note no longer promises
+    // row addresses that are not there.
+    const addressesPublished = !r.noAddressColumn && r.records.some((v) => v.address);
+
+    if (r.noAddressColumn && r.records.length) {
+      result.notes.push(addressColumnMissingNote(t.name));
+    }
+
     // And if the search was by street, say so plainly. These records belong
     // to the street, not to this parcel, and a reader scanning a case list
     // under a property's heading will otherwise assume every row is theirs.
     if (r.searchedBy === 'street') {
       result.notes.push(
-        `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. Each row is prefixed with the address it is filed against - compare it to ${
-          ctx.address ?? 'the subject property'
-        } before relying on that row.`,
+        addressesPublished
+          ? `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. Each row is prefixed with the address it is filed against - compare it to ${
+              ctx.address ?? 'the subject property'
+            } before relying on that row.`
+          : `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. ${t.name} does not publish an address for these rows, so there is no way to tell which of them belong to ${
+              ctx.address ?? 'the subject property'
+            }. Confirm each one on the portal.`,
       );
-    }
-
-    // Said BEFORE the coverage and cap notes, because it changes what every
-    // row below it means: without an address column there is no way to tell
-    // which rows are this property's.
-    if (r.noAddressColumn && r.records.length) {
-      result.notes.push(addressColumnMissingNote(t.name));
     }
 
     const partial = partialListNote(r.records.length, r.count, t.name);

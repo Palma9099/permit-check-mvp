@@ -62,20 +62,34 @@ nobody had counted**, on top of the 2,049,410 the 36 city tenants reach.
 adapter to build". It returns real cases, including "Construction work
 without Permits, Struc", for 649,776 residents.
 
-## Three hypotheses killed, in order
+## Three hypotheses, and what the evidence actually did to them
 
-Recorded because each looked right and each was wrong, and the pattern is the
-point: a single confirming case is not a cause.
+Recorded because each looked right, and because the strength of each refutation
+differs. Only the first was actually killed. Saying all three were "killed" was
+an overstatement Codex caught in R3-03, and the wording below is what the
+observations support rather than what I wanted them to.
 
-1. **"County tenants cannot be read."** From Hillsborough alone. Killed by
-   Pasco within the hour: a county, same Enforcement module, 7 real cases.
+1. **"County tenants cannot be read."** From Hillsborough alone. **Refuted.**
+   Pasco is a county on the same Enforcement module returning 7 real cases, so
+   the universal claim is false. A single counterexample is enough to kill a
+   universal, which is why this one is clean.
 2. **"The module name is wrong, so Accela serves General Search."** Our own
-   notes say a hardcoded `module=Enforcement` was wrong for 17 of 28
-   agencies, so this fit. Killed by a control: a nonsense module returns a
-   DIFFERENT page, so the configured module is valid.
+   notes say a hardcoded `module=Enforcement` was wrong for 17 of 28 agencies,
+   so this fit. **Not supported**, and not disproved either. A nonsense module
+   returns a DIFFERENT page, so the configured string is RECOGNISED by the
+   portal. Recognition is not scope: it does not establish that the module
+   serves the code cases we want, and no evidence here does.
 3. **"Landing on the General Search form with `ddlSearchType` is the
-   failure."** Killed by the same run: PASCO, which works, lands on the
-   identical page shape.
+   failure."** **Not supported.** Pasco works and lands on the identical page
+   shape, so that shape alone cannot be the failure. It does not follow that
+   submission behaviour is identical: two tenants can render the same form and
+   handle a submit differently, and nothing here rules that out.
+
+What later settled the matter was not any of these three. It was reading the
+grid as structured cells, which showed the column-name row is not the table's
+first row. See the next section. A parser correction working afterwards makes
+the parser claim strong; it does not retroactively strengthen the controls
+above.
 
 ## The Hillsborough fix, and what it unlocked
 
@@ -125,11 +139,19 @@ one until a control confirms it.
   from that county's municipal subtraction, which OVERSTATES that county's
   unincorporated figure.
 
-  An earlier version of this doc, and of the script's own comment, claimed
-  straddlers were reported. They were not: only places assigned to no county
-  at all were. Codex R2 caught it. The script now detects them by testing each
-  place's bounding-box corners against the county polygons, which over-reports
-  rather than under-reports, and **finds 87 candidates**.
+  This caveat has now been wrong twice, which is worth recording as a pattern.
+  First the doc and the script's comment claimed straddlers were reported when
+  only places assigned to no county at all were (Codex R2). Then the
+  replacement sampled the four bounding-box CORNERS and claimed that could
+  only over-report (Codex R3-01). It cannot: a county can cross the box
+  interior without containing a corner, and corner sampling found **zero**
+  straddlers on a notch counterexample that genuinely overlapped.
+
+  It now runs a complete box/polygon intersection, which is vertex-in-box,
+  edge-crossing-edge, or box-corner-in-polygon, against the place's bounding
+  box rather than its outline, so it over-reports rather than under-reports.
+  **It finds 90 candidates.** The corner version found 87, so it was missing
+  three real Florida straddlers: the flaw was not only theoretical.
 
   **This means the backlog ordering is NOT safe in the near-tie band.** Alachua
   108,824, Indian River 108,789 and Sumter 108,709 sit 35 and 115 apart, and
