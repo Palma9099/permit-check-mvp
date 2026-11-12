@@ -361,3 +361,23 @@ St returns BWOP-001873-2025 at status Lien in 18 seconds; 271 E 55 St, the new i
 returns no case. The adapter searches the Code Case module only, so the drawer says so and does
 not pretend an empty permit list means no permits. Reading the permit module is the next Pillar A
 build.
+
+**2026-11-12, iteration 5.** Six new flags read by eye, six confirmed: reroofs at 150 E 55 St,
+310 E 54 St, 320 E 57 St, 5195 E 1 Ave and 5750 E 3 Ave (under a blue tarp in 2019, new roof by
+2023), and solar on a reroofed house at 5680 E 2 Ave. **Fourteen of fourteen reported flags have
+matched the photos.** All marked verified with the reviewer named.
+
+With the hand-off at 0.35 haiku now sends 57 percent of parcels to sonnet, and the cumulative CLI
+cost estimate is 32.84 USD after 136 labeled parcels, about 0.30 USD a parcel. Projected for the
+whole zip code: roughly 1,900 USD of estimated usage over about four days, which is subscription
+load rather than a bill, shared with the Airavata QC swarm and Adrian's own sessions. The two
+workers stop with one command if his sessions slow:
+`pkill -f "riskmap.scan --vision"`. Restart: two copies of
+`python3 -m riskmap.scan --vision 100000 --order stratified` from the Homestead Finder repo.
+
+About four percent of sonnet confirm replies failed to parse; each run now retries once and the
+extractor tolerates prose around the JSON. Three error parcels re-queued. The audit row count is
+one so far (sonnet disagreed), too few to quote a miss rate.
+
+This log is being committed on branch `claude/riskmap-cases` while the worker tree stays on it for
+the drawer's code-case lookup; main's copy is behind until that branch merges.
