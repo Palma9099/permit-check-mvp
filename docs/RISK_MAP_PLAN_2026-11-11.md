@@ -449,3 +449,35 @@ lookup is running for the 57 verified and flagged parcels, one at a time with a 
 reads the flag-versus-permit matches.
 
 Cumulative CLI cost estimate 112.84 USD after 367 labeled parcels. Queue: 6,106 candidates.
+
+**2026-11-12, iteration 9 (05:20).** Fourteen new flags read by eye, fourteen confirmed (thirteen roof
+changes, one with a new solar array at 521 E 45 St, and a side yard paved to the street at
+5330 E 6 Ave). **Seventy of seventy reported flags have matched the photos.** The v5 audit now has 15
+rows: six second runs saw something the first run had not, all at 0.5 to 0.55; the third run kept four
+of them as flagged low (0.4 to 0.68 merged) and dropped two. None reached the 0.75 report line, so no
+reportable flag has been lost to the single-run screen in this sample.
+
+The permit batch finished for all 56 verified parcels. Against EnerGov: 10 flags fully match a
+permit, 4 partly, 41 have no matching permit, 1 lookup did not parse. That 41 is NOT a finding.
+Hialeah's EnerGov holds permits only from about February 2023, and the work in this pair happened
+between the 2019 and 2023 flights. The city's older permit history is not online: the Building
+Department's Microfilm and Records page offers plans and index cards 1944 to 1996, trade records
+2004 to present and paper plans 1996 to present by request, one form per address, 15 USD for a
+single-family house, 45 USD otherwise, requested through the same Citizen Self Service portal
+(hialeahfl.gov/659/Microfilm-and-Records, read 2026-11-12). So a 2019 to 2023 flag in Hialeah
+closes only with a 15 USD records request.
+
+The scan therefore moves to a pair the permit system covers. The county image server lists
+Woolpert2024, Woolpert2025 and Woolpert2026 (0.25 ft pixels); all three return imagery at
+891 E 20 St. A second database, `data/riskmap_2023_2026.db`, was seeded from the first (same 6,476
+parcels, outlines and 2023 frames) and the 2026 frames are fetching, about two a second. When they
+land, both workers move to 2023 versus 2026 and every flag gets the EnerGov lookup, which now covers
+the whole window. The flight month is not in the service metadata; it is needed before dating work
+against a permit's apply date, and is the next thing to source. Pair-1 results stay as a 500-parcel
+labeled set that proved the vision step.
+
+One database per pair is a deliberate shortcut: the proper fix is a pair column on scan_parcel, due
+with the consolidation. The app reads `RISKMAP_DB` and `RISKMAP_PORT`; pair 1 on 8790, pair 2 on
+8791, header shows the flights.
+
+Cumulative CLI cost estimate 149 USD after 446 labeled parcels, 0.33 USD a parcel.
