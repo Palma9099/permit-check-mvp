@@ -709,3 +709,16 @@ confirmed: a new in-ground pool with deck at 80 E 60 St, a tarped roof from pair
 **256 of 259 reported flags have matched the photos.** 65 leads on the panel before this batch
 (12 in-ground pool, 40 roof, 2 solar, 1 addition, 7 above-ground pool, 3 other), none walked.
 Pair 2: 773 labeled, 316 USD, 0.41 USD a parcel, no errors. Lookups for the thirteen are running.
+
+**2026-11-12, lead sheet v02 (18:40).** Rebuilt from the live leads: 72 pages, one per lead, in walk
+order. Each page now carries the kind badge and the walk-order tags (denied or void permit on file
+with its number, open code case with its number, caught in progress), a "Walk n of 72" line, and a
+walked line that reads "Not walked yet" until the lead is marked in the map app, after which the
+date, name and note print there on the next build. The scoring moved into `riskmap/lead_sheet.py`
+as `walk_order()` and the app's `/api/leads` calls the same function, so the panel and the PDF cannot
+disagree. Four leads overflowed a page on the first build; every lead now sits in a shrink-to-fit
+frame, so a long permit list scales rather than spills. v01 moved to `_archive/` as
+`v01_HIALEAH_33013_RISKMAP_LEAD_SHEET_2023v2026.pdf`; the live file is
+`CURRENT_v02_HIALEAH_33013_RISKMAP_LEAD_SHEET_2023v2026.pdf` (23 MB; the outlined frames are
+embedded at full size). First page: 571 E 35 St, an in-ground oval pool with deck and a void
+electrical permit on file.
