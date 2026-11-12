@@ -43,8 +43,20 @@ unit of work. We had been building cities.
 | Leon | adapter fails | 96,029 |
 | Nassau | adapter fails | 72,807 |
 
-**1,388,796 residents are already covered by working county adapters that
+**1,381,292 residents are already covered by working county adapters that
 nobody had counted**, on top of the 2,049,410 the 36 city tenants reach.
+
+> **Corrected after Codex R2.** This read 1,388,796, which was exactly 7,504
+> too high: Franklin's population. Franklin is READABLE_EMPTY, meaning the
+> adapter completed and the portal held nothing, so it has NO demonstrated
+> returned cases and does not belong in a working-adapter total. The error was
+> made in the document whose stated purpose is that its numbers are not
+> hopeful. The total now counts only the four tenants that returned cases:
+> Palm Beach 649,776, Pasco 513,983, Alachua 108,824, Sumter 108,709.
+>
+> Note also what a RETURNS row does and does not mean: a successful sampled
+> street or parcel query establishes that the adapter can READ that tenant. It
+> does not establish complete coverage of every resident or property in it.
 
 **Palm Beach ePZB is built and working.** Our own notes called it "the first
 adapter to build". It returns real cases, including "Construction work
@@ -79,8 +91,28 @@ one until a control confirms it.
 
 ## Method limits
 
-- Places are assigned to counties by centroid, so a place straddling a county
-  line lands wholly in one. Longboat Key is the known Florida case.
+- Places are assigned to counties by CENTROID, so a place straddling a county
+  line lands wholly in one. Its residents on the other side are then missing
+  from that county's municipal subtraction, which OVERSTATES that county's
+  unincorporated figure.
+
+  An earlier version of this doc, and of the script's own comment, claimed
+  straddlers were reported. They were not: only places assigned to no county
+  at all were. Codex R2 caught it. The script now detects them by testing each
+  place's bounding-box corners against the county polygons, which over-reports
+  rather than under-reports, and **finds 87 candidates**.
+
+  **This means the backlog ordering is NOT safe in the near-tie band.** Alachua
+  108,824, Indian River 108,789 and Sumter 108,709 sit 35 and 115 apart, and
+  all three are touched: Sumter by Leesburg 27,000, Lady Lake 15,970, Wildwood
+  15,730 and Mascotte 6,609; Indian River by Sebastian 25,054; Alachua by
+  Newberry 7,342 and four more. The straddling populations dwarf the gaps.
+
+  What is still missing is the SIZE of each error, which needs each place's
+  population split by county part. This source does not carry it, so the
+  candidate list bounds WHICH counties can move, not by how much. Treat the
+  large figures (Miami-Dade, Hillsborough, Orange, Palm Beach, Pasco) as sound
+  for prioritisation and anything inside a few thousand residents as a tie.
 - The probe's request counter only sees Accela's ASP.NET POSTs. citizenserve
   returned six real cases with zero counted requests, so `ok` from the adapter
   is the signal and the counter is a detail on Accela failures only.

@@ -17,9 +17,23 @@
  *             "which city is this parcel in", a different question)
  *
  * Method and its error bound: each place is assigned to the county containing
- * its centroid, so a place straddling a county line lands wholly in one. The
- * known Florida case is Longboat Key (Manatee/Sarasota). Straddlers are
- * reported so the error is visible rather than silent.
+ * its CENTROID, so a place straddling a county line lands wholly in one. Its
+ * residents in the other county are then missing from that county's municipal
+ * subtraction, which OVERSTATES that county's unincorporated figure, and the
+ * assigned county is understated by the same people.
+ *
+ * Codex R2 caught an earlier version of this comment claiming straddlers were
+ * reported when the code only reported places assigned to no county at all.
+ * They are now actually detected, by testing each place's bounding-box corners
+ * against the county polygons: a place whose box reaches into another county
+ * is a CANDIDATE straddler. Boxes overshoot real shapes, so this over-reports
+ * rather than under-reports, which is the right direction for an error bound.
+ *
+ * What this still does NOT give you is the SIZE of the error, because that
+ * needs each place's population split by county part, which this source does
+ * not carry. So the candidate list bounds WHICH counties could move, not by
+ * how much. Ordering inside a near-tie (Alachua 108,824 / Indian River
+ * 108,789 / Sumter 108,709, 35 and 115 apart) is not safe on this data alone.
  */
 
 const TIGER = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb';
@@ -67,7 +81,12 @@ async function main() {
   const places = await query(PLACES, {
     where: `STATE='${FL}'`,
     outFields: 'BASENAME,POP100,CENTLAT,CENTLON,PLACE',
-    returnGeometry: 'false',
+    // Geometry IS needed now, to detect straddlers. Heavily generalised,
+    // because only the bounding box is used and a simplified ring gives the
+    // same box to well under a parcel's width.
+    returnGeometry: 'true',
+    maxAllowableOffset: '0.002',
+    outSR: '4326',
     f: 'json',
   });
 
@@ -81,6 +100,7 @@ async function main() {
 
   let unassigned = 0;
   let municipalTotal = 0;
+  const straddlers: Array<{ name: string; pop: number; counties: string[] }> = [];
 
   for (const p of places.features) {
     const a = p.attributes;
@@ -93,6 +113,25 @@ async function main() {
     if (!hit) { unassigned += pop; continue; }
     hit.municipal += pop;
     hit.places.push(String(a.BASENAME));
+
+    // Candidate straddler: does this place's bounding box reach a county other
+    // than the one holding its centroid?
+    const rings: number[][][] = p.geometry?.rings ?? [];
+    const xs: number[] = [], ys: number[] = [];
+    for (const r of rings) for (const [x, y] of r) { xs.push(x); ys.push(y); }
+    if (!xs.length) continue;
+    const corners: Array<[number, number]> = [
+      [Math.min(...xs), Math.min(...ys)], [Math.min(...xs), Math.max(...ys)],
+      [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)],
+    ];
+    const touched = new Set<string>([hit.name]);
+    for (const [cx, cy] of corners) {
+      const c = cs.find((q: any) => inPolygon(cx, cy, q.rings));
+      if (c) touched.add(c.name);
+    }
+    if (touched.size > 1) {
+      straddlers.push({ name: String(a.BASENAME), pop, counties: [...touched] });
+    }
   }
 
   cs.sort((a: any, b: any) => (b.pop - b.municipal) - (a.pop - a.municipal));
@@ -112,6 +151,16 @@ async function main() {
   console.log('municipal (412 places) ', n(municipalTotal));
   console.log('unincorporated         ', n(totalPop - municipalTotal));
   if (unassigned) console.log('UNASSIGNED place pop   ', n(unassigned), '(centroid fell in no county)');
+
+  console.log('');
+  console.log(`CANDIDATE STRADDLERS: ${straddlers.length} place(s) whose bounding box reaches more than one county.`);
+  console.log('Each is counted wholly in its centroid county, so the OTHER counties listed are');
+  console.log('overstated by that place\'s residents on their side of the line. Boxes overshoot,');
+  console.log('so this list over-reports. It bounds WHICH counties can move, not by how much:');
+  console.log('a per-county population split is not in this source.');
+  for (const s2 of straddlers.sort((a, b) => b.pop - a.pop)) {
+    console.log(`  ${s2.name.padEnd(24)} ${n(s2.pop).padStart(9)}   ${s2.counties.join(' / ')}`);
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
