@@ -127,10 +127,14 @@ Driven directly - navigate to the module page, fill
 `ctl00_PlaceHolderMain_btnNewSearch` - the portal **returns a results grid**.
 The adapter, on the same tenant, gets no grid and no explicit empty state.
 
-So the portal works and the adapter's flow is what fails. That is a
-reproducible contrast to debug against, and it is the next piece of work. It
-is NOT yet a diagnosis, and after three dead hypotheses it will not be called
-one until a control confirms it.
+So the portal works and the adapter's flow is what fails. That was the
+reproducible contrast to debug against, and at the time of writing it was NOT
+a diagnosis: one hypothesis had been refuted and two were merely unsupported,
+so nothing here had earned the word cause.
+
+It was settled afterwards, by capturing the grid as structured cells. See the
+section above, which is the current status; this section records how the
+failure was found, not what remains to do.
 
 ## Method limits
 
@@ -150,8 +154,20 @@ one until a control confirms it.
   It now runs a complete box/polygon intersection, which is vertex-in-box,
   edge-crossing-edge, or box-corner-in-polygon, against the place's bounding
   box rather than its outline, so it over-reports rather than under-reports.
-  **It finds 90 candidates.** The corner version found 87, so it was missing
-  three real Florida straddlers: the flaw was not only theoretical.
+  **It finds 90 candidates where the corner version found 87.**
+
+  Those three are additional CANDIDATES, not confirmed straddlers, and the
+  distinction is the whole point of this section. A bounding box admits false
+  positives by design: a triangular place with vertices (0,0), (4,0), (0,4)
+  has box [0,4]x[0,4], which meets a county at [3,4]x[3,4] that the place
+  itself never touches. So a higher candidate count establishes that corner
+  sampling MISSED candidates, which is enough to disprove its claimed
+  guarantee, and establishes nothing about actual place/county overlap.
+
+  The count difference also does not name which three places were added or
+  prove the two runs saw the same input snapshot. Confirming any of them as a
+  real straddler needs an outline intersection on a frozen same-input
+  comparison, which has not been done.
 
   **This means the backlog ordering is NOT safe in the near-tie band.** Alachua
   108,824, Indian River 108,789 and Sumter 108,709 sit 35 and 115 apart, and

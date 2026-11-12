@@ -131,6 +131,22 @@ export function gridHasAddressColumn(headers: string[]): boolean {
  * reader treat a neighbour's case as this property's, which is the same class
  * of error as reporting an unsearched authority as clear.
  */
+export function rowsMissingAddressNote(
+  tenantName: string,
+  missing: number,
+  total: number,
+): string {
+  return `${missing} of the ${total} ${tenantName} records above carry no address, so those rows cannot be checked against this property. Confirm each one on the portal before relying on it.`;
+}
+
+/**
+ * Disclosure for a grid with no address column.
+ *
+ * Codex R4-01: a LABELLED address column can still have blank cells, and a
+ * mixed grid is its own shape. `some(address)` promised every row an address
+ * while one was null. The column-level note below covers a tenant that
+ * publishes no column at all; `rowsMissingAddressNote` covers the rows.
+ */
 export function addressColumnMissingNote(tenantName: string): string {
   return `${tenantName}'s record list does not publish an address column, so these records cannot be narrowed to this property. Treat them as records for the searched street, not for this address, and confirm each one on the portal before relying on it.`;
 }

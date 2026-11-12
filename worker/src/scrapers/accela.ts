@@ -40,6 +40,7 @@ import {
   GRID_HEADERS,
   gridHasAddressColumn,
   addressColumnMissingNote,
+  rowsMissingAddressNote,
   streetNameOf,
   streetNumberOf,
   extractionMatchesPage,
@@ -68,6 +69,7 @@ export {
   GRID_HEADERS,
   gridHasAddressColumn,
   addressColumnMissingNote,
+  rowsMissingAddressNote,
   streetNameOf,
   streetNumberOf,
   extractionMatchesPage,
@@ -522,24 +524,37 @@ export async function runAccelaScrape(
     // The limitation comes FIRST on that path, because it decides whether the
     // reader has anything to compare, and the street note no longer promises
     // row addresses that are not there.
-    const addressesPublished = !r.noAddressColumn && r.records.some((v) => v.address);
+    // Codex R4-01: `some` was wrong. A labelled address column can still have
+    // blank cells, so there are THREE shapes here, not two, and the middle one
+    // is the one a quantifier hides: every row addressed, none addressed, or
+    // some. Promising "each row is prefixed" on a mixed grid tells a reader to
+    // perform a comparison that is impossible for the blank rows, and those
+    // are exactly the rows that could belong to anyone.
+    const total = r.records.length;
+    const addressed = r.records.filter((v) => v.address).length;
+    const missingRows = total - addressed;
 
-    if (r.noAddressColumn && r.records.length) {
+    if (r.noAddressColumn && total) {
+      // The tenant publishes no address column at all.
       result.notes.push(addressColumnMissingNote(t.name));
+    } else if (missingRows && total) {
+      // The column exists but some cells are blank.
+      result.notes.push(rowsMissingAddressNote(t.name, missingRows, total));
     }
 
     // And if the search was by street, say so plainly. These records belong
     // to the street, not to this parcel, and a reader scanning a case list
     // under a property's heading will otherwise assume every row is theirs.
     if (r.searchedBy === 'street') {
+      const subject = ctx.address ?? 'the subject property';
+      const scope =
+        'This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties.';
       result.notes.push(
-        addressesPublished
-          ? `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. Each row is prefixed with the address it is filed against - compare it to ${
-              ctx.address ?? 'the subject property'
-            } before relying on that row.`
-          : `This search was by STREET NAME, not by parcel, so the records above are for the whole street and may include neighbouring properties. ${t.name} does not publish an address for these rows, so there is no way to tell which of them belong to ${
-              ctx.address ?? 'the subject property'
-            }. Confirm each one on the portal.`,
+        addressed === total && total
+          ? `${scope} Each row is prefixed with the address it is filed against - compare it to ${subject} before relying on that row.`
+          : addressed === 0
+            ? `${scope} ${t.name} does not publish an address for these rows, so there is no way to tell which of them belong to ${subject}. Confirm each one on the portal.`
+            : `${scope} ${addressed} of the ${total} rows are prefixed with the address they are filed against - compare those to ${subject}. The other ${missingRows} carry no address and cannot be checked against it; confirm them on the portal.`,
       );
     }
 
