@@ -556,3 +556,22 @@ sees the boundary the model saw. Workers and both apps restarted on v6 (Homestea
 
 Pair 2: 122 labeled, 0.40 USD a parcel, 14 audits with 3 second-run disagreements (none reached the
 report line). Pair 1 stays at 514 labeled. Permit lookups for the new flags are running.
+
+**2026-11-12, iteration 13 (09:20).** First hour of vision v6, with the parcel line drawn on the
+frames: 54 parcels labeled, 11 flagged, 18 flagged low, 25 clear, four audits with one second-run
+disagreement. Fifteen flags read by eye on the outlined frames, fifteen confirmed, every finding
+inside its own line: new in-ground pools at 729 E 23 St (with a reroof) and 751 E 56 St, an
+above-ground pool at 580 E 29 St, solar arrays at 398 E 56 St and 5350 E 3 Ave, a rear addition at
+4635 E 4 Ave, tile to standing-seam metal at 2675 E 7 Ave, and eight more roof changes. **121 of 122
+reported flags have matched the photos.** The outline makes the lot question disappear for the
+reviewer as well as the model.
+
+Permit readout for all 23 pair-2 parcels verified before this hour: 23 permit-type findings, 16
+covered by a completed permit, 7 without a live one on 5 parcels. Leads: the pool and patio at
+420 E 61 St, the roof at 476 E 62 St, the roof at 6120 E 4 Ave (its only roofing permit is Denied,
+and the roof now carries a solar grid), the solar at 633 E 45 St, and the roof at 698 E 32 St. The
+drained pool at 485 E 39 St is a condition, not work. A tarp now counts as a damage cover only when
+it is in the later photo; a tarp in 2023 followed by a new roof in 2026 is permit work and is
+matched like any reroof (854 E 33 St was being excused by the first rule).
+
+Pair 2: 199 labeled, 77 USD, 0.39 USD a parcel. Lookups for the fifteen new flags are running.
