@@ -293,3 +293,24 @@ led to the one-run-then-confirm scheme in `vision.py`.
 Not yet: permit history per parcel (Hialeah is EnerGov, per-parcel Playwright is too heavy for a
 batch and is deferred to on-demand in the drawer), year built from the PA, the labeled QC sample,
 and the other Pillar A layers. The 553.899 read is still outstanding.
+
+**2026-11-12, iteration 2 (25 minutes later).** Ten parcels through the model: 4 flagged, 5 low,
+2 clear, with findings that match the frames. Two facts that changed the design:
+
+*The pixel pre-filter does not work here.* The two parcels the model called clear had scores of
+0.53 and 0.59, inside the flagged range (0.48 to 0.65), and blurring before differencing at four
+radii did not separate them. On this housing stock the score measures vegetation, shadows and cars
+as much as structure. It is kept as a stored field and no longer gates anything.
+
+*The model is the bottleneck, and sonnet is too expensive to be the screen.* Median 132 seconds and
+a CLI cost estimate of 0.66 USD per flagged parcel at three runs. On the subscription that is
+usage-window load shared with the Airavata QC swarm, not a bill, but it is finite: one worker would
+take 20 hours for the 489 waiting. Haiku screened two clear and two flagged parcels correctly
+(rear addition and patio on 350 E 61 St, roof and pool on 371 E 60 St) at 0.04 USD and 23 seconds.
+It disagreed on one clear parcel (5510 E 2 Ave, "pool removed 0.95"), which goes in the QC sample.
+
+Pipeline now: haiku screens every parcel once; a parcel it calls clean is stored as
+`screened_clear`; sonnet confirms only what the screen saw, two runs that must both agree. Two
+workers run at once through an atomic claim, in a stratified order over the score distribution so
+the labeled sample spans it. Frames: 500 done, 5,976 more queued and fetching (about 1.5 hours).
+Spend to date: zero dollars; CLI estimates total 5.44 USD across the first ten parcels.
