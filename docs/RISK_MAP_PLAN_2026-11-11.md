@@ -264,3 +264,32 @@ Supabase queue. Playwright and the vision calls both run fine there.
 
 **What success looks like at day thirty:** every parcel in Miami-Dade on a map, six layers you can
 switch on, and a list of expired open permits you can sell closeout letters against tomorrow.
+
+## Progress log
+
+**2026-11-12, iteration 1 of the Phase 0 loop.** Built and committed in the Homestead Finder repo
+(`riskmap/`, commits `6e11687` to `be8cdd7`), not here, because that is where the parcel universe
+lives and this machine holds no Supabase credentials. Decisions taken without asking, all recorded
+in `riskmap/__init__.py`: local-first SQLite store; free storable imagery only (the Miami-Dade 3 inch
+county flights, 2019 against 2023); vision through the claude CLI on the subscription at zero
+dollars per parcel; a pixel pre-filter in front of the model; only rows above a measured threshold
+reported.
+
+Running: 500 Hialeah 33013 single-family parcels queued, outlines for all 500, frames fetched for
+the first 40 and fetching for the rest in the background, the first 40 in front of the model in the
+background. The coverage app is up at http://127.0.0.1:8790 (`python3 -m riskmap.app`): every
+parcel on Esri imagery coloured by review status, a legend of toggles, and a drawer with the then
+and now frames, each finding with its confidence, the PA record link, and Verify, Dismiss and
+Re-queue buttons that log a review event.
+
+Measured: the pre-filter's 0.10 threshold sits below this neighbourhood's noise floor (min 0.167,
+median 0.328 on 40 parcels), and the three pairs rendered for inspection all show real change
+(reroofs, solar, above ground pools), so the threshold is left alone until the model's own
+"unchanged" verdicts give a floor to set it from. One validated model call on 371 E 60 St: new
+roof 0.85, solar 0.80, above ground pool 0.75, all three visible in the frames; 55 seconds; CLI
+cost estimate 0.68 USD, which on the subscription is usage-window load rather than a bill. That
+led to the one-run-then-confirm scheme in `vision.py`.
+
+Not yet: permit history per parcel (Hialeah is EnerGov, per-parcel Playwright is too heavy for a
+batch and is deferred to on-demand in the drawer), year built from the PA, the labeled QC sample,
+and the other Pillar A layers. The 553.899 read is still outstanding.
