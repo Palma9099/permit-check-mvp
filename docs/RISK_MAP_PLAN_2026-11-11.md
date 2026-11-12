@@ -405,3 +405,24 @@ two-run confirm 0.50 USD and 153 seconds. Cumulative CLI cost estimate 60.13 USD
 parcels, about 0.28 USD a parcel. A single sonnet run as the screen would cost about the same per
 parcel (0.25 USD plus a second run on the third that see something) and read roofs better; that is
 the fallback if the v4 audit rows still show misses after a few hundred more parcels.
+
+**2026-11-12, iteration 7 (02:50).** Eighteen new flags read by eye, eighteen confirmed: new
+above-ground pools at 380 E 56 St, 3421 E 9 Ln (where a trampoline stood) and 474 E 46 St, a new
+in-ground pool with deck behind a reroofed 872 E 29 St, tarps over roofs at 240 E 39 St, 1 E 52 Pl
+and 3381 E 8 Ave, a front yard paved over at 554 E 29 St, and reroofs or roof material changes at
+565 E 32 St, 309 E 41 St, 241 E 53 St, 450 E 44 St, 952 E 31 St, 859 E 23 St, 520 E 45 St,
+511 E 56 St, 760 E 37 St and 454 E 45 St. **Forty-one of forty-one reported flags have matched the
+photos.** All marked verified with the reviewer named.
+
+The haiku screen is retired. After the v4 roof rule, sonnet re-read four more haiku clears and found
+a change in two (0.70 and 0.65), so four of seven audits overall; meanwhile haiku was already handing
+off 64 percent of parcels. A screen that passes most parcels through and still misses half of what it
+clears is not a screen. Vision v5 (Homestead Finder commit 82e575d) makes sonnet the screen: one run
+on every parcel, and that run doubles as confirm run 1, so a parcel that shows something costs one
+more run, not two. A sonnet clear is still audited at 20 percent with a second run; disagreement adds
+a third and the two-of-three merge decides. Haiku screening stays available behind
+`RISKMAP_SCREEN_MODEL=haiku`. Expected per parcel: about 0.25 USD plus a second run on the third
+that show something, about 0.34 USD, against 0.29 USD measured on the haiku path; time about 100
+seconds a parcel against 120. Workers restarted on v5.
+
+Cumulative CLI cost estimate 83.49 USD after 292 labeled parcels. Queue: 6,186 candidates.
