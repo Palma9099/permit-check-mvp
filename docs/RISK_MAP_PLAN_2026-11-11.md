@@ -773,3 +773,22 @@ Overnight: twenty vision workers from 20:35 on Adrian's order, with a timer that
 back to two at 08:00; the worker re-queues a lot and pauses five minutes on a rate or usage
 limit. The Mac was already deep in swap from the permit lookups' Chromium; noted as a risk.
 Homestead Finder 787511f.
+
+**2026-11-12, iteration 25 (21:35).** First hour of the twenty-worker pool: about 280 parcels
+labeled, no rate-limit pauses in any worker log, three unparseable replies re-queued, swap steady.
+Thirty-eight flags read on the outlined frames, thirty-seven confirmed: two new houses on vacant
+lots (4550 E 7 Ave, 2260 E 9 Ave), four solar arrays, four new in-ground pools (725 E 53 St with a
+reroof and pavers, 505 E 55 St replacing an above-ground one, 65 E 35 St under a new cover,
+331 E 56 St), two above-ground pools, two sheds or garages gone, a yard paved into a recreation
+pad with a painted guitar at 43 E 58 St, and twenty roof changes. The one not passed, 940 E 40 St,
+shows the same orange barrel tile in both photos; the "striped material" is the tile courses under
+different light. Recorded as a false alarm with that reason, so it is now the fourth correction in
+the model's prompt. **312 of 316 reported flags have matched the photos.**
+
+A new house on a vacant lot is covered by its building permit, so a Roof NEW finding now matches
+new-construction and building permits, not only roofing ones (sheet and drawer). The appraiser
+facts fetch finished for both pairs: 6,476 of 6,476 lots carry year built, bedrooms, bathrooms,
+floors, areas and lot size.
+
+Pair 2: 1,200 labeled at the start of the tick, 485 USD, 0.40 USD a parcel. Lookups for the
+thirty-seven are running.
