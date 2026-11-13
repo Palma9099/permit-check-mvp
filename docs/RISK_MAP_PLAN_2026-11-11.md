@@ -730,3 +730,19 @@ flags have matched the photos.** 72 leads on the panel before this batch (12 in-
 roof, 2 solar, 1 addition, 7 above-ground pool, 3 other), none walked. Pair 2: 838 labeled, 341 USD,
 0.41 USD a parcel, no errors; 45 v6 audits, five second-run disagreements, none at the report line.
 Lookups for the ten are running.
+
+**2026-11-12, iteration 24 (20:25).** Nine flags read on the outlined frames, nine confirmed: a
+cluster of carport and shed structures cleared off the north half of 217 E 48 St, a circular paver
+patio at 721 E 46 St, and seven roof changes (tile to dark roof at 80 E 54 St, dark roof to white
+ribbed metal at 5010 E 3 Ave). **275 of 278 reported flags have matched the photos.** 79 leads on
+the panel before this batch (13 in-ground pool, 53 roof, 2 solar, 1 addition, 7 above-ground pool,
+3 other), none visited. Pair 2: 900 labeled, 365 USD, 0.41 USD a parcel, no errors. Lookups for the
+nine are running.
+
+Earlier this evening the app's legend was collapsed from thirteen scanner states to six plain
+groups (not scanned yet; scanned, nothing changed; possible change, low confidence; change seen,
+awaiting a human check; change confirmed by eye; false alarm) plus a gold "lead" line; the top bar
+reads lots, scanned, to check, confirmed; the drawer buttons read "Yes, the change is real", "No,
+false alarm", "Scan it again"; "walk" became "site visit" in the app and the sheet; the parcel layer
+reloads every minute; and the parcel query cap rose from 6,000 to 40,000 after it was found hiding
+476 of the zip's 6,476 lots when zoomed out (Homestead Finder d7d7dae, 478d557, b062d90).
