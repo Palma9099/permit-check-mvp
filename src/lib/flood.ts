@@ -117,6 +117,17 @@ export async function assessFlood(
         lastReason = `NFHL error: ${j.error?.message ?? 'unknown'}`;
         continue;
       }
+      // A 200 carrying no features ARRAY is a malformed answer, not an answer
+      // of "no polygon covers this point". Accepting it as data meant a broken
+      // response fell through to the !attrs branch below and published
+      // inSFHA:false with failureReason:null - a confident "minimal flood
+      // risk" that drives the 50% substantial-improvement rule and the
+      // insurance note. A genuine {"features":[]} still reaches that branch,
+      // which is the only case entitled to it.
+      if (!Array.isArray(j?.features)) {
+        lastReason = 'NFHL response had no features array';
+        continue;
+      }
       data = j;
     } catch (err: any) {
       lastReason = String(err?.message ?? err).slice(0, 120);
