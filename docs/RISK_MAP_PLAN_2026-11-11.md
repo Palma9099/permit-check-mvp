@@ -746,3 +746,30 @@ reads lots, scanned, to check, confirmed; the drawer buttons read "Yes, the chan
 false alarm", "Scan it again"; "walk" became "site visit" in the app and the sheet; the parcel layer
 reloads every minute; and the parcel query cap rose from 6,000 to 40,000 after it was found hiding
 476 of the zip's 6,476 lots when zoomed out (Homestead Finder d7d7dae, 478d557, b062d90).
+
+**2026-11-12, evening build (21:00).** Three things Adrian asked for from the drawer.
+
+1. Year built was never fetched. The same public parcel layer that gives the outlines
+   (PaParcelView) carries YEAR_BUILT, bedrooms, bathrooms, floors, building and heated area and
+   lot size; `riskmap/pafacts.py` pulls them forty folios a request and stores them on the parcel.
+   Running for both pairs now (6,476 each, about three minutes); the drawer shows a Home and Lot
+   line. Check on the rebuilt house at 891 E 20 St: year built 2020.
+2. The false-alarm button did nothing in the Claude desktop pane because that pane has no
+   `prompt()` or `alert()`; the name question threw and the click died. Every question the app
+   asks now goes through an in-page note box (name remembered on the browser, reason, note), and
+   results show as a toast. Verified: the box opens, cancel closes it, and the server refuses a
+   false alarm with no reason.
+3. False alarms now teach the model. A dismissal stores a `false_alarm` row with the category
+   (neighbour's lot, weathering, shade, tarp, vegetation, already there, other), the reviewer's
+   note and the finding that was wrong. `riskmap/lessons.py` turns the newest thirty into a block
+   of rules appended to the vision prompt, which the workers refresh every ten parcels; this is
+   the only retraining possible on a hosted model, and it is immediate and auditable.
+   `riskmap/eval_false_alarms.py` re-runs the model on every dismissed parcel to measure whether
+   the corrections took. Seeded with today's three false alarms (972 E 18 St neighbour's pool,
+   891 E 20 St roof already dark, 962 E 28 St weathering). The legend shows the count of
+   corrections the model has been given.
+
+Overnight: twenty vision workers from 20:35 on Adrian's order, with a timer that drops the pool
+back to two at 08:00; the worker re-queues a lot and pauses five minutes on a rate or usage
+limit. The Mac was already deep in swap from the permit lookups' Chromium; noted as a risk.
+Homestead Finder 787511f.
