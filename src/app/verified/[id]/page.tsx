@@ -7,10 +7,11 @@ export const dynamic = 'force-dynamic';
 
 const fmt = (iso: string) => new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   // A failed lookup gets the generic title rather than the "no record" one:
   // the page itself says we could not load it.
-  const look = await getVerified(params.id);
+  const { id } = await params;
+  const look = await getVerified(id);
   const v = look.ok ? look.record : null;
   return {
     title: v ? `${TIERS[v.tier ?? 'premium'].name}: ${v.address.split(',')[0]}` : 'Palma Verified',
@@ -33,8 +34,9 @@ function Seal({ live, color, word }: { live: boolean; color: string; word: strin
 
 // Public page for a Palma Verified record: what was checked, by whom, when,
 // and until when it holds. Shareable with buyers, agents and lenders.
-export default async function VerifiedPage({ params }: { params: { id: string } }) {
-  const look = await getVerified(params.id);
+export default async function VerifiedPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const look = await getVerified(id);
   // "No record found" is a claim about a home the owner paid to certify. When
   // the lookup failed we have not earned it, and a buyer reading it draws
   // exactly the wrong conclusion.

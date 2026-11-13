@@ -8,8 +8,9 @@ const esc = (s: string) => s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt
 
 // Listing badge: a small image that always shows the record's current state,
 // so an expired record can never keep a "verified" badge on a listing.
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const look = await getVerified(params.id);
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const look = await getVerified(id);
   // A badge sits in a live listing. "Record not found" there, cached for a
   // minute, is an accusation against a home the owner paid to certify, and we
   // have not earned it when the lookup simply failed. Say we do not know.

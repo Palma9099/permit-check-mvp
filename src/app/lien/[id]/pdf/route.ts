@@ -7,8 +7,9 @@ export const dynamic = 'force-dynamic';
 
 // The finished lien search as a PDF, from the saved record (never re-run, so
 // it matches what was delivered).
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
-  const look = await getLienRecord(params.id);
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const look = await getLienRecord(id);
   // 503, not 404: we do not know whether this search exists, and the client
   // fetching it is holding the old PDF. Saying "not found" would send them
   // back to that copy.
