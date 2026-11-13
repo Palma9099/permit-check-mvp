@@ -188,8 +188,16 @@ export const miamiDadeAdapter: CountyAdapter = {
         lookupFailures.push('The county permit lookup failed for this run, so "no permits" below is NOT confirmed. Re-run, or check the county permit portal directly.');
         return [] as Permit[];
       }),
+      // The sibling path above records a user-visible note when it fails; this
+      // one only logged, so a failed layer lookup still read as "no permits" in
+      // the report with nothing saying otherwise. The layer is the OLDER GIS
+      // permit record, so losing it silently is how an old expired permit goes
+      // unmentioned. The lien provider already refuses to publish permits
+      // unless BOTH the table and the layer answer; this is that rule for the
+      // adapter path.
       permitLayerByFolio(folio).catch(() => permitLayerByFolio(folio)).catch((e) => {
         console.error('[miami-dade] permit layer lookup failed', e);
+        lookupFailures.push('The county permit LAYER lookup failed for this run, so "no permits" below is NOT confirmed and an older expired permit could be missing. Re-run, or check the county permit portal directly.');
         return [] as Permit[];
       }),
       neighborPermits(folio).catch((e) => {

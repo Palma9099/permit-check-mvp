@@ -216,7 +216,14 @@ export async function permitLayerByFolio(folio: string): Promise<Permit[]> {
   });
   const data = await fetchJson(`${PERMIT_LAYER}?${q.toString()}`);
   if (data?.error) throw new Error(`permit layer: ${data.error.message ?? 'error'}`);
-  return (data?.features ?? []).map((ft: any) => {
+  // `?? []` read a malformed response as "this folio has no permits", which is
+  // a published claim rather than a missing one. This module already throws on
+  // an arcgis error, so a response that is not a feature collection at all
+  // belongs in the same place. A real empty array still means no permits.
+  if (!Array.isArray(data?.features)) {
+    throw new Error('permit layer: response had no features array');
+  }
+  return data.features.map((ft: any) => {
     const r = ft.attributes ?? {};
     const last = ymd(r.LSTINSDT);
     const code = cleanString(r.BPSTATUS);
