@@ -83,7 +83,53 @@ async function arcgisPage(
   if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
     throw new Error('response carried no features array');
   }
-  return { rows: data.features, truncated: data.exceededTransferLimit === true };
+  // Codex R5-01: the previous version turned a continuation token into a
+  // boolean and threw the token away, after which allRows kept guessing
+  // resultOffset=200, 400 and never sent it. A token says WHICH continuation
+  // to request; it is not proof that 200 rows were consumed, so a two-record
+  // result could still publish one record as a complete search.
+  //
+  // This rejects such a response outright rather than implementing the token
+  // protocol. That is the fail-closed half of Codex's required correction,
+  // and it is the honest half: probing both server families produced only
+  // exceededTransferLimit, never a token, so a token handler here would be
+  // code written against a protocol nothing in this project has ever
+  // returned and could not be exercised against a real endpoint. An
+  // unreadable folio is a named failure; a prefix published as a whole list
+  // is the defect this file exists to prevent. If these services ever do emit
+  // tokens, this throw is what will say so out loud.
+  const token = data?.resultPaginationToken;
+  if (typeof token === 'string' && token.trim()) {
+    throw new Error('response carried a pagination continuation token, which offset paging cannot complete');
+  }
+  return { rows: data.features, truncated: isTruncated(data) };
+}
+
+/**
+ * Does this response say it is NOT the complete answer, in a form offset
+ * paging can actually finish?
+ *
+ * Found by the Broward sweep rather than by a reviewer: this adapter checked
+ * only `exceededTransferLimit`, so a response signalling more rows any other
+ * way would have stopped `allRows` early and published a prefix as complete,
+ * which is R8-02's defect through a signal it did not cover. The worker is a
+ * separate package and cannot import src/lib/arcgis.ts, so the contract is
+ * restated here deliberately rather than shared.
+ *
+ *   exceededTransferLimit            top level, f=json, what we ask for
+ *   properties.exceededTransferLimit where f=geojson puts the same flag
+ *
+ * Both are satisfied by requesting the next `resultOffset`, so both belong
+ * here. `resultPaginationToken` does NOT: it names a continuation rather than
+ * a position, so it is rejected in `arcgisPage` instead of being reported as
+ * ordinary truncation. Returning true for it here is what let the token be
+ * detected and then discarded.
+ *
+ * An explicit `false` means complete, and so does an absent flag.
+ */
+function isTruncated(data: any): boolean {
+  if (data?.exceededTransferLimit === true) return true;
+  return data?.properties?.exceededTransferLimit === true;
 }
 
 /** How many rows one request asks for. Pages are joined by resultOffset. */

@@ -27,7 +27,7 @@ import type {
   UserUploadedThen,
 } from './types';
 import { geocode, reverseCounty, type GeocodeResult } from './geocode';
-import { governingMunicipality } from './lien-providers/municipality';
+import { municipalityFinding } from './lien-providers/municipality';
 import { parcelByFolio } from './counties/statewide-cadastral';
 import { getCountyAdapter, toCountyInfo } from './counties';
 import { bestPropertyAppraiserLink } from './counties/pa-links';
@@ -585,16 +585,24 @@ export async function runDiagnostic(input: {
   //      available; that is an inference and cannot guarantee the lot's
   //      jurisdiction, which is why it is never dressed up as parcel-verified.
   //
-  //      `governingMunicipality` holds the precedence and failure rules, and
+  //      `municipalityFinding` holds the precedence and failure rules, and
   //      is tested against them directly.
   const jurisdictionPoint = polygon.polygon && !polygon.isFallback
     ? interiorPoint(polygon.polygon)
     : { lat: geo.lat, lng: geo.lng };
 
-  const municipality = await governingMunicipality(
+  //      The finding is tri-state on purpose: a boundary source that answers
+  //      "inside no incorporated place" has ESTABLISHED that the county
+  //      governs, and that is not the same as nobody answering. Collapsing
+  //      both to a null municipality told unincorporated readers we could not
+  //      establish their authority when we could.
+  const municipalityResult = await municipalityFinding(
     adapterResult.propertyBasics.municipality,
     jurisdictionPoint,
   );
+  const municipality =
+    municipalityResult.kind === 'named' ? municipalityResult.municipality : null;
+  const unincorporatedConfirmed = municipalityResult.kind === 'unincorporated';
 
   // 4. Google Static Maps URLs with polygon overlay.
   const closeSatUrl = buildSubjectSatelliteUrl(geo.lat, geo.lng, polygon.polygon);
@@ -948,6 +956,7 @@ export async function runDiagnostic(input: {
       owner: adapterResult.propertyBasics.owner,
       subdivision: adapterResult.propertyBasics.subdivision,
       municipality,
+      unincorporatedConfirmed,
       yearBuilt: adapterResult.propertyBasics.yearBuilt,
       heatedArea: adapterResult.propertyBasics.heatedArea,
       totalArea: adapterResult.propertyBasics.totalArea,

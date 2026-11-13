@@ -24,6 +24,7 @@
 // nothing ever compared it to anything. This one cannot.
 
 import { CITY_CODE_COVERAGE } from './city-code-coverage.generated';
+import { BROWARD_CODE_OFFICES } from './broward-code-offices.generated';
 
 /** What the product can do about one city's code records. */
 export interface CityCodeCoverage {
@@ -46,6 +47,32 @@ export interface CityCodeCoverage {
    * searched, and the verdict must still say so.
    */
   deepScanReads: boolean;
+  /**
+   * The code-enforcement office that actually covers this parcel, when a
+   * county publishes one.
+   *
+   * This is NOT coverage. It does not mean anything was searched and it never
+   * moves a verdict off amber. It exists because "ask the city directly" with
+   * no name, no page and no phone is a true sentence that leaves the reader
+   * exactly where they started, and 24 of Broward's 31 municipalities have no
+   * adapter, so that was most of the county.
+   *
+   * `url` is a code-compliance DEPARTMENT page, deliberately not folded into
+   * `portalUrl`: that field is documented as the city's own case SEARCH, and
+   * this project has already shipped a department homepage dressed as a search
+   * once. A reader told "search here" who lands on a contact page has been
+   * misled about what was available.
+   */
+  office?: CodeOffice;
+}
+
+/** A code-enforcement office a reader can contact. Never a search result. */
+export interface CodeOffice {
+  /** The county's own name for it, e.g. "City of Margate". */
+  name: string;
+  /** Its code-compliance department page. Not a case search. */
+  url: string | null;
+  phone: string | null;
 }
 
 /** The registry key: county slug plus the appraiser's spelling of the city. */
@@ -53,6 +80,53 @@ const keyFor = (countyKey: string, municipality: string) =>
   `${countyKey.trim().toLowerCase()}:${municipality.trim().toUpperCase()}`;
 
 const BY_KEY = new Map(CITY_CODE_COVERAGE.map((r) => [r.key, r]));
+
+/**
+ * Offices are matched on a punctuation-free form of the place name.
+ *
+ * Codex R1: the office table is keyed on Broward's own boundary spellings,
+ * while the report's municipality comes from the CENSUS place layer, and the
+ * two disagree on exactly one of the county's 31 towns - Census says
+ * "Lauderdale-by-the-Sea", Broward's boundary field says
+ * "LAUDERDALE BY THE SEA". Uppercasing does not close that gap, so the town
+ * silently had no office on the real report path. Checked against all 411
+ * Florida Census places: 30 of the 31 match exactly and only this one needs
+ * the hyphens removed.
+ *
+ * Collapsing punctuation is safe here because the comparison still requires
+ * the same words in the same order within the same county, which is what
+ * keeps one place from answering for another.
+ */
+const canonical = (place: string) =>
+  place.toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+
+const OFFICE_BY_KEY = new Map(
+  BROWARD_CODE_OFFICES.map((r) => {
+    const [county, place] = r.key.split(':');
+    return [`${county}:${canonical(place)}`, r];
+  }),
+);
+
+/**
+ * The office that enforces code at this municipality, when we know it.
+ *
+ * Broward only today: it is the one county that publishes a per-address
+ * code-office directory (MunicipalCodeAppPts). Any other county returns null
+ * rather than a guess, because naming the wrong office is worse than naming
+ * none - it sends a reader to a government that cannot help them and tells
+ * them it is the one that decides.
+ */
+export function codeOfficeFor(
+  municipality: string | null | undefined,
+  countyKey: string | null | undefined,
+): CodeOffice | null {
+  const m = (municipality ?? '').trim();
+  const c = (countyKey ?? '').trim();
+  if (!m || !c) return null;
+  const row = OFFICE_BY_KEY.get(`${c.toLowerCase()}:${canonical(m)}`);
+  if (!row) return null;
+  return { name: row.office, url: row.url, phone: row.phone };
+}
 
 /**
  * What we can do about code records in this municipality.
@@ -78,18 +152,55 @@ export function cityCodeCoverage(
   // returning wrong data. That is the right behaviour, but it is NOT a city we
   // can promise to read, so an uncalibrated city reports as no coverage - the
   // same answer as a city with no entry at all.
+  const office = codeOfficeFor(m, c);
   const row = BY_KEY.get(keyFor(c, m));
-  if (!row) return null;
+  if (!row) {
+    // No adapter, so nothing here is readable on request. That used to mean
+    // returning null and leaving the report with nothing to say but "ask the
+    // city". If the county names the office, say who it is: the verdict is
+    // unchanged and still amber, but the reader now has somewhere to go.
+    if (!office) return null;
+    return {
+      name: office.name,
+      platform: 'none',
+      portalUrl: null,
+      deepScanReads: false,
+      office,
+    };
+  }
 
   return {
     name: row.name,
     platform: row.platform,
     portalUrl: row.portalUrl,
     deepScanReads: true,
+    ...(office ? { office } : {}),
   };
 }
 
 /** Every city the deep scan can read, for the coverage page and for tests. */
 export function citiesWithCodeCoverage(): string[] {
   return CITY_CODE_COVERAGE.map((r) => r.key).sort();
+}
+
+/**
+ * The county-level code office for a parcel confirmed to be in NO
+ * incorporated place.
+ *
+ * Deliberately a separate function from `codeOfficeFor`, and deliberately
+ * NOT reachable from a null municipality. Codex R1's required correction was
+ * to wire a positively identified district jurisdiction through "without
+ * defaulting every null municipality to the district", and those are two
+ * different facts: a parcel the boundary source placed outside every city has
+ * a known authority, while a parcel nobody could place has none. Only the
+ * caller holding `unincorporatedConfirmed` may ask this.
+ */
+export function unincorporatedCodeOffice(
+  countyKey: string | null | undefined,
+): CodeOffice | null {
+  const c = (countyKey ?? '').trim();
+  if (!c) return null;
+  const row = OFFICE_BY_KEY.get(`${c.toLowerCase()}:UNINCORPORATED`);
+  if (!row) return null;
+  return { name: row.office, url: row.url, phone: row.phone };
 }

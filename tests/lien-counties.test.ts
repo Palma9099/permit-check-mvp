@@ -176,6 +176,35 @@ describe('a Broward search', () => {
     expect(city?.how).toMatch(/could not be determined/i);
   });
 
+  it('asks for a city letter when a boundary matches but carries no CITYNAME', async () => {
+    // Codex R2-01 was raised against the Census place layer, but this is the
+    // same inversion in Broward's own boundary layer. A matched boundary with
+    // a blank name says the point IS inside a city and will not say which.
+    // Reading it as unincorporated drops the city lien letter, which in
+    // Broward is most of the search and the step most likely to hold up a
+    // closing.
+    stub = installArcgisStub([
+      { match: BCPA, rows: [bcpaRow()], centroid: { lat: 26.1, lng: -80.16 } },
+      { match: BROWARD_CITIES, rows: [{ CITYNAME: '   ' }] },
+    ]);
+    const r = await runLienSearch('504217080010', 'broward');
+    expect(r.unincorporated).toBe(false);
+    const city = r.staffSteps.find((s) => s.key === 'city');
+    expect(city).toBeTruthy();
+    expect(city?.how).toMatch(/could not be determined/i);
+  });
+
+  it('still treats a boundary layer with NO match as genuinely unincorporated', async () => {
+    // The control. Without it the fix above would just be a way of never
+    // finding unincorporated Broward at all.
+    stub = installArcgisStub([
+      { match: BCPA, rows: [bcpaRow()], centroid: { lat: 26.1, lng: -80.16 } },
+      { match: BROWARD_CITIES, rows: [] },
+    ]);
+    const r = await runLienSearch('504217080010', 'broward');
+    expect(r.unincorporated).toBe(true);
+  });
+
   it('reports no parcel rather than an empty clear search when the tax roll fails', async () => {
     stub = installArcgisStub([{ match: BCPA, errorBody: { code: 499, message: 'Token Required' } }]);
     const r = await runLienSearch('504217080010', 'broward');
@@ -244,12 +273,33 @@ describe('a records-level county search', () => {
     expect(r.owner).toBeNull();
   });
 
-  it('treats an out-of-Florida place hit as no municipality', async () => {
+  it('treats an out-of-Florida-only place hit as UNKNOWN, not unincorporated', async () => {
+    // BEHAVIOUR CHANGED on purpose, and it is a change to what this test
+    // previously asserted, not just to the code. It used to expect
+    // unincorporated: true, on the reasoning that a neighbouring state's place
+    // is not the authority for a Florida parcel. The first half is right and
+    // the conclusion is not: every record came back readable and says the
+    // point IS inside an incorporated place, so this is a contradictory
+    // answer, not a finding of unincorporated FLORIDA land. The old reading
+    // skipped the city lien letter - the step most likely to hold up a
+    // closing - on the strength of an answer that cannot be true.
     stub = installArcgisStub([
       { match: FDOR, rows: [fdorRow({ CO_NO: 54, PARCEL_ID: '00123456000000' })], centroid: { lat: 24.55, lng: -81.78 } },
-      // A boundary query can return a neighbouring state's place; it is not
-      // the authority for a Florida parcel.
       { match: CENSUS_PLACES, rows: [{ BASENAME: 'Somewhere', NAME: 'Somewhere city', STATE: '13' }] },
+    ]);
+    const r = await runLienSearch('00123456000000', 'monroe');
+    expect(r.municipality).toBeNull();
+    expect(r.unincorporated).toBe(false);
+    const city = r.staffSteps.find((s) => s.key === 'city');
+    expect(city).toBeTruthy();
+  });
+
+  it('still reads a genuinely empty place answer as unincorporated', async () => {
+    // The control for the change above: a complete answer with no features at
+    // all is the one path to the positive finding, and it must keep working.
+    stub = installArcgisStub([
+      { match: FDOR, rows: [fdorRow({ CO_NO: 54, PARCEL_ID: '00123456000000' })], centroid: { lat: 24.55, lng: -81.78 } },
+      { match: CENSUS_PLACES, rows: [] },
     ]);
     const r = await runLienSearch('00123456000000', 'monroe');
     expect(r.municipality).toBeNull();

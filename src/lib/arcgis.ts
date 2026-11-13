@@ -66,11 +66,135 @@ async function raw(layerUrl: string, q: LayerQuery): Promise<any> {
   return data;
 }
 
-/** Attribute rows. Throws when the source did not answer properly. */
+/**
+ * Attribute rows. Throws when the source did not answer properly.
+ *
+ * Codex R2-01: that docstring was already the contract and the code did not
+ * keep it. A 200 response whose JSON has no `features` array returned `[]`,
+ * indistinguishable from a layer that genuinely matched nothing. Every one of
+ * this function's callers is a lien, code-case, permit or boundary source
+ * where an empty answer is read as "nothing on this property", so an
+ * unreadable body became a clean result - the one failure this product exists
+ * to prevent. `raw` already throws on HTTP failure, non-JSON and an {error}
+ * body; this closes the last shape that slipped through.
+ */
 export async function queryLayer(layerUrl: string, q: LayerQuery = {}): Promise<any[]> {
   const data = await raw(layerUrl, q);
-  if (!data || !Array.isArray(data.features)) return [];
+  // A count query legitimately answers {count: N} with no features.
+  if (q.returnCountOnly) return Array.isArray(data?.features) ? data.features : [];
+  if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
+    throw new Error(`layer query returned no features array (${q.label ?? 'arcgis'})`);
+  }
   return data.features.map((f: any) => f.attributes ?? {});
+}
+
+/**
+ * Why this response is NOT the complete answer to the query, or null if it is.
+ *
+ * Codex R4-01: the validator proved every RECORD readable and then threw the
+ * response envelope away, so `{"features":[],"exceededTransferLimit":true}` -
+ * an explicitly TRUNCATED empty answer - was read as a complete empty one.
+ * Record readability is not response completeness. Worse, this is the same
+ * flag already handled in the Miami-Dade adapter's pagination, so the lesson
+ * existed in this repo and I did not carry it into a new validator.
+ *
+ * So this sweeps the whole partial-result contract rather than guessing the
+ * next flag, from the ArcGIS REST query reference plus probes of both server
+ * families this code actually talks to:
+ *
+ *   exceededTransferLimit            top level, f=json. Documented truncation
+ *                                   flag. Probed: TIGERweb MapServer and an
+ *                                   ArcGIS Online FeatureServer both set it
+ *                                   true when truncated and OMIT it when
+ *                                   complete; an explicit false means complete.
+ *   properties.exceededTransferLimit f=geojson moves the same flag inside the
+ *                                   FeatureCollection. We only ask for
+ *                                   f=json, so this is here so a future
+ *                                   format change cannot silently reopen the
+ *                                   hole.
+ *   resultPaginationToken            top level. A continuation token: the
+ *                                   server kept rows back for a next page.
+ *                                   Codex R5-01: a token is REJECTED here,
+ *                                   never consumed. It names a continuation
+ *                                   rather than a position, so treating it as
+ *                                   ordinary truncation invites a caller to
+ *                                   guess an offset and publish a prefix.
+ *                                   Probing both server families produced
+ *                                   only exceededTransferLimit and never a
+ *                                   token, so a handler would be code written
+ *                                   against a protocol nothing here returns
+ *                                   and could not be exercised. This function
+ *                                   demands a complete answer, so refusing is
+ *                                   the whole correct behaviour; if these
+ *                                   services ever emit tokens, this is what
+ *                                   says so out loud.
+ *
+ * Deliberately NOT applied to `queryLayer`: several of its callers pass
+ * `resultRecordCount: 1` on purpose (a parcel lookup, a boundary lookup, the
+ * BCPA point read), so truncation is their normal case and throwing would
+ * break working code. Completeness is only required where a caller asks for a
+ * complete answer, which is this function.
+ */
+export function partialResultReason(data: any): string | null {
+  if (data?.exceededTransferLimit === true) return 'exceededTransferLimit';
+  if (data?.properties?.exceededTransferLimit === true) {
+    return 'properties.exceededTransferLimit';
+  }
+  const token = data?.resultPaginationToken;
+  if (typeof token === 'string' && token.trim()) return 'resultPaginationToken';
+  return null;
+}
+
+/**
+ * RAW features, with every record proved readable before the caller sees it.
+ *
+ * `queryLayer` normalizes each feature to `f.attributes ?? {}`, which destroys
+ * the one fact a spatial lookup depends on: whether the record was readable at
+ * all. A feature with no attributes becomes an empty object, survives into the
+ * rows, and then disappears at the caller's first filter - leaving an empty
+ * list that looks exactly like a point matching nothing.
+ *
+ * Codex R3-01 is that bug: `{"features":[{"attributes":{}}]}` passed
+ * `queryLayer`, was removed by a `STATE === '12'` filter and the empty
+ * remainder was read as "inside no incorporated place". Three rounds of
+ * guarding individual shapes did not fix it, because the problem is not any
+ * one shape: it is that FILTERING AN UNVALIDATED LIST ERASES THE DIFFERENCE
+ * between "no such record" and "a record we could not read".
+ *
+ * So validation happens here, before any filter: every feature must carry an
+ * attributes object, and every field named in `required` must be a non-empty
+ * string on every feature. Anything else throws. What comes back can be
+ * filtered safely, because an empty result now means the source really had
+ * nothing to say.
+ */
+export async function queryFeaturesValidated(
+  layerUrl: string,
+  q: LayerQuery,
+  required: string[],
+): Promise<any[]> {
+  const data = await raw(layerUrl, q);
+  const label = q.label ?? 'arcgis';
+  if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
+    throw new Error(`layer query returned no features array (${label})`);
+  }
+  // Checked BEFORE the records, because an empty truncated answer has no
+  // records to inspect and is exactly the shape that slipped through.
+  const partial = partialResultReason(data);
+  if (partial) {
+    throw new Error(`layer query returned a partial result (${label}; ${partial})`);
+  }
+  return data.features.map((f: any) => {
+    const a = f?.attributes;
+    if (!a || typeof a !== 'object' || Array.isArray(a)) {
+      throw new Error(`layer query returned a feature with no attributes (${label})`);
+    }
+    for (const field of required) {
+      if (!str(a[field])) {
+        throw new Error(`layer query returned a feature with no readable ${field} (${label})`);
+      }
+    }
+    return a;
+  });
 }
 
 /** One row plus its polygon centroid, for "where is this parcel" lookups. */

@@ -78,7 +78,20 @@ async function cityNameAt(lat: number, lng: number): Promise<string | null> {
     resultRecordCount: 1,
     label: 'broward-city',
   });
-  return str(rows[0]?.CITYNAME) || null;
+  // No city boundary contains the point. The query completed, so the parcel
+  // is positively in unincorporated Broward.
+  if (!rows.length) return null;
+  const name = str(rows[0]?.CITYNAME);
+  // Codex R2-01 was about the Census layer, but this is the same inversion in
+  // Broward's own boundary layer, one file over, and fixing only the reported
+  // site would be fixing the instance instead of the class. A matched boundary
+  // with a blank CITYNAME says the point IS inside a city and will not say
+  // which; returning null told the caller "unincorporated", which here drops
+  // the city lien letter - the step most likely to hold up a closing.
+  if (!name) {
+    throw new Error('broward-city matched a boundary with no CITYNAME; jurisdiction not established');
+  }
+  return name;
 }
 
 const legalOf = (a: any) =>

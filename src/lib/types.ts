@@ -299,6 +299,16 @@ export interface DiagnosticReport {
     owner: string | null;
     subdivision: string | null;
     municipality: string | null;
+    /**
+     * True only when the boundary source ANSWERED and placed this parcel
+     * inside no incorporated place, so its county governs.
+     *
+     * A null municipality alone cannot carry this: it also means nobody
+     * answered. Keeping the two apart is what lets the report name the county
+     * office for an unincorporated parcel instead of telling the reader we
+     * could not establish the authority. Never set it from a failed lookup.
+     */
+    unincorporatedConfirmed: boolean;
     yearBuilt: number | null;
     heatedArea: number | null;
     totalArea: number | null;

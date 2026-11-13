@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "gen:coverage": "tsx scripts/gen-city-code-coverage.ts",
-    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json"
+    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
+    "gen:broward-offices": "tsx scripts/gen-broward-code-offices.ts"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

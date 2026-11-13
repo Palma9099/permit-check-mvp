@@ -39,7 +39,7 @@ describe('the resolver that lets the report name a city', () => {
     let called = false;
     const got = await governingMunicipality('HIALEAH', TAMPA, async () => {
       called = true;
-      return 'Somewhere Else';
+      return { kind: 'named', municipality: 'Somewhere Else' };
     });
     // The Property Appraiser is the primary source for its own parcels. An
     // inference must not overwrite it, and must not even be attempted.
@@ -51,13 +51,15 @@ describe('the resolver that lets the report name a city', () => {
     const got = await governingMunicipality(null, TAMPA, async (lat, lng) => {
       expect(lat).toBe(TAMPA.lat);
       expect(lng).toBe(TAMPA.lng);
-      return 'Tampa';
+      return { kind: 'named', municipality: 'Tampa' };
     });
     expect(got).toBe('Tampa');
   });
 
   it('treats an empty string in the record as a blank, not as an answer', async () => {
-    expect(await governingMunicipality('   ', TAMPA, async () => 'Tampa')).toBe('Tampa');
+    expect(
+      await governingMunicipality('   ', TAMPA, async () => ({ kind: 'named', municipality: 'Tampa' })),
+    ).toBe('Tampa');
   });
 
   it('stays null when the boundary source throws', async () => {
@@ -71,14 +73,19 @@ describe('the resolver that lets the report name a city', () => {
   });
 
   it('stays null for a parcel outside every city', async () => {
-    expect(await governingMunicipality(null, TAMPA, async () => null)).toBeNull();
+    // The lookup now RETURNS the finding it validated rather than a null the
+    // caller has to interpret, so "unincorporated" can only arrive as a value
+    // this function was handed - never as something it inferred from a count.
+    expect(
+      await governingMunicipality(null, TAMPA, async () => ({ kind: 'unincorporated' })),
+    ).toBeNull();
   });
 
   it('does not invent a point when none is known', async () => {
     let called = false;
     const got = await governingMunicipality(null, null, async () => {
       called = true;
-      return 'Tampa';
+      return { kind: 'named', municipality: 'Tampa' };
     });
     expect(got).toBeNull();
     expect(called).toBe(false);
@@ -88,7 +95,7 @@ describe('the resolver that lets the report name a city', () => {
     let called = false;
     const got = await governingMunicipality(null, { lat: NaN, lng: -82.4 }, async () => {
       called = true;
-      return 'Tampa';
+      return { kind: 'named', municipality: 'Tampa' };
     });
     expect(got).toBeNull();
     expect(called).toBe(false);
