@@ -9,8 +9,9 @@ const et = (iso: string) =>
 
 // A finished lien search, as delivered to the title company: county records
 // plus what Palma staff found in taxes, Official Records and utilities.
-export default async function LienRecordPage({ params }: { params: { id: string } }) {
-  const look = await getLienRecord(params.id);
+export default async function LienRecordPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const look = await getLienRecord(id);
 
   // Not knowing is its own answer. "No lien search found" when the database is
   // simply unreachable reads as a broken link, and a title company reading

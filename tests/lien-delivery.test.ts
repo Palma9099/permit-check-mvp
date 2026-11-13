@@ -19,7 +19,7 @@ afterEach(() => {
 const pdf = async (id: string) => {
   const { GET } = await import('@/app/lien/[id]/pdf/route');
   const req = new NextRequest(`https://test.palma.invalid/lien/${id}/pdf`);
-  const res = await GET(req, { params: { id } });
+  const res = await GET(req, { params: Promise.resolve({ id }) });
   return res;
 };
 

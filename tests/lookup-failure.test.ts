@@ -125,7 +125,7 @@ describe('the folio lookup behind the report chip', () => {
 describe('the badge sitting in a live listing', () => {
   const badge = async (id: string) => {
     const { GET } = await import('@/app/verified/[id]/badge/route');
-    const res = await GET(new NextRequest(`https://test.palma.invalid/verified/${id}/badge`), { params: { id } });
+    const res = await GET(new NextRequest(`https://test.palma.invalid/verified/${id}/badge`), { params: Promise.resolve({ id }) });
     return { cache: res.headers.get('cache-control'), svg: await res.text() };
   };
 

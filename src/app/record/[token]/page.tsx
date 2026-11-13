@@ -16,8 +16,10 @@ const TONE = {
 
 const RING = (s: number) => (s >= 85 ? '#059669' : s >= 65 ? '#d97706' : s >= 40 ? '#ea580c' : '#b91c1c');
 
-export default function RecordPage({ params }: { params: { token: string } }) {
-  const v = verifyRecordToken(decodeURIComponent(params.token));
+export default async function RecordPage({ params }: { params: Promise<{ token: string }> }) {
+  // Next 15 made the dynamic-route params a promise, so this became async.
+  const { token } = await params;
+  const v = verifyRecordToken(decodeURIComponent(token));
 
   if (!v) {
     return (
