@@ -88,6 +88,52 @@ export async function queryLayer(layerUrl: string, q: LayerQuery = {}): Promise<
   return data.features.map((f: any) => f.attributes ?? {});
 }
 
+/**
+ * RAW features, with every record proved readable before the caller sees it.
+ *
+ * `queryLayer` normalizes each feature to `f.attributes ?? {}`, which destroys
+ * the one fact a spatial lookup depends on: whether the record was readable at
+ * all. A feature with no attributes becomes an empty object, survives into the
+ * rows, and then disappears at the caller's first filter - leaving an empty
+ * list that looks exactly like a point matching nothing.
+ *
+ * Codex R3-01 is that bug: `{"features":[{"attributes":{}}]}` passed
+ * `queryLayer`, was removed by a `STATE === '12'` filter and the empty
+ * remainder was read as "inside no incorporated place". Three rounds of
+ * guarding individual shapes did not fix it, because the problem is not any
+ * one shape: it is that FILTERING AN UNVALIDATED LIST ERASES THE DIFFERENCE
+ * between "no such record" and "a record we could not read".
+ *
+ * So validation happens here, before any filter: every feature must carry an
+ * attributes object, and every field named in `required` must be a non-empty
+ * string on every feature. Anything else throws. What comes back can be
+ * filtered safely, because an empty result now means the source really had
+ * nothing to say.
+ */
+export async function queryFeaturesValidated(
+  layerUrl: string,
+  q: LayerQuery,
+  required: string[],
+): Promise<any[]> {
+  const data = await raw(layerUrl, q);
+  const label = q.label ?? 'arcgis';
+  if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
+    throw new Error(`layer query returned no features array (${label})`);
+  }
+  return data.features.map((f: any) => {
+    const a = f?.attributes;
+    if (!a || typeof a !== 'object' || Array.isArray(a)) {
+      throw new Error(`layer query returned a feature with no attributes (${label})`);
+    }
+    for (const field of required) {
+      if (!str(a[field])) {
+        throw new Error(`layer query returned a feature with no readable ${field} (${label})`);
+      }
+    }
+    return a;
+  });
+}
+
 /** One row plus its polygon centroid, for "where is this parcel" lookups. */
 export async function queryOneWithCentroid(
   layerUrl: string,

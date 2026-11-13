@@ -26,7 +26,15 @@ type PlacesMode =
   /** HTTP 200, JSON, but no features array at all. Codex R2-01. */
   | 'no-features'
   /** A matched Florida feature carrying neither BASENAME nor NAME. Codex R2-01. */
-  | 'unnamed-match';
+  | 'unnamed-match'
+  /** A matched feature with an EMPTY attributes object. Codex R3-01. */
+  | 'empty-attributes'
+  /** A matched feature with NO attributes key at all. */
+  | 'no-attributes'
+  /** A matched feature whose STATE is blank. */
+  | 'blank-state'
+  /** Readable records, none of them in Florida. */
+  | 'other-state';
 
 /**
  * Answer every host the report touches for a Broward address.
@@ -71,6 +79,28 @@ function installStub(mode: PlacesMode, placeName = 'Lauderdale-by-the-Sea') {
       if (mode === 'unnamed-match') {
         return new Response(
           JSON.stringify({ features: [{ attributes: { STATE: '12' } }] }),
+          { status: 200 },
+        );
+      }
+      // Codex R3-01's body, verbatim: a matched record the STATE filter used
+      // to remove, leaving an empty list that looked like "no place here".
+      if (mode === 'empty-attributes') {
+        return new Response(JSON.stringify({ features: [{ attributes: {} }] }), { status: 200 });
+      }
+      // The two shapes adjacent to it, which I should have found myself
+      // rather than waiting for a fourth round to report them.
+      if (mode === 'no-attributes') {
+        return new Response(JSON.stringify({ features: [{ geometry: null }] }), { status: 200 });
+      }
+      if (mode === 'blank-state') {
+        return new Response(
+          JSON.stringify({ features: [{ attributes: { BASENAME: 'Margate', STATE: '   ' } }] }),
+          { status: 200 },
+        );
+      }
+      if (mode === 'other-state') {
+        return new Response(
+          JSON.stringify({ features: [{ attributes: { BASENAME: 'Somewhere', STATE: '13' } }] }),
           { status: 200 },
         );
       }
@@ -223,5 +253,63 @@ describe('an unreadable boundary answer never certifies a jurisdiction', () => {
     const report = await runDiagnostic({ address: ADDRESS });
     expect(report.property.unincorporatedConfirmed).toBe(true);
     expect(codeItem(report).info.buyer).toContain('Broward Municipal Services District');
+  });
+});
+
+// Codex R3-01, and the redesign that answers it.
+//
+// Three rounds of guarding individual response shapes did not close this,
+// because the defect was never a missing guard: `unincorporated` was being
+// INFERRED by a caller noticing an empty list, and an empty list has two
+// causes - the source had nothing, or the source said something unreadable
+// that a filter then removed. R3-01 is the second cause wearing a new shape.
+//
+// The redesign makes the positive finding a VALUE CONSTRUCTED inside the
+// validated lookup. `placeAt` proves every returned record readable before it
+// filters anything, and returns {kind:'unincorporated'} only from a complete
+// answer with no features at all. No caller can manufacture it by counting.
+describe('unincorporated can only come from a fully validated response', () => {
+  const unreadable: Array<[string, PlacesMode]> = [
+    ['Codex R3-01: a matched record with empty attributes', 'empty-attributes'],
+    ['a matched record with no attributes key at all', 'no-attributes'],
+    ['a matched record whose STATE is blank', 'blank-state'],
+    ['readable records, none of them in Florida', 'other-state'],
+    ['a 200 body with no features array', 'no-features'],
+    ['a matched Florida place carrying no name', 'unnamed-match'],
+    ['a boundary source that does not answer', 'fail'],
+  ];
+
+  for (const [label, mode] of unreadable) {
+    it(`refuses to certify a district from ${label}`, async () => {
+      restore = installStub(mode);
+      const report = await runDiagnostic({ address: ADDRESS });
+      expect(report.property.unincorporatedConfirmed).toBe(false);
+      expect(report.property.municipality).toBeNull();
+
+      const item = codeItem(report);
+      expect(item.tone).toBe('amber');
+      expect(item.info.buyer).not.toContain('Broward Municipal Services District');
+      expect(item.info.buyer).not.toContain('954-357-9793');
+      expect(item.info.buyer).toContain('could not establish which authority');
+    });
+  }
+
+  it('still certifies the district from the ONE valid empty answer', async () => {
+    // Without this control the whole redesign would just be a way of never
+    // naming the district at all.
+    restore = installStub('none');
+    const report = await runDiagnostic({ address: ADDRESS });
+    expect(report.property.unincorporatedConfirmed).toBe(true);
+    const buyer = codeItem(report).info.buyer;
+    expect(buyer).toContain('Broward Municipal Services District');
+    expect(buyer).toContain('954-357-9793');
+  });
+
+  it('still names a city from a readable Florida match', async () => {
+    restore = installStub('named', 'Margate');
+    const report = await runDiagnostic({ address: ADDRESS });
+    expect(report.property.municipality).toBe('Margate');
+    expect(report.property.unincorporatedConfirmed).toBe(false);
+    expect(codeItem(report).info.buyer).toContain('City of Margate');
   });
 });

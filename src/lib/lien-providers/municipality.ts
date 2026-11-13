@@ -9,7 +9,7 @@
 // says to confirm with the city, and the city letter is requested by hand
 // either way.
 
-import { queryLayer, str } from '../arcgis';
+import { queryFeaturesValidated, str } from '../arcgis';
 
 const PLACES =
   'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Places_CouSub_ConCity_SubMCD/MapServer/4';
@@ -17,36 +17,85 @@ const PLACES =
 const FLORIDA = '12';
 
 /**
- * The incorporated place containing this point, or null for an unincorporated
- * parcel. Throws when the source does not answer, so a caller never reads a
- * failed lookup as "unincorporated".
+ * What the Census place layer established about this point.
+ *
+ * `unincorporated` is a VALUE CONSTRUCTED HERE, inside the function that did
+ * the validating. That is the whole point of the redesign: for three review
+ * rounds this fact was instead INFERRED by a caller noticing that a list was
+ * empty, and an empty list has two causes - the source had nothing, or the
+ * source said something we could not read. Every guard I added closed one
+ * shape of the second cause and left the next one, because no amount of
+ * guarding fixes an inference drawn from a count.
+ *
+ * Now the only way to obtain `unincorporated` is for this function to return
+ * it, and it does that only after every returned record has been proved
+ * readable. Unreadable answers throw. A caller cannot manufacture the positive
+ * finding, however it counts things.
  */
-export async function municipalityAt(lat: number, lng: number): Promise<string | null> {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const rows = await queryLayer(PLACES, {
-    point: { lat, lng },
-    outFields: 'BASENAME,NAME,STATE',
-    resultRecordCount: 4,
-    label: 'census-places',
-  });
+export type PlaceFinding =
+  /** A Florida incorporated place contains the point. */
+  | { kind: 'named'; municipality: string }
+  /** The layer answered completely and NO place contains the point. */
+  | { kind: 'unincorporated' };
+
+/**
+ * The incorporated place containing this point.
+ *
+ * Throws when the source did not answer, when any returned record is
+ * unreadable, or when the answer is self-contradictory for a Florida parcel.
+ * A caller must never read a failed lookup as "unincorporated".
+ */
+export async function placeAt(lat: number, lng: number): Promise<PlaceFinding> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error('census-places needs a finite point');
+  }
+  // STATE is required on every feature, checked BEFORE the Florida filter, so
+  // a record whose state cannot be read can no longer vanish into it.
+  const rows = await queryFeaturesValidated(
+    PLACES,
+    {
+      point: { lat, lng },
+      outFields: 'BASENAME,NAME,STATE',
+      resultRecordCount: 4,
+      label: 'census-places',
+    },
+    ['STATE'],
+  );
+
+  // A complete answer with no features at all: the point is inside no
+  // incorporated place anywhere. This is the one path to the positive finding.
+  if (rows.length === 0) return { kind: 'unincorporated' };
+
   const inFlorida = rows.filter((r) => str(r.STATE) === FLORIDA);
+  if (inFlorida.length === 0) {
+    // Every record was readable and none is in Florida, so the point IS inside
+    // an incorporated place - just not a Florida one. For a Florida parcel
+    // that is a contradiction, not a finding of unincorporated Florida land,
+    // and the honest answer is that we do not know.
+    throw new Error(
+      `census-places matched only non-Florida places (${rows.map((r) => str(r.STATE)).join(',')}); jurisdiction not established`,
+    );
+  }
+
   const r = inFlorida[0];
-  // No Florida place contains the point. The query completed, so this is a
-  // positive finding: the parcel is in no incorporated place.
-  if (!r) return null;
   const name = str(r.BASENAME) || str(r.NAME).replace(/\s+(city|town|village)$/i, '');
-  // Codex R2-01: a matched Florida feature carrying neither BASENAME nor NAME
-  // used to return null here, which a caller reads as "inside no incorporated
-  // place". It is the opposite: the layer says the point IS inside a place and
-  // will not tell us which. Returning null made a municipal parcel look
-  // unincorporated and could send its owner to the county office. Throwing is
-  // the documented contract of this function - a caller must never read a
-  // failed lookup as unincorporated - and it is what the three callers already
-  // handle correctly.
   if (!name) {
+    // The layer says the point IS inside a place and will not say which.
     throw new Error('census-places matched a Florida place with no name; jurisdiction not established');
   }
-  return name;
+  return { kind: 'named', municipality: name };
+}
+
+/**
+ * The place name, or null for a parcel the layer placed inside none.
+ *
+ * Kept for the two callers that read it this way (the deep-scan route column
+ * and fl-records' city-letter decision). Both already treat a throw as
+ * "unknown", which is why `placeAt` throwing is what makes them correct.
+ */
+export async function municipalityAt(lat: number, lng: number): Promise<string | null> {
+  const f = await placeAt(lat, lng);
+  return f.kind === 'named' ? f.municipality : null;
 }
 
 /**
@@ -88,7 +137,7 @@ export type MunicipalityFinding =
 export async function municipalityFinding(
   fromRecord: string | null | undefined,
   point: { lat: number; lng: number } | null,
-  lookup: (lat: number, lng: number) => Promise<string | null> = municipalityAt,
+  lookup: (lat: number, lng: number) => Promise<PlaceFinding> = placeAt,
 ): Promise<MunicipalityFinding> {
   const named = (fromRecord ?? '').trim();
   if (named) return { kind: 'named', municipality: named };
@@ -96,11 +145,9 @@ export async function municipalityFinding(
     return { kind: 'unknown' };
   }
   try {
-    const hit = await lookup(point.lat, point.lng);
-    // `municipalityAt` returns null ONLY when the query succeeded and matched
-    // no Florida incorporated place. It throws when the source did not answer,
-    // which is the branch below.
-    return hit ? { kind: 'named', municipality: hit } : { kind: 'unincorporated' };
+    // `lookup` returns the finding it built after validating; this function
+    // never decides "unincorporated" for itself.
+    return await lookup(point.lat, point.lng);
   } catch {
     return { kind: 'unknown' };
   }
@@ -128,7 +175,7 @@ export async function municipalityFinding(
 export async function governingMunicipality(
   fromRecord: string | null | undefined,
   point: { lat: number; lng: number } | null,
-  lookup: (lat: number, lng: number) => Promise<string | null> = municipalityAt,
+  lookup: (lat: number, lng: number) => Promise<PlaceFinding> = placeAt,
 ): Promise<string | null> {
   // Implemented on top of municipalityFinding so the two can never disagree
   // about precedence or about what a failure means.

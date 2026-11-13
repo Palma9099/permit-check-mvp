@@ -273,12 +273,33 @@ describe('a records-level county search', () => {
     expect(r.owner).toBeNull();
   });
 
-  it('treats an out-of-Florida place hit as no municipality', async () => {
+  it('treats an out-of-Florida-only place hit as UNKNOWN, not unincorporated', async () => {
+    // BEHAVIOUR CHANGED on purpose, and it is a change to what this test
+    // previously asserted, not just to the code. It used to expect
+    // unincorporated: true, on the reasoning that a neighbouring state's place
+    // is not the authority for a Florida parcel. The first half is right and
+    // the conclusion is not: every record came back readable and says the
+    // point IS inside an incorporated place, so this is a contradictory
+    // answer, not a finding of unincorporated FLORIDA land. The old reading
+    // skipped the city lien letter - the step most likely to hold up a
+    // closing - on the strength of an answer that cannot be true.
     stub = installArcgisStub([
       { match: FDOR, rows: [fdorRow({ CO_NO: 54, PARCEL_ID: '00123456000000' })], centroid: { lat: 24.55, lng: -81.78 } },
-      // A boundary query can return a neighbouring state's place; it is not
-      // the authority for a Florida parcel.
       { match: CENSUS_PLACES, rows: [{ BASENAME: 'Somewhere', NAME: 'Somewhere city', STATE: '13' }] },
+    ]);
+    const r = await runLienSearch('00123456000000', 'monroe');
+    expect(r.municipality).toBeNull();
+    expect(r.unincorporated).toBe(false);
+    const city = r.staffSteps.find((s) => s.key === 'city');
+    expect(city).toBeTruthy();
+  });
+
+  it('still reads a genuinely empty place answer as unincorporated', async () => {
+    // The control for the change above: a complete answer with no features at
+    // all is the one path to the positive finding, and it must keep working.
+    stub = installArcgisStub([
+      { match: FDOR, rows: [fdorRow({ CO_NO: 54, PARCEL_ID: '00123456000000' })], centroid: { lat: 24.55, lng: -81.78 } },
+      { match: CENSUS_PLACES, rows: [] },
     ]);
     const r = await runLienSearch('00123456000000', 'monroe');
     expect(r.municipality).toBeNull();
