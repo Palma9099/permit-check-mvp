@@ -114,6 +114,20 @@ export async function queryLayer(layerUrl: string, q: LayerQuery = {}): Promise<
  *                                   hole.
  *   resultPaginationToken            top level. A continuation token: the
  *                                   server kept rows back for a next page.
+ *                                   Codex R5-01: a token is REJECTED here,
+ *                                   never consumed. It names a continuation
+ *                                   rather than a position, so treating it as
+ *                                   ordinary truncation invites a caller to
+ *                                   guess an offset and publish a prefix.
+ *                                   Probing both server families produced
+ *                                   only exceededTransferLimit and never a
+ *                                   token, so a handler would be code written
+ *                                   against a protocol nothing here returns
+ *                                   and could not be exercised. This function
+ *                                   demands a complete answer, so refusing is
+ *                                   the whole correct behaviour; if these
+ *                                   services ever emit tokens, this is what
+ *                                   says so out loud.
  *
  * Deliberately NOT applied to `queryLayer`: several of its callers pass
  * `resultRecordCount: 1` on purpose (a parcel lookup, a boundary lookup, the

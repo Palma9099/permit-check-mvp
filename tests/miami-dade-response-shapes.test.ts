@@ -228,24 +228,84 @@ describe('Codex R9-02: rows that cannot be read are not zero rows', () => {
 // other way would have stopped paging early and published a prefix as a
 // complete list - R8-02's defect through a signal it did not cover.
 describe('every way a response can say it is incomplete', () => {
-  it('pages on a pagination token, not just the transfer-limit flag', async () => {
+  it('fails closed on a continuation token, and the stub REQUIRES the token', async () => {
+    // Codex R5-01 rejected my previous version of this test, correctly: its
+    // stub returned the second record whenever the offset changed to 200,
+    // without ever checking that the token was sent, so it rewarded code that
+    // detected the token and threw it away. The outcome matched my code
+    // instead of the protocol.
+    //
+    // This stub serves record B ONLY to a request that actually carries
+    // resultPaginationToken=next-B. A guessed offset gets an empty page, so
+    // offset paging CANNOT satisfy it, and the read must refuse rather than
+    // publish A as a complete search. B carries a recorded lien, which is
+    // what makes the silent prefix dangerous.
+    const sentTokens: string[] = [];
     const offsets: string[] = [];
     globalThis.fetch = (async (u: any) => {
       const url = new URL(String(u));
       if (!url.pathname.includes('CodeComplianceViolation_Open_View')) {
         return json({ features: [] });
       }
-      const off = url.searchParams.get('resultOffset') ?? '0';
-      offsets.push(off);
-      // No exceededTransferLimit anywhere; only a continuation token.
-      return off === '0'
-        ? json({ features: [{ attributes: { CASE_NUM: 'A' } }], resultPaginationToken: 'next' })
-        : json({ features: [{ attributes: { CASE_NUM: 'B' } }] });
+      const tok = url.searchParams.get('resultPaginationToken');
+      offsets.push(url.searchParams.get('resultOffset') ?? '0');
+      if (tok) {
+        sentTokens.push(tok);
+        return tok === 'next-B'
+          ? json({ features: [{ attributes: { CASE_NUM: 'B', LN_RECBOOK: '12345', LN_RECPAGE: '678' } }] })
+          : json({ features: [] });
+      }
+      // A SHORT first page, well under the 200-row request, carrying a token.
+      // Offset paging would stop here and call one record the whole answer.
+      return url.searchParams.get('resultOffset') === '0'
+        ? json({ features: [{ attributes: { CASE_NUM: 'A' } }], resultPaginationToken: 'next-B' })
+        : json({ features: [] });
+    }) as any;
+
+    const r = await run();
+    // Fail closed: no clean result, and nothing published.
+    expect(r.ok).toBe(false);
+    expect(r.violationsChecked).toBe(false);
+    expect(r.violations).toHaveLength(0);
+    expect(r.notes.join(' ')).toMatch(/incomplete|could not be read/i);
+    // And the point of the test: the adapter never obtained B by guessing.
+    expect(sentTokens).toEqual([]);
+    expect(r.violations.map((v) => v.caseNumber)).not.toContain('A');
+  });
+
+  it('refuses a token even when the first page fills the whole request', async () => {
+    // The other shape: a full 200-row page WITH a token. Offset paging would
+    // march on to 400 and could skip whatever the token actually points at.
+    globalThis.fetch = (async (u: any) => {
+      const url = new URL(String(u));
+      if (!url.pathname.includes('CodeComplianceViolation_Open_View')) {
+        return json({ features: [] });
+      }
+      // Only the FIRST page is served. Offset paging would read the empty
+      // second page as the end and publish these 200 rows as the complete
+      // list, while the token says there is more somewhere it never asked.
+      return url.searchParams.get('resultOffset') === '0'
+        ? json({
+            features: Array.from({ length: 200 }, (_, i) => ({ attributes: { CASE_NUM: `C${i}` } })),
+            resultPaginationToken: 'more',
+          })
+        : json({ features: [] });
     }) as any;
     const r = await run();
-    expect(offsets.slice(0, 2)).toEqual(['0', '200']);
+    expect(r.ok).toBe(false);
+    expect(r.violationsChecked).toBe(false);
+    expect(r.violations).toHaveLength(0);
+  });
+
+  it('ignores an empty or non-string token, which is not a continuation', async () => {
+    globalThis.fetch = (async () => json({ features: [], resultPaginationToken: '' })) as any;
+    let r = await run();
     expect(r.ok).toBe(true);
-    expect(r.violations.map((v) => v.caseNumber)).toEqual(['A', 'B']);
+    expect(r.violationsChecked).toBe(true);
+    globalThis.fetch = (async () => json({ features: [], resultPaginationToken: null })) as any;
+    r = await run();
+    expect(r.ok).toBe(true);
+    expect(r.violationsChecked).toBe(true);
   });
 
   it('pages on the geojson envelope form of the flag', async () => {
