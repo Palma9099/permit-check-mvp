@@ -16,12 +16,15 @@
 // The live selector check is worker/src/smoke-broward.ts.
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 // Imported from broward-parse, never from broward.ts: the latter imports
 // playwright, which is a worker dependency and does not exist at the repo root.
 // Vercel installs root dependencies only, so reaching across that boundary
 // builds locally and fails the deploy. The browser flow itself is covered by
 // worker/src/smoke-broward.ts.
 import {
+  browardSaysNoPermits,
+  browardSaysNoCases,
   parcelKeyFor,
   authorityFromCityName,
   authorityNote,
@@ -326,5 +329,56 @@ describe('activities and the recorded lien', () => {
     // document at Official Records.
     expect(JSON.stringify(a)).not.toMatch(/\$\s*[\d,]+/);
     expect(lienSummary(a)).not.toMatch(/\$/);
+  });
+});
+
+// The portal's own empty-state wording, on BOTH lists.
+//
+// The permit list had no empty-state matcher at all, so a parcel with a
+// genuinely empty permit history fell through to "automated read did not
+// return a table - use the portal link to confirm". That is the safe
+// direction, but it reports an answer we HAD as an answer we could not get.
+// Same defect class as Nassau's unrecognised "Your search returned no
+// results". Found 2026-11-12 by the first folio-keyed probe of this tenant:
+// 2 of 8 real BMSD parcels hit it.
+//
+// Fixture text is the live page, not an invented string.
+describe("the portal's own empty states", () => {
+  const fx = JSON.parse(
+    readFileSync(new URL('./fixtures/broward-empty-states.json', import.meta.url), 'utf8'),
+  ) as { pages: Record<string, string> };
+
+  it('reads an empty permit list as searched, on the real page text', () => {
+    // BMSD parcels 494232013050 and 504205090540; both reported as unread
+    // before this matcher existed.
+    expect(browardSaysNoPermits(fx.pages.ParcelPermitList_316925)).toBe(true);
+    expect(browardSaysNoPermits(fx.pages.ParcelPermitList_441225)).toBe(true);
+  });
+
+  it('does NOT claim an empty permit list when the grid has permits', () => {
+    // Parcel 316920 carries 22 permits. The predicate must not fire, and the
+    // adapter consults it only when the grid yielded no usable rows anyway,
+    // so rows that parsed can never be overridden by a banner.
+    expect(browardSaysNoPermits(fx.pages.ParcelPermitList_316920)).toBe(false);
+  });
+
+  it('reads an empty case list as searched, on the real page text', () => {
+    expect(browardSaysNoCases(fx.pages.ParcelEnforcementList_440642)).toBe(true);
+  });
+
+  it('does not cross the two lists', () => {
+    // A permit page must never satisfy the case predicate, or an unreadable
+    // case list could be reported as a confirmed clean one.
+    expect(browardSaysNoCases(fx.pages.ParcelPermitList_316925)).toBe(false);
+    expect(browardSaysNoPermits(fx.pages.ParcelEnforcementList_440642)).toBe(false);
+  });
+
+  it('stays silent on a page that says nothing either way', () => {
+    // The conservative fallback must survive: a layout change prints neither
+    // wording, and that is still an incomplete read, not a zero.
+    expect(browardSaysNoPermits('Permit Number Permit Type Status Issue Date')).toBe(false);
+    expect(browardSaysNoCases('Case # Street Address Established Status')).toBe(false);
+    expect(browardSaysNoPermits('')).toBe(false);
+    expect(browardSaysNoCases('')).toBe(false);
   });
 });

@@ -204,6 +204,34 @@ export function cleanDate(v: string | null): string | null {
  * The decision to refuse a search, kept pure so it is tested in the fast suite
  * rather than only through a browser.
  */
+/**
+ * Does the portal state, in its own words, that it searched and found nothing?
+ *
+ * Broward's two Posse lists each print an explicit empty state, and until now
+ * only the CASE side was recognised. The permit side fell through to
+ * "automated read did not return a table", so a parcel whose permit history is
+ * genuinely empty was reported as unread, sending the reader to the portal to
+ * confirm an answer we already had. That is the safe direction to fail, but it
+ * is still wrong, and it is the same defect class as Nassau's unrecognised
+ * "Your search returned no results" (see accela-parse.ts portalSaysNoRecords).
+ *
+ * Captured live 2026-11-12 from ParcelPermitList, parcels 316925 and 441225
+ * (both real BMSD folios): the grid renders its seven headers and one row
+ * reading "No permits were found for this address."
+ *
+ * These are deliberately narrow. A caller must only consult them when the grid
+ * yielded NO usable rows: rows that parsed are data, and no banner may
+ * override them.
+ */
+export function browardSaysNoPermits(bodyText: string): boolean {
+  return /No permits were found for this (?:address|parcel)/i.test(bodyText);
+}
+
+/** The case-list counterpart, unchanged in behaviour, moved here to be tested. */
+export function browardSaysNoCases(bodyText: string): boolean {
+  return /No Enforcement Cases were found for this (?:parcel|address)/i.test(bodyText);
+}
+
 export function folioRefusal(folio: string | null): { notes: string[] } | null {
   if (parcelKeyFor(folio)) return null;
   return {

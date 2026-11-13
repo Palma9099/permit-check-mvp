@@ -53,6 +53,8 @@ import {
   cleanDate,
   pickGrid,
   exactIndex,
+  browardSaysNoPermits,
+  browardSaysNoCases,
   type ParcelKey,
   type Authority,
   type BrowardCaseDetail,
@@ -71,6 +73,8 @@ export {
   cleanDate,
   pickGrid,
   exactIndex,
+  browardSaysNoPermits,
+  browardSaysNoCases,
   type ParcelKey,
   type Authority,
   type BrowardCaseDetail,
@@ -179,7 +183,7 @@ async function readCaseList(ctx: ScraperCtx, objectId: string): Promise<{ ran: b
 
   const body = (await page.innerText('body').catch(() => '')) ?? '';
   if (/BCS - Error/i.test(body)) return { ran: false, rows: [] };
-  if (/No Enforcement Cases were found for this parcel/i.test(body)) {
+  if (browardSaysNoCases(body)) {
     log('broward: portal reports no enforcement cases for this parcel');
     return { ran: true, rows: [] };
   }
@@ -280,9 +284,22 @@ async function readPermits(ctx: ScraperCtx, objectId: string): Promise<{ ran: bo
 
   const table = pickGrid(await readTables(page), ['permit number', 'permit no'], PERMIT_NO);
   if (!table) {
-    // A parcel with no permits renders the grid's headers and no matching rows,
-    // which pickGrid cannot tell from a layout change - so report it as a read
-    // we could not complete rather than as a property with no permits.
+    // A parcel with no permits renders the grid's headers and no matching
+    // rows, which pickGrid cannot tell from a layout change. The note said so
+    // honestly and reported the read as incomplete. But the portal is not
+    // actually silent here: it prints "No permits were found for this
+    // address." in the grid, which the case list's own empty state had been
+    // recognised for all along and this one had not. A confirmed empty permit
+    // history is an ANSWER, and reporting it as unread sent the reader to the
+    // portal to confirm something we already knew. Proved live 2026-11-12 on
+    // BMSD folios 494232013050 and 504205090540.
+    //
+    // Order matters: this is consulted ONLY because pickGrid found no usable
+    // rows. Rows that parsed are data and no banner may override them.
+    if (browardSaysNoPermits(body)) {
+      log('broward: portal reports no permits for this parcel');
+      return { ran: true, permits: [] };
+    }
     await debugDump(page, 'broward-permit-list', log);
     return { ran: false, permits: [] };
   }
