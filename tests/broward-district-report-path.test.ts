@@ -34,7 +34,13 @@ type PlacesMode =
   /** A matched feature whose STATE is blank. */
   | 'blank-state'
   /** Readable records, none of them in Florida. */
-  | 'other-state';
+  | 'other-state'
+  /** An explicitly TRUNCATED empty answer. Codex R4-01. */
+  | 'truncated-empty'
+  /** A truncated answer that did return a usable Florida record. */
+  | 'truncated-named'
+  /** A complete answer that states exceededTransferLimit: false. */
+  | 'complete-false-flag';
 
 /**
  * Answer every host the report touches for a Broward address.
@@ -95,6 +101,29 @@ function installStub(mode: PlacesMode, placeName = 'Lauderdale-by-the-Sea') {
       if (mode === 'blank-state') {
         return new Response(
           JSON.stringify({ features: [{ attributes: { BASENAME: 'Margate', STATE: '   ' } }] }),
+          { status: 200 },
+        );
+      }
+      // Codex R4-01's body: the response says outright that it is truncated,
+      // so an empty list proves nothing about what contains the point.
+      if (mode === 'truncated-empty') {
+        return new Response(
+          JSON.stringify({ features: [], exceededTransferLimit: true }),
+          { status: 200 },
+        );
+      }
+      if (mode === 'truncated-named') {
+        return new Response(
+          JSON.stringify({
+            features: [{ attributes: { BASENAME: 'Margate', STATE: '12' } }],
+            exceededTransferLimit: true,
+          }),
+          { status: 200 },
+        );
+      }
+      if (mode === 'complete-false-flag') {
+        return new Response(
+          JSON.stringify({ features: [], exceededTransferLimit: false }),
           { status: 200 },
         );
       }
@@ -277,6 +306,9 @@ describe('unincorporated can only come from a fully validated response', () => {
     ['a 200 body with no features array', 'no-features'],
     ['a matched Florida place carrying no name', 'unnamed-match'],
     ['a boundary source that does not answer', 'fail'],
+    // Codex R4-01 and its sibling: the envelope says the answer is partial.
+    ['Codex R4-01: an explicitly TRUNCATED empty answer', 'truncated-empty'],
+    ['a truncated answer that did return a Florida record', 'truncated-named'],
   ];
 
   for (const [label, mode] of unreadable) {
@@ -311,5 +343,18 @@ describe('unincorporated can only come from a fully validated response', () => {
     expect(report.property.municipality).toBe('Margate');
     expect(report.property.unincorporatedConfirmed).toBe(false);
     expect(codeItem(report).info.buyer).toContain('City of Margate');
+  });
+});
+
+describe('a complete answer is still accepted when it says so explicitly', () => {
+  it('certifies the district from exceededTransferLimit: false', async () => {
+    // Both server families omit the flag when complete, and the docs show
+    // pagination ending on an explicit false. If this regressed, the R4 fix
+    // would reject every complete answer and the district could never be
+    // named - which is the failure mode a completeness check invites.
+    restore = installStub('complete-false-flag');
+    const report = await runDiagnostic({ address: ADDRESS });
+    expect(report.property.unincorporatedConfirmed).toBe(true);
+    expect(codeItem(report).info.buyer).toContain('Broward Municipal Services District');
   });
 });

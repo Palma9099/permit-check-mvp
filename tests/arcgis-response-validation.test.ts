@@ -13,7 +13,7 @@
 // consequence.
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { queryFeaturesValidated } from '@/lib/arcgis';
+import { queryFeaturesValidated, partialResultReason } from '@/lib/arcgis';
 
 const LAYER = 'https://example.test/arcgis/rest/services/Fake/MapServer/0';
 const real = globalThis.fetch;
@@ -110,5 +110,69 @@ describe('a response is validated before anything filters it', () => {
     await expect(
       queryFeaturesValidated(LAYER, { label: 'fake' }, ['STATE', 'BASENAME']),
     ).rejects.toThrow(/no readable BASENAME/i);
+  });
+});
+
+// Codex R4-01: completeness, which is a different question from readability.
+//
+// The validator proved every RECORD readable and discarded the envelope, so an
+// explicitly truncated EMPTY answer looked like a complete empty one. These
+// cover the whole partial-result contract rather than the one shape reported:
+// the documented top-level flag, the geojson envelope's nested copy, and the
+// pagination continuation token.
+describe('a response must be complete, not merely readable', () => {
+  it('rejects a truncated EMPTY answer, which is Codex R4-01', async () => {
+    serve({ features: [], exceededTransferLimit: true });
+    await expect(run()).rejects.toThrow(/partial result.*exceededTransferLimit/i);
+  });
+
+  it('rejects a truncated answer that DID return records', async () => {
+    serve({ features: [{ attributes: { STATE: '12' } }], exceededTransferLimit: true });
+    await expect(run()).rejects.toThrow(/partial result/i);
+  });
+
+  it('rejects the geojson envelope form of the same flag', async () => {
+    // We only ask for f=json today. This exists so a format change cannot
+    // silently reopen the hole.
+    serve({ type: 'FeatureCollection', features: [], properties: { exceededTransferLimit: true } });
+    await expect(run()).rejects.toThrow(/partial result.*properties/i);
+  });
+
+  it('rejects a response carrying a pagination continuation token', async () => {
+    serve({ features: [], resultPaginationToken: 'abc123' });
+    await expect(run()).rejects.toThrow(/partial result.*resultPaginationToken/i);
+  });
+
+  it('accepts an explicit exceededTransferLimit: false as complete', async () => {
+    // Probed on both server families: the flag is omitted when complete, and
+    // the docs show pagination ending on an explicit false. Treating false as
+    // truncated would make the validator reject every complete answer.
+    serve({ features: [], exceededTransferLimit: false });
+    await expect(run()).resolves.toEqual([]);
+  });
+
+  it('accepts a complete answer that omits the flag entirely', async () => {
+    serve({ features: [{ attributes: { STATE: '12' } }] });
+    await expect(run()).resolves.toEqual([{ STATE: '12' }]);
+  });
+
+  it('ignores an empty or non-string pagination token', async () => {
+    serve({ features: [], resultPaginationToken: '' });
+    await expect(run()).resolves.toEqual([]);
+    serve({ features: [], resultPaginationToken: null });
+    await expect(run()).resolves.toEqual([]);
+  });
+});
+
+describe('partialResultReason names which signal fired', () => {
+  it('reports each signal, and nothing for a complete response', () => {
+    expect(partialResultReason({ exceededTransferLimit: true })).toBe('exceededTransferLimit');
+    expect(partialResultReason({ properties: { exceededTransferLimit: true } })).toBe(
+      'properties.exceededTransferLimit',
+    );
+    expect(partialResultReason({ resultPaginationToken: 'tok' })).toBe('resultPaginationToken');
+    expect(partialResultReason({ features: [], exceededTransferLimit: false })).toBeNull();
+    expect(partialResultReason({ features: [] })).toBeNull();
+    expect(partialResultReason(null)).toBeNull();
   });
 });

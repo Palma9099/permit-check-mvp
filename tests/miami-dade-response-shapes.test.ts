@@ -222,3 +222,66 @@ describe('Codex R9-02: rows that cannot be read are not zero rows', () => {
     expect(r.violationsChecked).toBe(false);
   });
 });
+
+// Found by the Broward envelope sweep rather than by a reviewer: this adapter
+// checked only `exceededTransferLimit`, so a response signalling more rows any
+// other way would have stopped paging early and published a prefix as a
+// complete list - R8-02's defect through a signal it did not cover.
+describe('every way a response can say it is incomplete', () => {
+  it('pages on a pagination token, not just the transfer-limit flag', async () => {
+    const offsets: string[] = [];
+    globalThis.fetch = (async (u: any) => {
+      const url = new URL(String(u));
+      if (!url.pathname.includes('CodeComplianceViolation_Open_View')) {
+        return json({ features: [] });
+      }
+      const off = url.searchParams.get('resultOffset') ?? '0';
+      offsets.push(off);
+      // No exceededTransferLimit anywhere; only a continuation token.
+      return off === '0'
+        ? json({ features: [{ attributes: { CASE_NUM: 'A' } }], resultPaginationToken: 'next' })
+        : json({ features: [{ attributes: { CASE_NUM: 'B' } }] });
+    }) as any;
+    const r = await run();
+    expect(offsets.slice(0, 2)).toEqual(['0', '200']);
+    expect(r.ok).toBe(true);
+    expect(r.violations.map((v) => v.caseNumber)).toEqual(['A', 'B']);
+  });
+
+  it('pages on the geojson envelope form of the flag', async () => {
+    const offsets: string[] = [];
+    globalThis.fetch = (async (u: any) => {
+      const url = new URL(String(u));
+      if (!url.pathname.includes('CodeComplianceViolation_Open_View')) {
+        return json({ features: [] });
+      }
+      const off = url.searchParams.get('resultOffset') ?? '0';
+      offsets.push(off);
+      return off === '0'
+        ? json({ features: [{ attributes: { CASE_NUM: 'A' } }], properties: { exceededTransferLimit: true } })
+        : json({ features: [] });
+    }) as any;
+    const r = await run();
+    // It must ASK for the next page. The second page is complete and empty,
+    // so the read then finishes honestly with the one case it found - my
+    // first version of this test asserted a failure here and was simply
+    // wrong about the behaviour.
+    expect(offsets.slice(0, 2)).toEqual(['0', '200']);
+    expect(r.ok).toBe(true);
+    expect(r.violationsChecked).toBe(true);
+    expect(r.violations.map((v) => v.caseNumber)).toEqual(['A']);
+  });
+
+  it('treats an explicit exceededTransferLimit: false as the end', async () => {
+    // Over-reading completeness would make every folio unreadable.
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return json({ features: [], exceededTransferLimit: false });
+    }) as any;
+    const r = await run();
+    expect(r.ok).toBe(true);
+    expect(r.violationsChecked).toBe(true);
+    expect(calls).toBe(4);
+  });
+});

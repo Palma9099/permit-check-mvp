@@ -89,6 +89,49 @@ export async function queryLayer(layerUrl: string, q: LayerQuery = {}): Promise<
 }
 
 /**
+ * Why this response is NOT the complete answer to the query, or null if it is.
+ *
+ * Codex R4-01: the validator proved every RECORD readable and then threw the
+ * response envelope away, so `{"features":[],"exceededTransferLimit":true}` -
+ * an explicitly TRUNCATED empty answer - was read as a complete empty one.
+ * Record readability is not response completeness. Worse, this is the same
+ * flag already handled in the Miami-Dade adapter's pagination, so the lesson
+ * existed in this repo and I did not carry it into a new validator.
+ *
+ * So this sweeps the whole partial-result contract rather than guessing the
+ * next flag, from the ArcGIS REST query reference plus probes of both server
+ * families this code actually talks to:
+ *
+ *   exceededTransferLimit            top level, f=json. Documented truncation
+ *                                   flag. Probed: TIGERweb MapServer and an
+ *                                   ArcGIS Online FeatureServer both set it
+ *                                   true when truncated and OMIT it when
+ *                                   complete; an explicit false means complete.
+ *   properties.exceededTransferLimit f=geojson moves the same flag inside the
+ *                                   FeatureCollection. We only ask for
+ *                                   f=json, so this is here so a future
+ *                                   format change cannot silently reopen the
+ *                                   hole.
+ *   resultPaginationToken            top level. A continuation token: the
+ *                                   server kept rows back for a next page.
+ *
+ * Deliberately NOT applied to `queryLayer`: several of its callers pass
+ * `resultRecordCount: 1` on purpose (a parcel lookup, a boundary lookup, the
+ * BCPA point read), so truncation is their normal case and throwing would
+ * break working code. Completeness is only required where a caller asks for a
+ * complete answer, which is this function.
+ */
+export function partialResultReason(data: any): string | null {
+  if (data?.exceededTransferLimit === true) return 'exceededTransferLimit';
+  if (data?.properties?.exceededTransferLimit === true) {
+    return 'properties.exceededTransferLimit';
+  }
+  const token = data?.resultPaginationToken;
+  if (typeof token === 'string' && token.trim()) return 'resultPaginationToken';
+  return null;
+}
+
+/**
  * RAW features, with every record proved readable before the caller sees it.
  *
  * `queryLayer` normalizes each feature to `f.attributes ?? {}`, which destroys
@@ -119,6 +162,12 @@ export async function queryFeaturesValidated(
   const label = q.label ?? 'arcgis';
   if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
     throw new Error(`layer query returned no features array (${label})`);
+  }
+  // Checked BEFORE the records, because an empty truncated answer has no
+  // records to inspect and is exactly the shape that slipped through.
+  const partial = partialResultReason(data);
+  if (partial) {
+    throw new Error(`layer query returned a partial result (${label}; ${partial})`);
   }
   return data.features.map((f: any) => {
     const a = f?.attributes;

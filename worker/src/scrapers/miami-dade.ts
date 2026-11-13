@@ -83,7 +83,30 @@ async function arcgisPage(
   if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
     throw new Error('response carried no features array');
   }
-  return { rows: data.features, truncated: data.exceededTransferLimit === true };
+  return { rows: data.features, truncated: isTruncated(data) };
+}
+
+/**
+ * Does this response say it is NOT the complete answer?
+ *
+ * Found by the Broward sweep, not by a reviewer: this adapter checked only
+ * `exceededTransferLimit`, so a response that signalled more rows any OTHER
+ * way would have stopped `allRows` early and published a prefix as complete -
+ * the same defect R8-02 fixed, through a signal it did not cover. The worker
+ * is a separate package and cannot import src/lib/arcgis.ts, so the contract
+ * is restated here deliberately rather than shared.
+ *
+ *   exceededTransferLimit            top level, f=json, what we ask for
+ *   properties.exceededTransferLimit where f=geojson puts the same flag
+ *   resultPaginationToken            a continuation token: rows held back
+ *
+ * An explicit `false` means complete, and so does an absent flag.
+ */
+function isTruncated(data: any): boolean {
+  if (data?.exceededTransferLimit === true) return true;
+  if (data?.properties?.exceededTransferLimit === true) return true;
+  const token = data?.resultPaginationToken;
+  return typeof token === 'string' && token.trim().length > 0;
 }
 
 /** How many rows one request asks for. Pages are joined by resultOffset. */
