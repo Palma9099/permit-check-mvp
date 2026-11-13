@@ -62,7 +62,26 @@ export interface CountyExtras {
   sources: string[];
 }
 
-async function arcgisPoint(service: string, lat: number, lng: number): Promise<any | null> {
+/**
+ * Did the layer ANSWER, and if so with what?
+ *
+ * Codex F1: these helpers returned null both for "the service did not answer"
+ * and for "the service answered, nothing at this point". The aggregation below
+ * then built an evacuation / sewer fact out of the null, and three separate
+ * consumers turned that into a published negative: the report card says "This
+ * address is outside the county evacuation zones", the PDF prints "Outside
+ * county sewer", and the readiness score charges a 2-point penalty for it. A
+ * nullable field is not a safe field when something downstream turns the null
+ * into a sentence.
+ *
+ * `answered: false` is unavailable and must never become a claim.
+ * `answered: true, attrs: null` is a real empty answer and is entitled to one.
+ */
+type Lookup = { answered: true; attrs: any | null } | { answered: false };
+
+const UNAVAILABLE: Lookup = { answered: false };
+
+async function arcgisPoint(service: string, lat: number, lng: number): Promise<Lookup> {
   const qs = new URLSearchParams({
     geometry: `${lng},${lat}`,
     geometryType: 'esriGeometryPoint',
@@ -78,12 +97,15 @@ async function arcgisPoint(service: string, lat: number, lng: number): Promise<a
     retries: 1,
     label: 'md-extras',
   });
-  if (!res.ok) return null;
+  if (!res.ok) return UNAVAILABLE;
   const j: any = await res.json();
-  return Array.isArray(j?.features) ? j.features[0]?.attributes ?? null : null;
+  // No features ARRAY means the layer did not answer with a feature
+  // collection, which is not the same as answering with none.
+  if (!Array.isArray(j?.features)) return UNAVAILABLE;
+  return { answered: true, attrs: j.features[0]?.attributes ?? null };
 }
 
-async function arcgisWhere(service: string, where: string): Promise<any | null> {
+async function arcgisWhere(service: string, where: string): Promise<Lookup> {
   const qs = new URLSearchParams({ where, outFields: '*', returnGeometry: 'false', f: 'json' });
   const res = await fetchWithTimeout(`${OPEN_DATA}/${service}/FeatureServer/0/query?${qs}`, {
     cache: 'no-store',
@@ -91,9 +113,12 @@ async function arcgisWhere(service: string, where: string): Promise<any | null> 
     retries: 1,
     label: 'md-extras',
   });
-  if (!res.ok) return null;
+  if (!res.ok) return UNAVAILABLE;
   const j: any = await res.json();
-  return Array.isArray(j?.features) ? j.features[0]?.attributes ?? null : null;
+  // No features ARRAY means the layer did not answer with a feature
+  // collection, which is not the same as answering with none.
+  if (!Array.isArray(j?.features)) return UNAVAILABLE;
+  return { answered: true, attrs: j.features[0]?.attributes ?? null };
 }
 
 function latest<T extends { Year?: number }>(rows: T[] | undefined): T | null {
@@ -168,46 +193,58 @@ export async function fetchMiamiDadeExtras(opts: {
   const folio = compactFolio(opts.folio);
   const [pa, evac, sewerArea, septic] = await Promise.all([
     paByFolio(folio).catch(() => null),
-    arcgisPoint('HurricaneEvacZone_gdb', opts.lat, opts.lng).catch(() => null),
-    arcgisPoint('SewerServiceArea_gdb', opts.lat, opts.lng).catch(() => null),
-    arcgisWhere('PossiblePropertiesServedBySepticOrWell', `FOLIO='${folio}'`).catch(() => null),
+    arcgisPoint('HurricaneEvacZone_gdb', opts.lat, opts.lng).catch(() => UNAVAILABLE),
+    arcgisPoint('SewerServiceArea_gdb', opts.lat, opts.lng).catch(() => UNAVAILABLE),
+    arcgisWhere('PossiblePropertiesServedBySepticOrWell', `FOLIO='${folio}'`).catch(() => UNAVAILABLE),
   ]);
 
   const sources: string[] = [];
   const tax = pa ? taxFrom(pa) : null;
   if (tax) sources.push('Miami-Dade Property Appraiser (values, cap, exemptions)');
 
+  // The `|| pa` is gone on purpose: a successful property-appraiser lookup was
+  // standing in for an evacuation answer, so a malformed evacuation response
+  // still produced the "outside the county evacuation zones" sentence. The card
+  // now appears exactly when the evacuation layer itself answered, which still
+  // covers the genuine no-zone case.
   let evacuation: EvacuationInfo | null = null;
-  if (evac || pa) {
+  if (evac.answered) {
+    const a = evac.attrs;
     evacuation = {
-      zone: evac?.ZONEID ? String(evac.ZONEID) : null,
-      category: Number.isFinite(Number(evac?.CATEGORY)) ? Number(evac.CATEGORY) : null,
+      zone: a?.ZONEID ? String(a.ZONEID) : null,
+      category: Number.isFinite(Number(a?.CATEGORY)) ? Number(a.CATEGORY) : null,
       hvhz: true,
     };
     sources.push('Miami-Dade Emergency Management hurricane evacuation zones');
   }
 
+  // Two separate facts from two separate layers, so BOTH must have answered
+  // before either negative is published. Previously a malformed septic answer
+  // still produced "not flagged as septic or well", and the `else if (evac ||
+  // pa)` branch below it manufactured the whole "Outside the county sewer
+  // service areas" card off nothing but a successful appraiser lookup. That one
+  // object drives three claims: the report card, the PDF's "Outside county
+  // sewer", and a 2-point readiness penalty.
+  //
+  // Requiring both is deliberately conservative: when only one layer answers we
+  // publish nothing rather than a half-known fact. That loses a true utility
+  // name in the rare partial case, which is the right trade when the
+  // alternative is a confident wrong negative. Septic SEMANTICS are untouched
+  // here; only the unknown-versus-empty distinction changed.
   let sewer: SewerInfo | null = null;
-  if (sewerArea || septic) {
-    const flagged = !!septic;
-    const utility = sewerArea?.UTILITYNAME ? String(sewerArea.UTILITYNAME) : null;
+  if (sewerArea.answered && septic.answered) {
+    const flagged = !!septic.attrs;
+    const inServiceArea = !!sewerArea.attrs;
+    const utility = sewerArea.attrs?.UTILITYNAME ? String(sewerArea.attrs.UTILITYNAME) : null;
     sewer = {
       utility,
-      inServiceArea: !!sewerArea,
+      inServiceArea,
       septicOrWellFlag: flagged,
       summary: flagged
         ? 'The county lists this parcel as possibly on septic or a well. Ask for the septic permit and last inspection.'
-        : sewerArea
+        : inServiceArea
         ? 'Inside a county sewer service area and not flagged as septic or well.'
-        : 'Not flagged as septic or well.',
-    };
-    sources.push('Miami-Dade sewer service areas and septic/well parcel list');
-  } else if (evac || pa) {
-    sewer = {
-      utility: null,
-      inServiceArea: false,
-      septicOrWellFlag: false,
-      summary: 'Outside the county sewer service areas. A city utility or a septic system is possible. Verify before you buy.',
+        : 'Outside the county sewer service areas. A city utility or a septic system is possible. Verify before you buy.',
     };
     sources.push('Miami-Dade sewer service areas and septic/well parcel list');
   }

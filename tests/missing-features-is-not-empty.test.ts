@@ -121,3 +121,107 @@ describe('Miami-Dade adapter: a failed permit LAYER lookup says so', () => {
     expect(notes.join(' ')).toMatch(/NOT confirmed/i);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Codex F1. I excluded this module from the first round on the grounds that
+// every field is nullable and every call already degrades to null. That was the
+// wrong test. The aggregation built a fact out of the null and THREE consumers
+// turned it into a published negative: the report card ("This address is
+// outside the county evacuation zones", "Outside county sewer"), the PDF's
+// "Outside county sewer" card, and a 2-point readiness penalty. A nullable
+// field is not a safe field when something downstream turns the null into a
+// sentence, so these drive the public entry point and assert the FACT, which is
+// what every one of those consumers reads.
+// ---------------------------------------------------------------------------
+
+import { fetchMiamiDadeExtras } from '@/lib/counties/miami-dade-extras';
+
+// Codex's reproduction shapes, reused exactly.
+const PA_OK = { Building: { BuildingInfos: [] } };
+const MALFORMED = { fieldAliases: {} };
+
+const routeExtras = (parts: { evac?: unknown; sewerArea?: unknown; septic?: unknown; pa?: unknown }) => {
+  globalThis.fetch = (async (u: any) => {
+    const url = String(u?.url ?? u);
+    const pick = url.includes('HurricaneEvacZone_gdb')
+      ? parts.evac
+      : url.includes('SewerServiceArea_gdb')
+      ? parts.sewerArea
+      : url.includes('PossiblePropertiesServedBySepticOrWell')
+      ? parts.septic
+      : (parts.pa ?? PA_OK);
+    return new Response(JSON.stringify(pick ?? MALFORMED), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as any;
+};
+
+const extras = () => fetchMiamiDadeExtras({ folio: '0141230750090', lat: 25.76, lng: -80.19, permits: [] });
+
+describe('Miami-Dade extras: an unavailable layer is not an absence (Codex F1)', () => {
+  it('makes NO evacuation claim when that layer answered malformed, even though the appraiser answered', async () => {
+    routeExtras({ evac: MALFORMED, sewerArea: MALFORMED, septic: MALFORMED, pa: PA_OK });
+    const r = await extras();
+    expect(r.evacuation).toBeNull();
+    expect(r.sources.join(' ')).not.toMatch(/evacuation zones/i);
+  });
+
+  it('STILL says outside-every-zone when the evacuation layer genuinely answered empty', async () => {
+    // The half that makes the test above mean something. A property really
+    // outside every zone must keep its confident answer, because that is what
+    // renders the "outside the county evacuation zones" sentence.
+    routeExtras({ evac: { features: [] }, sewerArea: { features: [] }, septic: { features: [] }, pa: PA_OK });
+    const r = await extras();
+    expect(r.evacuation).not.toBeNull();
+    expect(r.evacuation!.zone).toBeNull();
+    expect(r.sources.join(' ')).toMatch(/evacuation zones/i);
+  });
+
+  it('still reads a real evacuation zone', async () => {
+    routeExtras({
+      evac: { features: [{ attributes: { ZONEID: 'B', CATEGORY: 3 } }] },
+      sewerArea: { features: [] }, septic: { features: [] }, pa: PA_OK,
+    });
+    const r = await extras();
+    expect(r.evacuation!.zone).toBe('B');
+    expect(r.evacuation!.category).toBe(3);
+  });
+
+  it('makes NO sewer claim when the septic layer alone answered malformed', async () => {
+    // Codex named this one: a working sewer-area lookup with a malformed septic
+    // lookup still published "not flagged as septic or well".
+    routeExtras({ evac: { features: [] }, sewerArea: { features: [{ attributes: { UTILITYNAME: 'MDWASD' } }] }, septic: MALFORMED, pa: PA_OK });
+    const r = await extras();
+    expect(r.sewer).toBeNull();
+    expect(r.sources.join(' ')).not.toMatch(/sewer service areas/i);
+  });
+
+  it('makes NO sewer claim when the sewer-area layer alone answered malformed', async () => {
+    routeExtras({ evac: { features: [] }, sewerArea: MALFORMED, septic: { features: [] }, pa: PA_OK });
+    const r = await extras();
+    expect(r.sewer).toBeNull();
+  });
+
+  it('STILL publishes outside-sewer when BOTH layers genuinely answered empty', async () => {
+    routeExtras({ evac: { features: [] }, sewerArea: { features: [] }, septic: { features: [] }, pa: PA_OK });
+    const r = await extras();
+    expect(r.sewer).not.toBeNull();
+    expect(r.sewer!.inServiceArea).toBe(false);
+    expect(r.sewer!.septicOrWellFlag).toBe(false);
+    expect(r.sewer!.summary).toMatch(/outside the county sewer/i);
+  });
+
+  it('still reads a real service area and a real septic flag', async () => {
+    routeExtras({
+      evac: { features: [] },
+      sewerArea: { features: [{ attributes: { UTILITYNAME: 'MDWASD' } }] },
+      septic: { features: [{ attributes: { FOLIO: '0141230750090' } }] },
+      pa: PA_OK,
+    });
+    const r = await extras();
+    expect(r.sewer!.inServiceArea).toBe(true);
+    expect(r.sewer!.utility).toBe('MDWASD');
+    expect(r.sewer!.septicOrWellFlag).toBe(true);
+  });
+});
