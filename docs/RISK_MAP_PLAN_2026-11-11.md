@@ -722,3 +722,11 @@ frame, so a long permit list scales rather than spills. v01 moved to `_archive/`
 `CURRENT_v02_HIALEAH_33013_RISKMAP_LEAD_SHEET_2023v2026.pdf` (23 MB; the outlined frames are
 embedded at full size). First page: 571 E 35 St, an in-ground oval pool with deck and a void
 electrical permit on file.
+
+**2026-11-12, iteration 23 (19:25).** Ten flags read on the outlined frames, ten confirmed: a new
+round pool with deck at 3425 E 1 Ct, a driveway repaved at 4783 E 9 Ct, and eight roof changes
+(four to metal panel, including tile to metal at 253 E 52 St and 420 E 59 St). **266 of 269 reported
+flags have matched the photos.** 72 leads on the panel before this batch (12 in-ground pool, 47
+roof, 2 solar, 1 addition, 7 above-ground pool, 3 other), none walked. Pair 2: 838 labeled, 341 USD,
+0.41 USD a parcel, no errors; 45 v6 audits, five second-run disagreements, none at the report line.
+Lookups for the ten are running.
