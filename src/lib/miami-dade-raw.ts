@@ -3,6 +3,11 @@
 
 import type { CodeCase, Permit } from './types';
 import { fetchWithTimeout } from './net';
+// One definition of "this response is not the complete answer", shared with
+// src/lib/arcgis.ts. A second copy here would be free to drift from the one
+// that was reviewed, and this module's whole problem was that the lesson
+// already existed in the repo and had not been carried into it.
+import { partialResultReason } from './arcgis';
 
 const PA_PROXY =
   'https://apps.miamidadepa.gov/PAPublicServiceProxy/PaServicesProxy.ashx';
@@ -159,6 +164,19 @@ export async function arcgisQuery(service: string, where: string, out: string = 
   if (!data || !Array.isArray(data.features)) {
     throw new Error(`county query returned an unreadable shape (${service})`);
   }
+  // This function asks for 200 rows and every caller publishes what comes back
+  // as the COMPLETE set for a folio: the permit list, the code-case lists, the
+  // inspection count, the neighbour-permit counts, and the Miami-Dade lien
+  // provider's cases. A truncated answer read as complete is "these are all the
+  // permits on this property" when it is only the first page - the same class of
+  // claim as the {error} and no-features cases above, so it belongs in the same
+  // place. Callers already treat a throw as "this source did not answer": the
+  // code-enforcement sweep lists the source in `failed`, and the county adapter
+  // records a user-visible lookup-failure note.
+  const partial = partialResultReason(data);
+  if (partial) {
+    throw new Error(`county query returned a partial result (${service}; ${partial})`);
+  }
   return data.features.map((f: any) => f.attributes ?? {});
 }
 
@@ -222,6 +240,16 @@ export async function permitLayerByFolio(folio: string): Promise<Permit[]> {
   // belongs in the same place. A real empty array still means no permits.
   if (!Array.isArray(data?.features)) {
     throw new Error('permit layer: response had no features array');
+  }
+  // No resultRecordCount is sent here, so the server's own maxRecordCount caps
+  // the answer, and this layer is the ONLY public source of older open and
+  // expired permits - the ones that block a sale or an insurance claim. A
+  // truncated page read as the whole history can drop exactly the permit the
+  // report exists to surface, and the reader cannot tell. Fail closed: the
+  // adapter turns this throw into "no permits below is NOT confirmed".
+  const partial = partialResultReason(data);
+  if (partial) {
+    throw new Error(`permit layer: response was a partial result (${partial})`);
   }
   return data.features.map((ft: any) => {
     const r = ft.attributes ?? {};

@@ -21,6 +21,9 @@
 
 import type { Sale } from '../types';
 import { fetchWithTimeout } from '../net';
+// Shared with src/lib/arcgis.ts so there is one definition of "this response is
+// not the complete answer" rather than a second copy free to drift.
+import { partialResultReason } from '../arcgis';
 
 const CADASTRAL_LAYER =
   'https://services9.arcgis.com/Gh9awoU677aKree0/arcgis/rest/services/Florida_Statewide_Cadastral/FeatureServer/0/query';
@@ -145,7 +148,21 @@ const OUT_FIELDS = [
   'SALE_PRC2', 'SALE_YR2', 'SALE_MO2', 'QUAL_CD2',
 ].join(',');
 
-async function queryFeatures(geometry: string, geometryType: string): Promise<any[]> {
+/**
+ * Features plus whether the server kept rows back.
+ *
+ * `partial` is not an error here. This function asks for 8 rows on purpose and
+ * a widened envelope can legitimately intersect more than that, so throwing
+ * would break a working path. What `partial` is for is the PICK: pickBest
+ * prefers a parcel that has building data, and if the answer was cut short the
+ * better candidate may be in the part we never saw. Choosing from a prefix and
+ * then publishing the result as what the roll says is the failure - see
+ * parcelByPoint.
+ */
+async function queryFeatures(
+  geometry: string,
+  geometryType: string,
+): Promise<{ feats: any[]; partial: string | null }> {
   const params = new URLSearchParams({
     geometry,
     geometryType,
@@ -171,7 +188,10 @@ async function queryFeatures(geometry: string, geometryType: string): Promise<an
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data: any = await res.json();
   if (data?.error) throw new Error(`arcgis: ${data.error?.message ?? 'error'}`);
-  return Array.isArray(data?.features) ? data.features : [];
+  return {
+    feats: Array.isArray(data?.features) ? data.features : [],
+    partial: partialResultReason(data),
+  };
 }
 
 // A feature is "real" (not a right-of-way / water sliver) when it has a county
@@ -265,7 +285,10 @@ export async function parcelByPoint(lat: number, lng: number): Promise<Statewide
   try {
     // 1) exact point
     const point = JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } });
-    let chosen = pickBest(await queryFeatures(point, 'esriGeometryPoint'));
+    const pointAnswer = await queryFeatures(point, 'esriGeometryPoint');
+    let chosen = pickBest(pointAnswer.feats);
+    // Whether the answer `chosen` came out of had rows held back.
+    let chosenPartial = chosen ? pointAnswer.partial : null;
 
     // 2) envelope fallback (~18m) when the point missed a parcel OR landed on a
     //    road / right-of-way parcel with no building data. Widening lets us grab
@@ -276,11 +299,33 @@ export async function parcelByPoint(lat: number, lng: number): Promise<Statewide
         xmin: lng - d, ymin: lat - d, xmax: lng + d, ymax: lat + d,
         spatialReference: { wkid: 4326 },
       });
-      const envBest = pickBest(await queryFeatures(env, 'esriGeometryEnvelope'));
-      if (envBest && (hasBuilding(envBest) || !chosen)) chosen = envBest;
+      const envAnswer = await queryFeatures(env, 'esriGeometryEnvelope');
+      const envBest = pickBest(envAnswer.feats);
+      if (envBest && (hasBuilding(envBest) || !chosen)) {
+        chosen = envBest;
+        chosenPartial = envAnswer.partial;
+      }
     }
 
     if (!chosen) return null;
+    // A parcel with no building data, picked out of an answer the server cut
+    // short, is not evidence that the roll holds no building data for this
+    // property: pickBest prefers a building parcel, so a better candidate may
+    // sit in the rows we never received. Published as-is it renders as
+    // "?-built, ? heated sq ft" with the authority of the certified roll behind
+    // it. Returning null instead routes to the orchestrator's existing line -
+    // property details were not returned, confirm with the county Property
+    // Appraiser - which is the honest version of the same screen.
+    //
+    // A truncated answer we DID resolve to a building parcel is kept: that
+    // parcel really does intersect the point, and completeness was never the
+    // claim. Only the no-building case depends on having seen every row.
+    if (chosenPartial && !hasBuilding(chosen)) {
+      console.error(
+        `[statewide-cadastral] parcelByPoint: partial roll answer (${chosenPartial}) and no building parcel in it; reporting unknown rather than zeros`,
+      );
+      return null;
+    }
     return mapAttrs(chosen);
   } catch (err: any) {
     console.error('[statewide-cadastral] parcelByPoint failed:', String(err?.message ?? err).slice(0, 160));
@@ -322,6 +367,21 @@ export async function parcelByFolio(folio: string): Promise<FolioResolution | nu
     const data: any = await res.json();
     if (data?.error) return null;
     const feats: any[] = Array.isArray(data?.features) ? data.features : [];
+    // This asks for 4 rows against an exact PARCEL_ID match over four spellings
+    // of one folio, so a real property answers with one or two. Rows held back
+    // means four or more parcels carry that id - the statewide roll keeps each
+    // county's own ids, and they repeat across counties. Taking feats[0] there
+    // picks a property at random and the report then names an owner, a value
+    // and a sale history for it. An ambiguous folio is a folio we could not
+    // resolve, so it returns null and the caller's "check the number, or search
+    // by street address instead" message stands.
+    const ambiguous = partialResultReason(data);
+    if (ambiguous) {
+      console.error(
+        `[statewide-cadastral] parcelByFolio: partial answer (${ambiguous}) for "${raw}"; too many parcels share that id to resolve one`,
+      );
+      return null;
+    }
     const feat = feats.find((f) => isRealParcel(f?.attributes)) ?? feats[0];
     if (!feat) return null;
     const c = feat.centroid ?? {};
