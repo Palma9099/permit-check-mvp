@@ -343,3 +343,46 @@ describe('Miami-Dade adapter: a refused read is not a count of zero', () => {
     expect((res.notes ?? []).join(' ')).not.toMatch(/did not return a complete answer/i);
   });
 });
+
+describe('report boundary: an unavailable neighbour count is not "none found"', () => {
+  // The worst of the false zero was here, not in the raw count: with 0 the
+  // confidence section told the reader "No neighbor permits found - unusual for
+  // a populated block", which is an inference drawn from a lookup that never
+  // answered. These assert the published strings, because the string is the
+  // claim.
+  const confidenceFor = async (neighborCount: number | null) => {
+    const { buildConfidence } = await import('@/lib/orchestrator');
+    const rows = buildConfidence(0, 0, true, neighborCount, 'A', 'Miami-Dade County');
+    return rows.find((r: any) => r.topic === 'Neighbor comparison')!;
+  };
+
+  it('says the lookup did not answer, and draws no inference, when the count is unavailable', async () => {
+    const row: any = await confidenceFor(null);
+    expect(row.note).toMatch(/did not return a usable answer/i);
+    expect(row.note).not.toMatch(/unusual for a populated block/i);
+    expect(row.grade).toBe('low');
+  });
+
+  it('still reports a real zero as a real zero', async () => {
+    const row: any = await confidenceFor(0);
+    expect(row.note).toMatch(/No neighbor permits found/i);
+    expect(row.grade).toBe('low');
+  });
+
+  it('still reports a real count', async () => {
+    const row: any = await confidenceFor(4);
+    expect(row.note).toMatch(/4 permits found/i);
+    expect(row.grade).toBe('high');
+  });
+
+  it('does not raise the zero-permits-active-neighbours flag on an unavailable count', async () => {
+    const { buildFlags } = await import('@/lib/orchestrator');
+    const args = (n: number | null) =>
+      buildFlags([], n, {}, { open: [], closedPast5: [] }, 'No homestead', 1970, 'Miami-Dade County');
+    const unavailable = args(null);
+    const many = args(5);
+    const titles = (f: any) => [...f.strong, ...f.medium, ...f.weak].map((x: any) => x.title).join(' | ');
+    expect(titles(unavailable)).not.toMatch(/neighbors have many/i);
+    expect(titles(many)).toMatch(/neighbors have many/i);
+  });
+});

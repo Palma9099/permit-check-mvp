@@ -67,7 +67,8 @@ function yearBuckets(features: ExtraFeature[]): Record<number, ExtraFeature[]> {
   return map;
 }
 
-function buildFlags(
+// Exported for tests: the null-count behaviour below is a published claim.
+export function buildFlags(
   permits: Permit[],
   neighborTotal: number | null,
   buckets: Record<number, ExtraFeature[]>,
@@ -166,7 +167,8 @@ function buildFlags(
   return { strong, medium, weak };
 }
 
-function buildConfidence(
+// Exported for tests: the null-count behaviour below is a published claim.
+export function buildConfidence(
   permitCount: number,
   codeEnfCount: number,
   adapterFound: boolean,
