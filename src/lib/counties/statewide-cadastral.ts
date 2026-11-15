@@ -289,6 +289,11 @@ export async function parcelByPoint(lat: number, lng: number): Promise<Statewide
     let chosen = pickBest(pointAnswer.feats);
     // Whether the answer `chosen` came out of had rows held back.
     let chosenPartial = chosen ? pointAnswer.partial : null;
+    // Whether the WIDER search had rows held back, tracked separately from the
+    // answer we ended up keeping. The fallback runs precisely to find a
+    // building parcel, so a truncated fallback leaves us unable to say the roll
+    // holds no building data here even when the point answer was complete.
+    let fallbackPartial: string | null = null;
 
     // 2) envelope fallback (~18m) when the point missed a parcel OR landed on a
     //    road / right-of-way parcel with no building data. Widening lets us grab
@@ -300,6 +305,7 @@ export async function parcelByPoint(lat: number, lng: number): Promise<Statewide
         spatialReference: { wkid: 4326 },
       });
       const envAnswer = await queryFeatures(env, 'esriGeometryEnvelope');
+      fallbackPartial = envAnswer.partial;
       const envBest = pickBest(envAnswer.feats);
       if (envBest && (hasBuilding(envBest) || !chosen)) {
         chosen = envBest;
@@ -320,9 +326,16 @@ export async function parcelByPoint(lat: number, lng: number): Promise<Statewide
     // A truncated answer we DID resolve to a building parcel is kept: that
     // parcel really does intersect the point, and completeness was never the
     // claim. Only the no-building case depends on having seen every row.
-    if (chosenPartial && !hasBuilding(chosen)) {
+    //
+    // It does not matter WHICH of the two answers was cut short. A complete
+    // point answer that produced a vacant row, plus a truncated envelope, is
+    // still a property whose building parcel may sit in the rows we never
+    // received: keeping the complete point record does not establish that the
+    // wider search found nothing.
+    const incomplete = chosenPartial ?? fallbackPartial;
+    if (incomplete && !hasBuilding(chosen)) {
       console.error(
-        `[statewide-cadastral] parcelByPoint: partial roll answer (${chosenPartial}) and no building parcel in it; reporting unknown rather than zeros`,
+        `[statewide-cadastral] parcelByPoint: partial roll answer (${incomplete}) and no building parcel in it; reporting unknown rather than zeros`,
       );
       return null;
     }

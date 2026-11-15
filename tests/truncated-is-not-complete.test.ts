@@ -217,3 +217,129 @@ describe('statewide parcel roll by folio: an ambiguous id resolves to nothing', 
     await expect(parcelByFolio('99-9999-999-9999')).resolves.toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// R2: two completeness failures the first round left open, both found by
+// independent review and reproduced here with its own inputs.
+// ---------------------------------------------------------------------------
+
+/** A real parcel row with no building data, as a vacant lot returns. */
+const vacant = { attributes: { CO_NO: 23, PARCEL_ID: 'VACANT', OWN_NAME: 'VACANT OWNER' } };
+
+describe('statewide parcel roll: a cut-short WIDER search is uncertainty too', () => {
+  // R1 tracked only whether the answer we KEPT was truncated. A complete point
+  // answer that resolved to a vacant row, plus a truncated envelope, therefore
+  // published the vacant row: null year built, null living area, with the
+  // certified roll's authority behind it. The envelope runs precisely to find
+  // the adjacent building parcel, so a truncated envelope means that parcel may
+  // sit in the rows we never received.
+  it('reports unknown when the point answer was complete but the envelope was cut short', async () => {
+    serveByGeometry(
+      { features: [vacant], exceededTransferLimit: false },
+      { features: [], exceededTransferLimit: true },
+    );
+    await expect(parcelByPoint(25, -80)).resolves.toBeNull();
+  });
+
+  it('reports unknown when the cut-short envelope repeats the same vacant row', async () => {
+    serveByGeometry(
+      { features: [vacant], exceededTransferLimit: false },
+      { features: [vacant], exceededTransferLimit: true },
+    );
+    await expect(parcelByPoint(25, -80)).resolves.toBeNull();
+  });
+
+  it('reports unknown on a continuation token in the envelope as well', async () => {
+    serveByGeometry(
+      { features: [vacant], exceededTransferLimit: false },
+      { features: [], resultPaginationToken: 'tok' },
+    );
+    await expect(parcelByPoint(25, -80)).resolves.toBeNull();
+  });
+
+  // The other direction, three ways: the fix must not turn the fallback into a
+  // blanket refusal.
+  it('still returns the vacant parcel when BOTH answers were complete', async () => {
+    serveByGeometry(
+      { features: [vacant], exceededTransferLimit: false },
+      { features: [], exceededTransferLimit: false },
+    );
+    const p = await parcelByPoint(25, -80);
+    expect(p?.owner).toBe('VACANT OWNER');
+  });
+
+  it('still returns the building parcel the cut-short envelope DID find', async () => {
+    // Completeness was never the claim once the wider search succeeded: this
+    // parcel really does sit next to the point.
+    serveByGeometry(
+      { features: [vacant], exceededTransferLimit: false },
+      { features: [house], exceededTransferLimit: true },
+    );
+    const p = await parcelByPoint(25, -80);
+    expect(p?.owner).toBe('SMITH JOHN');
+    expect(p?.yearBuilt).toBe(1965);
+  });
+
+  it('still returns a building parcel found by a cut-short POINT answer', async () => {
+    serveByGeometry(
+      { features: [house], exceededTransferLimit: true },
+      { features: [], exceededTransferLimit: true },
+    );
+    const p = await parcelByPoint(25, -80);
+    expect(p?.owner).toBe('SMITH JOHN');
+  });
+});
+
+describe('Miami-Dade adapter: a refused read is not a count of zero', () => {
+  // arcgisQuery now throws on a truncated answer, but the adapter caught
+  // neighbour failures as {total: 0} and inspection failures as 0. Zero
+  // neighbour permits is a PUBLISHED claim - the report calls it "unusual for a
+  // populated block" - so the refusal was being converted into exactly the
+  // false confidence the change set out to remove.
+  const raw = (over: Record<string, unknown>) => ({
+    paByAddress: async () => ({ folio: '0141230750090', candidates: [{ address: '123 Test St' }] }),
+    paByFolio: async () => ({ PropertyInfo: {} }),
+    permitsByFolio: async () => [],
+    permitLayerByFolio: async () => [],
+    neighborPermits: async () => ({ total: 1, byAddress: [{ address: '125 Test St', count: 1 }] }),
+    codeEnforcement: async () => ({ open: [], closedPast5: [], failed: [] }),
+    inspectionsByAddress: async () => 1,
+    folioAtPoint: async () => null,
+    ...over,
+  });
+
+  const run = async (over: Record<string, unknown>) => {
+    vi.resetModules();
+    vi.doMock('@/lib/miami-dade-raw', async () => {
+      const actual: any = await vi.importActual('@/lib/miami-dade-raw');
+      return { ...actual, ...raw(over) };
+    });
+    const { miamiDadeAdapter } = await import('@/lib/counties/miami-dade-adapter');
+    return (await miamiDadeAdapter.run({
+      address: '123 Test St', zip: '33101', lat: 25.76, lng: -80.19, typedAddress: '123 Test St',
+    } as any)) as any;
+  };
+
+  it('reports the neighbour count as unavailable, not zero, when the read was truncated', async () => {
+    const res = await run({
+      neighborPermits: async () => { throw new Error('county query returned a partial result'); },
+    });
+    expect(res.neighborPermitTotal).toBeNull();
+    expect((res.notes ?? []).join(' ')).toMatch(/neighbor-permit lookup did not return a complete answer/i);
+  });
+
+  it('reports the inspection count as unavailable, not zero, when the read was truncated', async () => {
+    const res = await run({
+      inspectionsByAddress: async () => { throw new Error('county query returned a partial result'); },
+    });
+    expect(res.inspectionCount).toBeNull();
+    expect((res.notes ?? []).join(' ')).toMatch(/inspection lookup did not return a complete answer/i);
+  });
+
+  it('still publishes both real counts when the reads were complete', async () => {
+    const res = await run({});
+    expect(res.neighborPermitTotal).toBe(1);
+    expect(res.inspectionCount).toBe(1);
+    expect((res.notes ?? []).join(' ')).not.toMatch(/did not return a complete answer/i);
+  });
+});

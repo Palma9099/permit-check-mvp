@@ -329,8 +329,10 @@ export interface DiagnosticReport {
   permitHistory: {
     totalSubjectPermits: number;
     subjectPermits: Permit[];
-    totalInspections: number;
-    neighborPermitCount: number;
+    /** null means the source did not answer; it does not mean zero. */
+    totalInspections: number | null;
+    /** null means the source did not answer; it does not mean zero. */
+    neighborPermitCount: number | null;
     neighborByAddress: { address: string; count: number }[];
   };
 

@@ -472,7 +472,9 @@ export async function buildPdf(report: DiagnosticReport): Promise<Buffer> {
   sectionHeading(doc, 'Permit history');
   paragraph(
     doc,
-    `${report.permitHistory.totalSubjectPermits} permit(s) on file for this folio. ${report.permitHistory.neighborPermitCount} permit(s) on neighboring parcels in the same block.`,
+    report.permitHistory.neighborPermitCount === null
+      ? `${report.permitHistory.totalSubjectPermits} permit(s) on file for this folio. The neighbor-parcel permit lookup did not return a usable answer for this run, so the same-block count is unavailable, not zero.`
+      : `${report.permitHistory.totalSubjectPermits} permit(s) on file for this folio. ${report.permitHistory.neighborPermitCount} permit(s) on neighboring parcels in the same block.`,
     contentWidth,
   );
   if (report.permitHistory.subjectPermits.length > 0) {
