@@ -121,6 +121,9 @@ export function buildFlags(
     }
   }
 
+  // The `!== null` is intent, not protection: `null >= 5` is already false. It
+  // is here so that changing this comparison later cannot quietly start reading
+  // an unavailable count as a low one.
   if (permits.length === 0 && neighborTotal !== null && neighborTotal >= 5) {
     strong.push({
       severity: 'strong',

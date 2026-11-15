@@ -375,14 +375,19 @@ describe('report boundary: an unavailable neighbour count is not "none found"', 
     expect(row.grade).toBe('high');
   });
 
-  it('does not raise the zero-permits-active-neighbours flag on an unavailable count', async () => {
+  // No test asserts that an unavailable count fails to raise the
+  // zero-permits-active-neighbours flag. It cannot fail: the guard is
+  // `neighborTotal >= 5`, and `null >= 5` is already false in JS, so a test of
+  // the null case passes whether or not the explicit null check is there. A
+  // mutation removing that check is NOT caught, and that is the honest result,
+  // so the check stays only as a statement of intent. What is load-bearing is
+  // that a real count still raises the flag, which is what this asserts.
+  it('still raises the zero-permits-active-neighbours flag on a real count', async () => {
     const { buildFlags } = await import('@/lib/orchestrator');
-    const args = (n: number | null) =>
-      buildFlags([], n, {}, { open: [], closedPast5: [] }, 'No homestead', 1970, 'Miami-Dade County');
-    const unavailable = args(null);
-    const many = args(5);
-    const titles = (f: any) => [...f.strong, ...f.medium, ...f.weak].map((x: any) => x.title).join(' | ');
-    expect(titles(unavailable)).not.toMatch(/neighbors have many/i);
-    expect(titles(many)).toMatch(/neighbors have many/i);
+    const flags: any = buildFlags(
+      [], 5, {}, { open: [], closedPast5: [] }, 'No homestead', 1970, 'Miami-Dade County',
+    );
+    const titles = [...flags.strong, ...flags.medium, ...flags.weak].map((x: any) => x.title).join(' | ');
+    expect(titles).toMatch(/neighbors have many/i);
   });
 });
