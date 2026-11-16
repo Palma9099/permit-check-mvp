@@ -200,12 +200,21 @@ export const miamiDadeAdapter: CountyAdapter = {
         lookupFailures.push('The county permit LAYER lookup failed for this run, so "no permits" below is NOT confirmed and an older expired permit could be missing. Re-run, or check the county permit portal directly.');
         return [] as Permit[];
       }),
+      // A failed or truncated neighbor read must not arrive here as 0. Zero
+      // neighbor permits is a published claim ("unusual for a populated
+      // block"), so the absence of an answer is carried as null and qualified
+      // in the notes instead of being flattened into a confident count.
       neighborPermits(folio).catch((e) => {
         console.error('[miami-dade] neighbor permit lookup failed', e);
-        return { total: 0, byAddress: [] as { address: string; count: number }[] };
+        lookupFailures.push('The neighbor-permit lookup did not return a complete answer for this run, so the neighbor permit count is reported as unavailable, not as zero. Re-run, or check the county permit portal directly.');
+        return null;
       }),
       codeEnforcement(folio).catch(() => ({ open: [], closedPast5: [], failed: ['all violation sources'] })),
-      inspectionsByAddress(byAddr.candidates[0]?.address ?? address).catch(() => 0),
+      inspectionsByAddress(byAddr.candidates[0]?.address ?? address).catch((e) => {
+        console.error('[miami-dade] inspection lookup failed', e);
+        lookupFailures.push('The inspection lookup did not return a complete answer for this run, so the inspection count is reported as unavailable, not as zero.');
+        return null;
+      }),
     ]);
 
     const permits = mergePermits(tablePermits, layerPermits);
@@ -264,9 +273,9 @@ export const miamiDadeAdapter: CountyAdapter = {
       sales: formatSales(pa),
       extraFeatures: features,
       permits,
-      inspectionCount,
-      neighborPermitTotal: neighbors.total,
-      neighborByAddress: neighbors.byAddress,
+      inspectionCount,                       // null when the source did not answer
+      neighborPermitTotal: neighbors ? neighbors.total : null,
+      neighborByAddress: neighbors ? neighbors.byAddress : [],
       codeCasesOpen: codeEnf.open,
       codeCasesClosedPast5: codeEnf.closedPast5,
       sourcesTried: SOURCE_LINES,

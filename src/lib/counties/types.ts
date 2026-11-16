@@ -45,8 +45,14 @@ export interface AdapterResult {
   sales: Sale[];
   extraFeatures: ExtraFeature[];
   permits: Permit[];
-  inspectionCount: number;            // permits' associated inspection count if available
-  neighborPermitTotal: number;        // permits on neighboring parcels; 0 if unavailable
+  /** Inspection count, or null when the source did not give a usable answer.
+   *  null means unknown. It must never be flattened to 0, which the report
+   *  publishes as a confirmed count. */
+  inspectionCount: number | null;
+  /** Permits on neighbouring parcels, or null when the source did not give a
+   *  usable answer. 0 is a published claim ("unusual for a populated block"),
+   *  so an unanswered lookup is null, not 0. */
+  neighborPermitTotal: number | null;
   neighborByAddress: { address: string; count: number }[];
   /** True only when this adapter actually queried the county's code-case
    *  records. An adapter that never looks must not let the report imply the

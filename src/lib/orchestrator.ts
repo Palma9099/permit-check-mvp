@@ -67,9 +67,10 @@ function yearBuckets(features: ExtraFeature[]): Record<number, ExtraFeature[]> {
   return map;
 }
 
-function buildFlags(
+// Exported for tests: the null-count behaviour below is a published claim.
+export function buildFlags(
   permits: Permit[],
-  neighborTotal: number,
+  neighborTotal: number | null,
   buckets: Record<number, ExtraFeature[]>,
   codeEnf: { open: CodeCase[]; closedPast5: CodeCase[] },
   homesteadStatusText: string,
@@ -120,7 +121,10 @@ function buildFlags(
     }
   }
 
-  if (permits.length === 0 && neighborTotal >= 5) {
+  // The `!== null` is intent, not protection: `null >= 5` is already false. It
+  // is here so that changing this comparison later cannot quietly start reading
+  // an unavailable count as a low one.
+  if (permits.length === 0 && neighborTotal !== null && neighborTotal >= 5) {
     strong.push({
       severity: 'strong',
       title: md ? 'No permits since 2020, neighbors have many' : 'Zero permits on file - neighbors have many',
@@ -166,11 +170,12 @@ function buildFlags(
   return { strong, medium, weak };
 }
 
-function buildConfidence(
+// Exported for tests: the null-count behaviour below is a published claim.
+export function buildConfidence(
   permitCount: number,
   codeEnfCount: number,
   adapterFound: boolean,
-  neighborCount: number,
+  neighborCount: number | null,
   countyTier: 'A' | 'B',
   countyName: string,
 ): DiagnosticReport['confidenceAssessment'] {
@@ -212,13 +217,15 @@ function buildConfidence(
     },
     {
       topic: 'Neighbor comparison',
-      grade: neighborCount > 0 ? 'high' : tierBNote ? 'low' : 'low',
+      grade: neighborCount !== null && neighborCount > 0 ? 'high' : 'low',
       note:
-        neighborCount > 0
-          ? `${neighborCount} permits found on parcels in the same block.`
-          : tierBNote
-            ? 'Not retrieved for this county tier.'
-            : 'No neighbor permits found - unusual for a populated block. May indicate a rural or platted-but-undeveloped area.',
+        neighborCount === null
+          ? 'The neighbor-permit lookup did not return a usable answer for this run, so this establishes neither activity nor its absence on the block. Re-run, or check the county permit portal directly.'
+          : neighborCount > 0
+            ? `${neighborCount} permits found on parcels in the same block.`
+            : tierBNote
+              ? 'Not retrieved for this county tier.'
+              : 'No neighbor permits found - unusual for a populated block. May indicate a rural or platted-but-undeveloped area.',
     },
     {
       topic: 'Site walk / visual verification',
@@ -845,7 +852,9 @@ export async function runDiagnostic(input: {
   } else {
     bottomLine.push(
       permits.length === 0
-        ? `Zero building permits on file in the ${countyInfo.name} public archive. Neighbors on the same block show ${adapterResult.neighborPermitTotal} combined permits.`
+        ? adapterResult.neighborPermitTotal === null
+          ? `Zero building permits on file in the ${countyInfo.name} public archive. The neighbor-permit lookup did not return a usable answer for this run, so the block comparison is unavailable rather than zero.`
+          : `Zero building permits on file in the ${countyInfo.name} public archive. Neighbors on the same block show ${adapterResult.neighborPermitTotal} combined permits.`
         : `${permits.length} building permit(s) on file for this parcel.`,
     );
   }

@@ -770,8 +770,17 @@ export default function Report({
           <p>
             <strong>{r.permitHistory.totalSubjectPermits}</strong> permit(s) on file
             for this folio.{' '}
-            <strong>{r.permitHistory.neighborPermitCount}</strong> permit(s) on
-            neighboring parcels in the same block.
+            {r.permitHistory.neighborPermitCount === null ? (
+              <>
+                The neighbor-parcel permit lookup did not return a usable answer for
+                this run, so the same-block count is unavailable, not zero.
+              </>
+            ) : (
+              <>
+                <strong>{r.permitHistory.neighborPermitCount}</strong> permit(s) on
+                neighboring parcels in the same block.
+              </>
+            )}
           </p>
           {/miami-dade/i.test(r.county?.name ?? '') && (
             <p className="text-sm text-ink-soft">
