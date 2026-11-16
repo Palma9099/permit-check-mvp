@@ -20,6 +20,7 @@
 import type { StatewideParcel } from './statewide-cadastral';
 import { dorUseDescription } from './statewide-cadastral';
 import { fetchWithTimeout } from '../net';
+import { partialResultReason } from '../arcgis';
 
 // ---------------------------------------------------------------------------
 // Small local helpers (kept independent of the FDOR module's internals).
@@ -39,10 +40,24 @@ function titleCase(a: string): string {
     .replace(/\b(N|S|E|W|NE|NW|SE|SW|Ne|Nw|Se|Sw)\b/g, (m) => m.toUpperCase());
 }
 
-// Query a hosted county parcel layer at a point / small envelope, preferring a
-// parcel that actually has building data (so a road / right-of-way hit widens to
-// the adjacent building parcel). Never throws.
-async function queryLayer(baseUrl: string, geometry: string, geometryType: string, label: string): Promise<any[]> {
+/**
+ * Query a hosted county parcel layer at a point / small envelope, preferring a
+ * parcel that actually has building data (so a road / right-of-way hit widens
+ * to the adjacent building parcel). Never throws.
+ *
+ * Returns whether the server kept rows back alongside the rows, because the
+ * caller's conclusion depends on it: this layer is read with a cap of 8, and
+ * `pick` PREFERS a parcel with building data, so a cut-short answer may have
+ * left the building parcel in the rows that never arrived. Named `readLayer`
+ * rather than `queryLayer` so it is not mistaken for the shared helper in
+ * ../arcgis, which has a different contract.
+ */
+async function readLayer(
+  baseUrl: string,
+  geometry: string,
+  geometryType: string,
+  label: string,
+): Promise<{ rows: any[]; partial: string | null }> {
   const params = new URLSearchParams({
     geometry,
     geometryType,
@@ -58,12 +73,15 @@ async function queryLayer(baseUrl: string, geometry: string, geometryType: strin
     const res = await fetchWithTimeout(`${baseUrl}/query?${params.toString()}`, {
       cache: 'no-store', timeoutMs: 9000, retries: 1, label,
     });
-    if (!res.ok) return [];
+    if (!res.ok) return { rows: [], partial: null };
     const data: any = await res.json();
-    if (data?.error) return [];
-    return Array.isArray(data?.features) ? data.features.map((f: any) => f.attributes ?? {}) : [];
+    if (data?.error) return { rows: [], partial: null };
+    return {
+      rows: Array.isArray(data?.features) ? data.features.map((f: any) => f.attributes ?? {}) : [],
+      partial: partialResultReason(data),
+    };
   } catch {
-    return [];
+    return { rows: [], partial: null };
   }
 }
 
@@ -77,17 +95,48 @@ async function resolveParcel(
 ): Promise<StatewideParcel | null> {
   const pick = (rows: any[]): any | null => rows.find(hasBuilding) ?? rows[0] ?? null;
   const point = JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } });
-  let chosen = pick(await queryLayer(baseUrl, point, 'esriGeometryPoint', label));
+  const pointAnswer = await readLayer(baseUrl, point, 'esriGeometryPoint', label);
+  let chosen = pick(pointAnswer.rows);
+  // Whether the answer `chosen` came out of had rows held back.
+  let chosenPartial = chosen ? pointAnswer.partial : null;
+  // Whether the WIDER search had rows held back, tracked separately: the
+  // envelope runs precisely to find a building parcel, so a truncated
+  // envelope leaves that unsettled even when the point answer was complete.
+  let fallbackPartial: string | null = null;
   if (!chosen || !hasBuilding(chosen)) {
     const d = 0.00016; // ~18m
     const env = JSON.stringify({
       xmin: lng - d, ymin: lat - d, xmax: lng + d, ymax: lat + d,
       spatialReference: { wkid: 4326 },
     });
-    const envBest = pick(await queryLayer(baseUrl, env, 'esriGeometryEnvelope', label));
-    if (envBest && (hasBuilding(envBest) || !chosen)) chosen = envBest;
+    const envAnswer = await readLayer(baseUrl, env, 'esriGeometryEnvelope', label);
+    fallbackPartial = envAnswer.partial;
+    const envBest = pick(envAnswer.rows);
+    if (envBest && (hasBuilding(envBest) || !chosen)) {
+      chosen = envBest;
+      chosenPartial = envAnswer.partial;
+    }
   }
-  return chosen ? map(chosen) : null;
+  if (!chosen) return null;
+  // A parcel with no building data, picked out of an answer the server cut
+  // short, is not evidence that this county's roll holds no building data for
+  // the property: published as-is it renders as "?-built, ? heated sq ft" with
+  // the Property Appraiser's authority behind it. Returning null instead sends
+  // the caller to the statewide roll, which fails closed the same way, and
+  // then to its own "could not resolve a parcel, confirm with the Property
+  // Appraiser" line - the honest version of the same screen.
+  //
+  // A cut-short answer we DID resolve to a building parcel is kept: that
+  // parcel really does intersect the point, and completeness was never the
+  // claim.
+  const incomplete = chosenPartial ?? fallbackPartial;
+  if (incomplete && !hasBuilding(chosen)) {
+    console.error(
+      `[county-property] ${label}: partial answer (${incomplete}) and no building parcel in it; reporting unknown rather than zeros`,
+    );
+    return null;
+  }
+  return map(chosen);
 }
 
 // ---------------------------------------------------------------------------
