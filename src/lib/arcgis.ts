@@ -166,11 +166,20 @@ function assertCompleteEnough(data: any, rowCount: number, q: LayerQuery): void 
  *                                   services ever emit tokens, this is what
  *                                   says so out loud.
  *
- * Deliberately NOT applied to `queryLayer`: several of its callers pass
- * `resultRecordCount: 1` on purpose (a parcel lookup, a boundary lookup, the
- * BCPA point read), so truncation is their normal case and throwing would
- * break working code. Completeness is only required where a caller asks for a
- * complete answer, which is this function.
+ * Applied to `queryLayer` too, which it once was not. The old note here said
+ * the opposite - that completeness was "only required where a caller asks for
+ * a complete answer, which is this function" - on the grounds that callers
+ * passing `resultRecordCount: 1` make truncation their normal case. The
+ * premise was right and the conclusion was wrong: those pick-one reads are
+ * three call sites, and every OTHER caller of `queryLayer` publishes its rows
+ * as a complete list or turns an empty list into a positive claim. Exempting
+ * the whole function to protect three call sites left the rest reading a
+ * prefix as the answer.
+ *
+ * So the exemption is now declared per call, by `completeness: 'sample'` on
+ * the query, and it is narrow: a sample read still refuses an EMPTY partial
+ * answer, because an empty answer is the one a caller turns into "nothing is
+ * there". See the `completeness` field on LayerQuery.
  */
 export function partialResultReason(data: any): string | null {
   if (data?.exceededTransferLimit === true) return 'exceededTransferLimit';
