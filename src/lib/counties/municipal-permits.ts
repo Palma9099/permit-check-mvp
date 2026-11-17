@@ -22,6 +22,7 @@
 
 import type { Permit, CodeCase } from '../types';
 import { fetchWithTimeout } from '../net';
+import { partialResultReason } from '../arcgis';
 
 export interface MunicipalResult {
   found: boolean; // true only when we actually retrieved rows from a city layer
@@ -54,8 +55,17 @@ function empty(): MunicipalResult {
 
 /** One layer's answer: whether it answered at all, kept apart from its rows. */
 interface LayerRead {
+  /**
+   * Whether this answer can be relied on as the complete set for the query.
+   * False covers BOTH a layer that did not answer and one that answered only
+   * partly, because neither can certify "nothing is here" - which is the only
+   * thing `ok` is used to decide. `partial` says which of the two it was, so
+   * the note a reader sees is accurate.
+   */
   ok: boolean;
   rows: any[];
+  /** Why the answer was incomplete, or null. Non-null implies ok === false. */
+  partial: string | null;
 }
 
 // Query an ArcGIS FeatureServer/MapServer layer by a small envelope around a
@@ -92,17 +102,23 @@ async function queryByPoint(
     const res = await fetchWithTimeout(`${layerQueryUrl}?${params.toString()}`, {
       cache: 'no-store', timeoutMs: 10000, retries: 1, label,
     });
-    if (!res.ok) return { ok: false, rows: [] };
+    if (!res.ok) return { ok: false, rows: [], partial: null };
     const data: any = await res.json();
     // ArcGIS reports its own errors inside an HTTP 200, so this is a failure,
     // not an empty result.
-    if (data?.error) return { ok: false, rows: [] };
+    if (data?.error) return { ok: false, rows: [], partial: null };
     // A response with no `features` array is a shape we do not recognise. It
     // is not a confirmed zero either.
-    if (!Array.isArray(data?.features)) return { ok: false, rows: [] };
-    return { ok: true, rows: data.features.map((f: any) => f.attributes ?? {}) };
+    if (!Array.isArray(data?.features)) return { ok: false, rows: [], partial: null };
+    const rows = data.features.map((f: any) => f.attributes ?? {});
+    // The server kept rows back, so this is a prefix of the answer and not the
+    // answer. The rows are still returned - they are real records and worth
+    // showing - but `ok` is false, so no caller can certify a zero off them.
+    const partial = partialResultReason(data);
+    if (partial) return { ok: false, rows, partial };
+    return { ok: true, rows, partial: null };
   } catch {
-    return { ok: false, rows: [] };
+    return { ok: false, rows: [], partial: null };
   }
 }
 
@@ -147,21 +163,36 @@ async function querySocrataCircle(
   const { meters = 50, order, max = 30, label = 'socrata' } = opts;
   const params = new URLSearchParams({
     $where: `within_circle(${pointField}, ${lat}, ${lng}, ${meters})`,
-    $limit: String(max),
+    // Socrata publishes no truncation flag, so completeness has to be
+    // measured rather than read: ask for ONE more row than will be kept.
+    // Getting it back is proof that rows exist beyond the cap. Comparing
+    // rows.length to the cap instead cannot tell a full page from a cut-off
+    // one, which is the mistake that makes a prefix look complete.
+    $limit: String(max + 1),
   });
   if (order) params.set('$order', order);
   try {
     const res = await fetchWithTimeout(`${resourceUrl}?${params.toString()}`, {
       cache: 'no-store', timeoutMs: 10000, retries: 1, label,
     });
-    if (!res.ok) return { ok: false, rows: [] };
+    if (!res.ok) return { ok: false, rows: [], partial: null };
     const data: any = await res.json();
     // Socrata answers with a bare array. Anything else is a shape we do not
     // recognise, which is a failed read, not zero permits.
-    if (!Array.isArray(data)) return { ok: false, rows: [] };
-    return { ok: true, rows: data };
+    if (!Array.isArray(data)) return { ok: false, rows: [], partial: null };
+    if (data.length > max) {
+      // `ok: false` here keeps the LayerRead invariant true (a non-null
+      // `partial` always means not-complete), but it is NOT load-bearing and
+      // no test can show that it is: the only consumer reads `ok` as
+      // `permits.length === 0 && !read.ok`, and this branch needs more rows
+      // than the cap to be taken, so the row list is never empty when it is.
+      // Mutating it to `true` is not caught, and that is reported rather than
+      // papered over.
+      return { ok: false, rows: data.slice(0, max), partial: `more than ${max} rows within the radius` };
+    }
+    return { ok: true, rows: data, partial: null };
   } catch {
-    return { ok: false, rows: [] };
+    return { ok: false, rows: [], partial: null };
   }
 }
 
@@ -228,12 +259,16 @@ async function fortLauderdale(lat: number, lng: number): Promise<MunicipalResult
   ];
   if (!codeRead.ok) {
     notes.push(
-      'The City of Fort Lauderdale code compliance layer did not answer on this run, so its code cases were NOT searched. That is not the same as the property being clear - search the city directly before relying on anything here.',
+      codeRead.partial
+        ? 'The City of Fort Lauderdale code compliance layer returned only part of its records on this run, so any case it held back is not shown and its code cases were NOT fully searched. That is not the same as the property being clear - search the city directly before relying on anything here.'
+        : 'The City of Fort Lauderdale code compliance layer did not answer on this run, so its code cases were NOT searched. That is not the same as the property being clear - search the city directly before relying on anything here.',
     );
   }
   if (!permitRead.ok) {
     notes.push(
-      'The City of Fort Lauderdale permit layer did not answer on this run, so "no permits" is not confirmed for this property.',
+      permitRead.partial
+        ? 'The City of Fort Lauderdale permit layer returned only part of its records on this run, so the permits listed are not the whole set and "no permits" is not confirmed for this property.'
+        : 'The City of Fort Lauderdale permit layer did not answer on this run, so "no permits" is not confirmed for this property.',
     );
   }
 
@@ -304,6 +339,12 @@ async function tampa(lat: number, lng: number): Promise<MunicipalResult> {
     ],
     notes: [
       'Tampa records come from the city’s live active-permit feed (in-progress construction), matched by map location, so confirm each record’s address before relying on it. This feed shows active work, not the full historical permit archive; Hillsborough County has no countywide public permit API, so only City of Tampa data is pulled here.',
+      // Disclosing "not the full archive" does not cover a run that was ALSO
+      // cut short: that is this run holding records back, not the feed's known
+      // scope, and a reader cannot tell them apart without being told.
+      ...([com, twn, res].some((r) => r.partial)
+        ? ['One or more City of Tampa permit layers returned only part of their records on this run, so the permits listed are not the whole set for this location.']
+        : []),
     ],
   };
 }
@@ -344,6 +385,9 @@ async function orlando(lat: number, lng: number): Promise<MunicipalResult> {
     ],
     notes: [
       'Orlando records come from the city’s permit-applications dataset, matched by map location, so confirm each record’s address before relying on it. Orange County and other cities in the metro permit separately and are not included here.',
+      ...(read.partial
+        ? [`The Orlando permit dataset returned ${read.partial} on this run, so the permits listed are the most recent of a longer list and not the whole set for this location.`]
+        : []),
     ],
   };
 }

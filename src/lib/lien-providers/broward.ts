@@ -76,6 +76,11 @@ async function cityNameAt(lat: number, lng: number): Promise<string | null> {
     point: { lat, lng },
     outFields: 'CITYNAME',
     resultRecordCount: 1,
+    // A point falls in one city, so rows held back behind it change nothing.
+    // An EMPTY truncated answer still throws, and must: `!rows.length` below
+    // is read as "positively unincorporated", which drops the city lien
+    // letter, and a truncated empty response does not establish that.
+    completeness: 'sample',
     label: 'broward-city',
   });
   // No city boundary contains the point. The query completed, so the parcel
@@ -127,6 +132,8 @@ export async function browardFolioAtPoint(lat: number, lng: number): Promise<str
     point: { lat, lng },
     outFields: 'FOLIO_NUMBER',
     resultRecordCount: 1,
+    // One point, one lot; an empty truncated answer still throws.
+    completeness: 'sample',
     label: 'bcpa-point',
   });
   const f = str(rows[0]?.FOLIO_NUMBER);

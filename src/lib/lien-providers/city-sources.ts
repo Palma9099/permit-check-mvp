@@ -12,6 +12,12 @@
 // Adding a city is one row. Each fetcher takes the county's parcel number and
 // MUST throw when its source does not answer, so section() can mark it "could
 // not be checked" instead of clear.
+//
+// A source that answers only PARTLY has also not answered, for this purpose.
+// Every list below is published as "what is still open against this parcel",
+// and in a lien search a case nobody saw is the whole failure mode, so a
+// server that kept rows back fails the read rather than shortening the list.
+// `queryLayer` enforces that by default; see `completeness` in ../arcgis.
 
 import { epochDay, queryLayer, sq, str } from '../arcgis';
 import { cap, dt, type LienLine } from '../lien-types';
@@ -47,6 +53,10 @@ async function ftlParcelId(folio: string): Promise<string | null> {
     where: `FOLIO=${sq(folio)}`,
     outFields: 'FOLIO,PARCELID',
     resultRecordCount: 1,
+    // One folio, one parcel: rows held back behind it change nothing. An
+    // EMPTY truncated answer still throws, and must, because `!pid` below
+    // returns an empty CASE list, which the provider would read as clear.
+    completeness: 'sample',
     label: 'ftl-parcel',
   });
   return str(rows[0]?.PARCELID) || null;
@@ -69,6 +79,9 @@ const FORT_LAUDERDALE: CitySource = {
     const rows = await queryLayer(FTL_CODE_CASES, {
       where: `PARCELID=${sq(pid)} AND CASESTATUS='O'`,
       outFields: 'CASENUM,PARCELID,CASETYPE,CASESTATUS,INITDATE',
+      // 200 is a safety cap, not a sample: these rows are published as the
+      // complete list of what encumbers the parcel, so a server that kept
+      // rows back fails the read. Default completeness is 'required'.
       resultRecordCount: 200,
       label: 'ftl-code',
     });
@@ -86,6 +99,9 @@ const FORT_LAUDERDALE: CitySource = {
     const rows = await queryLayer(FTL_PERMITS, {
       where: `PARCELID=${sq(pid)}`,
       outFields: 'PERMITID,PERMITTYPE,PERMITSTAT,PERMITDESC,SUBMITDT,APPROVEDT,COSTATUS',
+      // 200 is a safety cap, not a sample: these rows are published as the
+      // complete list of what encumbers the parcel, so a server that kept
+      // rows back fails the read. Default completeness is 'required'.
       resultRecordCount: 200,
       label: 'ftl-permits',
     });
@@ -115,6 +131,9 @@ const HOLLYWOOD: CitySource = {
     const rows = await queryLayer(HWD_PERMITS_OPEN, {
       where: `FOLIO_NUMBER=${sq(folio)}`,
       outFields: 'RECORD_ID,RECORD_TYPE,RECORD_STATUS,STATUS,RECORD_OPEN_DATE,FOLIO_NUMBER',
+      // 200 is a safety cap, not a sample: these rows are published as the
+      // complete list of what encumbers the parcel, so a server that kept
+      // rows back fails the read. Default completeness is 'required'.
       resultRecordCount: 200,
       label: 'hwd-permits',
     });
@@ -156,6 +175,9 @@ const CITY_OF_MIAMI: CitySource = {
       where: `FolioNumber=${n} AND BuildingPermitStatusDescription<>'Final'`,
       outFields:
         'PermitNumber,ApplicationNumber,FolioNumber,BuildingPermitStatusDescription,BuildingPermitStatusReasonDescription,IssuedDate,ScopeofWork,IsPermitFinal',
+      // 200 is a safety cap, not a sample: these rows are published as the
+      // complete list of what encumbers the parcel, so a server that kept
+      // rows back fails the read. Default completeness is 'required'.
       resultRecordCount: 200,
       label: 'miami-permits',
     });

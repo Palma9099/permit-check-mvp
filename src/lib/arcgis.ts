@@ -19,6 +19,22 @@ export interface LayerQuery {
   point?: { lat: number; lng: number };
   timeoutMs?: number;
   label?: string;
+  /**
+   * Whether this read's answer has to be the COMPLETE set for the query.
+   *
+   * 'required' is the default, so a read that says nothing about completeness
+   * fails closed: any partial-result signal throws. That default is the whole
+   * point - the capped reads this contract was added for were all written
+   * without a thought about truncation, so silence must mean strict.
+   *
+   * 'sample' is for a deliberate pick-one or top-N read, where rows held back
+   * are expected and harmless because only one row was ever wanted. It is NOT
+   * a way to ignore truncation on a list: an EMPTY partial answer still
+   * throws under 'sample', because an empty answer is the one every caller
+   * turns into "nothing is there", and a truncated empty response does not
+   * establish that.
+   */
+  completeness?: 'required' | 'sample';
 }
 
 function params(q: LayerQuery): URLSearchParams {
@@ -85,7 +101,28 @@ export async function queryLayer(layerUrl: string, q: LayerQuery = {}): Promise<
   if (!data || typeof data !== 'object' || !Array.isArray(data.features)) {
     throw new Error(`layer query returned no features array (${q.label ?? 'arcgis'})`);
   }
+  assertCompleteEnough(data, data.features.length, q);
   return data.features.map((f: any) => f.attributes ?? {});
+}
+
+/**
+ * Throw unless this response is usable for what the caller asked of it.
+ *
+ * `queryLayer` returns a bare array, so it throws the response envelope away
+ * and no caller through it could ever see that the server had kept rows back.
+ * Every one of its callers either publishes the rows as a complete list or
+ * turns an empty list into a positive claim, which is why the check lives
+ * here rather than being repeated at each call site.
+ *
+ * See the `completeness` field on LayerQuery for why a 'sample' read still
+ * refuses an EMPTY partial answer.
+ */
+function assertCompleteEnough(data: any, rowCount: number, q: LayerQuery): void {
+  const partial = partialResultReason(data);
+  if (!partial) return;
+  if (q.completeness === 'sample' && rowCount > 0) return;
+  const shape = rowCount === 0 ? 'an empty partial' : 'a partial';
+  throw new Error(`layer query returned ${shape} result (${q.label ?? 'arcgis'}; ${partial})`);
 }
 
 /**
@@ -129,11 +166,20 @@ export async function queryLayer(layerUrl: string, q: LayerQuery = {}): Promise<
  *                                   services ever emit tokens, this is what
  *                                   says so out loud.
  *
- * Deliberately NOT applied to `queryLayer`: several of its callers pass
- * `resultRecordCount: 1` on purpose (a parcel lookup, a boundary lookup, the
- * BCPA point read), so truncation is their normal case and throwing would
- * break working code. Completeness is only required where a caller asks for a
- * complete answer, which is this function.
+ * Applied to `queryLayer` too, which it once was not. The old note here said
+ * the opposite - that completeness was "only required where a caller asks for
+ * a complete answer, which is this function" - on the grounds that callers
+ * passing `resultRecordCount: 1` make truncation their normal case. The
+ * premise was right and the conclusion was wrong: those pick-one reads are
+ * three call sites, and every OTHER caller of `queryLayer` publishes its rows
+ * as a complete list or turns an empty list into a positive claim. Exempting
+ * the whole function to protect three call sites left the rest reading a
+ * prefix as the answer.
+ *
+ * So the exemption is now declared per call, by `completeness: 'sample'` on
+ * the query, and it is narrow: a sample read still refuses an EMPTY partial
+ * answer, because an empty answer is the one a caller turns into "nothing is
+ * there". See the `completeness` field on LayerQuery.
  */
 export function partialResultReason(data: any): string | null {
   if (data?.exceededTransferLimit === true) return 'exceededTransferLimit';
